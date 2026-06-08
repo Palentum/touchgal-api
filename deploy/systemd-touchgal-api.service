@@ -1,5 +1,5 @@
 [Unit]
-Description=TouchGal Developer API
+Description=TouchGal API
 After=network.target
 
 [Service]

@@ -80,7 +80,7 @@ func Load() (Config, error) {
 		SMTPUsername: env("SMTP_USERNAME", ""),
 		SMTPPassword: env("SMTP_PASSWORD", ""),
 		SMTPFrom:     env("SMTP_FROM", "no-reply@example.com"),
-		SMTPFromName: env("SMTP_FROM_NAME", "TouchGal Developer"),
+		SMTPFromName: env("SMTP_FROM_NAME", "TouchGal API"),
 
 		EmailCodeTTLMinutes:          envInt("EMAIL_CODE_TTL_MINUTES", 10),
 		EmailCodeResendCooldownSecs:  envInt("EMAIL_CODE_RESEND_COOLDOWN_SECONDS", 60),

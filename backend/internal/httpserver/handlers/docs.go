@@ -23,5 +23,5 @@ func (DocsHandler) OpenAPI(w http.ResponseWriter, r *http.Request) {
 
 func (DocsHandler) Swagger(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>TouchGal Developer API Docs</title><script type="module" src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></head><body><scalar-api-reference configuration='{"url":"/openapi.yaml"}'></scalar-api-reference></body></html>`))
+	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>TouchGal API Docs</title><script type="module" src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></head><body><scalar-api-reference configuration='{"url":"/openapi.yaml"}'></scalar-api-reference></body></html>`))
 }

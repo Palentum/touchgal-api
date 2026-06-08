@@ -1,6 +1,6 @@
 <template>
   <article class="prose-code">
-    <h1 class="text-5xl font-black">TouchGal Developer API 文档</h1>
+    <h1 class="text-5xl font-black">TouchGal API 文档</h1>
     <p class="mt-4 text-lg text-slate-700">稳定、脱敏、可限流的 Galgame 条目 API。业务接口需要 API token，health 除外。</p>
 
     <section v-for="section in sections" :key="section.title" class="mt-10 rounded-3xl border border-slate-900/10 bg-white/60 p-6 shadow-sm">

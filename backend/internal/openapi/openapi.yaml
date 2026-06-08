@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: TouchGal Developer API
+  title: TouchGal API
   version: v1
   description: Independent sanitized Galgame metadata API for developers.
 servers:

@@ -1,13 +1,13 @@
-# TouchGal Developer/API
+# TouchGal API
 
-TouchGal Developer/API 是一个完全独立于 KunMoe/kun-touchgal-next 主项目的开发者 API 项目，包含 Go 后端、Nuxt 前端、独立 PostgreSQL、Redis、同步 Worker、OpenAPI 文档和 Docker Compose 部署示例。
+TouchGal API 是一个完全独立于 TouchGal 主项目（`kun-touchgal-next`）的开发者 API 项目，包含 Go 后端、Nuxt 前端、独立 PostgreSQL、Redis、同步 Worker、OpenAPI 文档和 Docker Compose 部署示例。
 
 ## 架构图文字版
 
 ```
-KunMoe 主项目 PostgreSQL（只读账号）
+TouchGal 主项目 PostgreSQL（只读账号）
   -> backend sync worker（full / incremental）
-  -> TouchGal Developer 独立 PostgreSQL clean DB
+  -> TouchGal API 独立 PostgreSQL clean DB
   -> Go /v1 API（API token + Redis 限流）
   -> Nuxt Developer Portal（HttpOnly session cookie）
 ```
@@ -42,7 +42,7 @@ cp backend/.env.example backend/.env
 关键变量：
 
 - `DATABASE_DSN`：本项目独立 PostgreSQL。
-- `SOURCE_DATABASE_DSN`：KunMoe 主库只读账号连接串，生产建议 `sslmode=require`。
+- `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：验证码、session cache、API token 限流。
 - `SESSION_SECRET`：登录 session hash secret。
 - `SMTP_*`：邮箱验证码 SMTP。
