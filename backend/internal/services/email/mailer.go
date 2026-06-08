@@ -13,11 +13,32 @@ type Mailer interface {
 	SendVerificationCode(to, purpose, code string, ttlMinutes int) error
 }
 
+func NewMailer(cfg config.Config, logger zerolog.Logger) Mailer {
+	switch cfg.MailDriver {
+	case config.MailDriverPostal:
+		return NewPostalMailer(cfg)
+	case config.MailDriverLog:
+		return LoggingMailer{Logger: logger}
+	default:
+		if cfg.SMTPHost == "" {
+			return LoggingMailer{Logger: logger}
+		}
+		return NewSMTPMailer(cfg)
+	}
+}
+
 type SMTPMailer struct {
 	cfg config.Config
 }
 
 func NewSMTPMailer(cfg config.Config) *SMTPMailer { return &SMTPMailer{cfg: cfg} }
+
+func formatFrom(address, name string) string {
+	if name == "" {
+		return address
+	}
+	return fmt.Sprintf("%s <%s>", name, address)
+}
 
 func (m *SMTPMailer) SendVerificationCode(to, purpose, code string, ttlMinutes int) error {
 	if m.cfg.SMTPHost == "" || m.cfg.SMTPFrom == "" {
@@ -25,10 +46,7 @@ func (m *SMTPMailer) SendVerificationCode(to, purpose, code string, ttlMinutes i
 	}
 	subject := VerificationSubject(purpose)
 	body := VerificationBody(code, ttlMinutes)
-	fromLabel := m.cfg.SMTPFrom
-	if m.cfg.SMTPFromName != "" {
-		fromLabel = fmt.Sprintf("%s <%s>", m.cfg.SMTPFromName, m.cfg.SMTPFrom)
-	}
+	fromLabel := formatFrom(m.cfg.SMTPFrom, m.cfg.SMTPFromName)
 	msg := strings.Join([]string{
 		"From: " + fromLabel,
 		"To: " + to,

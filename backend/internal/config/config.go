@@ -3,10 +3,17 @@ package config
 import (
 	"bufio"
 	"errors"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	MailDriverSMTP   = "smtp"
+	MailDriverPostal = "postal"
+	MailDriverLog    = "log"
 )
 
 type Config struct {
@@ -28,12 +35,17 @@ type Config struct {
 	SessionCookieSecure bool
 	SessionTTLHours     int
 
+	MailDriver string
+
 	SMTPHost     string
 	SMTPPort     int
 	SMTPUsername string
 	SMTPPassword string
 	SMTPFrom     string
 	SMTPFromName string
+
+	PostalAPIURL string
+	PostalAPIKey string
 
 	EmailCodeTTLMinutes          int
 	EmailCodeResendCooldownSecs  int
@@ -75,12 +87,17 @@ func Load() (Config, error) {
 		SessionCookieSecure: envBool("SESSION_COOKIE_SECURE", false),
 		SessionTTLHours:     envInt("SESSION_TTL_HOURS", 720),
 
+		MailDriver: strings.ToLower(strings.TrimSpace(env("MAIL_DRIVER", MailDriverSMTP))),
+
 		SMTPHost:     env("SMTP_HOST", ""),
 		SMTPPort:     envInt("SMTP_PORT", 587),
 		SMTPUsername: env("SMTP_USERNAME", ""),
 		SMTPPassword: env("SMTP_PASSWORD", ""),
 		SMTPFrom:     env("SMTP_FROM", "no-reply@example.com"),
 		SMTPFromName: env("SMTP_FROM_NAME", "TouchGal API"),
+
+		PostalAPIURL: env("POSTAL_API_URL", ""),
+		PostalAPIKey: env("POSTAL_API_KEY", ""),
 
 		EmailCodeTTLMinutes:          envInt("EMAIL_CODE_TTL_MINUTES", 10),
 		EmailCodeResendCooldownSecs:  envInt("EMAIL_CODE_RESEND_COOLDOWN_SECONDS", 60),
@@ -110,6 +127,26 @@ func (c Config) Validate() error {
 	}
 	if c.APITokenPepper == "" {
 		return errors.New("API_TOKEN_PEPPER is required")
+	}
+	switch c.MailDriver {
+	case MailDriverSMTP, MailDriverPostal, MailDriverLog:
+	default:
+		return errors.New("MAIL_DRIVER must be one of: smtp, postal, log")
+	}
+	if c.MailDriver == MailDriverPostal {
+		if c.PostalAPIURL == "" {
+			return errors.New("POSTAL_API_URL is required when MAIL_DRIVER=postal")
+		}
+		postalURL, err := url.Parse(c.PostalAPIURL)
+		if err != nil || postalURL.Scheme == "" || postalURL.Host == "" {
+			return errors.New("POSTAL_API_URL must be a valid absolute URL when MAIL_DRIVER=postal")
+		}
+		if postalURL.Scheme != "https" {
+			return errors.New("POSTAL_API_URL must use https when MAIL_DRIVER=postal")
+		}
+		if c.PostalAPIKey == "" {
+			return errors.New("POSTAL_API_KEY is required when MAIL_DRIVER=postal")
+		}
 	}
 	if c.EmailCodeMaxAttempts <= 0 {
 		return errors.New("EMAIL_CODE_MAX_ATTEMPTS must be positive")

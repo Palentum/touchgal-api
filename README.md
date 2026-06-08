@@ -45,7 +45,9 @@ cp backend/.env.example backend/.env
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
 - `SESSION_SECRET`：登录 session hash secret。
-- `SMTP_*`：邮箱验证码 SMTP。
+- `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`。
+- `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
+- `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
 - `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步。
 - `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS`：incremental/full 同步周期。
@@ -99,9 +101,9 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 
 不要复制或复用主站账号权限。
 
-## 邮箱 SMTP 配置
+## 邮箱驱动配置
 
-配置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`。开发环境未配置 SMTP 时，后端会将验证码写入结构化日志；生产必须配置真实 SMTP。
+通过 `MAIL_DRIVER` 选择邮箱验证码驱动：`smtp` 使用 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`；`postal` 使用 `POSTAL_API_URL`、`POSTAL_API_KEY`，并复用 `SMTP_FROM`、`SMTP_FROM_NAME` 作为发件人。`POSTAL_API_URL` 必须使用 `https://`，可填 Postal 根地址或完整 `/api/v1/send/message` 地址。`log` 会将验证码写入结构化日志。开发环境未配置 SMTP 时，后端仍会回退到日志驱动；生产应选择并配置真实邮件驱动。
 
 ## API token 申请流程
 

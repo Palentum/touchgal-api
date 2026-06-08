@@ -66,10 +66,7 @@ func run() error {
 	defer redisClient.Close()
 
 	repos := repository.New(target)
-	mailer := email.Mailer(email.NewSMTPMailer(cfg))
-	if cfg.SMTPHost == "" {
-		mailer = email.LoggingMailer{Logger: logger}
-	}
+	mailer := email.NewMailer(cfg, logger)
 
 	authService := auth.NewService(cfg, repos.Users, repos.Auth, redisClient, mailer)
 	applicationService := application.NewService(cfg, repos.Applications)
