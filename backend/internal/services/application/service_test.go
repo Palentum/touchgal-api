@@ -10,7 +10,7 @@ import (
 )
 
 type fakeApplicationStore struct {
-	pending int
+	count   int
 	created bool
 }
 
@@ -18,16 +18,10 @@ func (f *fakeApplicationStore) Create(ctx context.Context, userID uuid.UUID, inp
 	f.created = true
 	return &model.Application{ID: uuid.New(), UserID: userID, Status: model.ApplicationPending, DefaultMinuteLimit: minuteLimit, DefaultDailyLimit: dailyLimit}, nil
 }
-func (f *fakeApplicationStore) CountPendingByUser(ctx context.Context, userID uuid.UUID) (int, error) {
-	return f.pending, nil
+func (f *fakeApplicationStore) CountByUser(ctx context.Context, userID uuid.UUID) (int, error) {
+	return f.count, nil
 }
 func (f *fakeApplicationStore) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Application, error) {
-	return nil, nil
-}
-func (f *fakeApplicationStore) GetByIDForUser(ctx context.Context, id, userID uuid.UUID) (*model.Application, error) {
-	return nil, nil
-}
-func (f *fakeApplicationStore) GetByID(ctx context.Context, id uuid.UUID) (*model.Application, error) {
 	return nil, nil
 }
 func (f *fakeApplicationStore) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error) {
@@ -37,15 +31,15 @@ func (f *fakeApplicationStore) UpdateReview(ctx context.Context, id, reviewer uu
 	return nil, nil
 }
 
-func TestApplicationPendingLimit(t *testing.T) {
-	store := &fakeApplicationStore{pending: 3}
+func TestApplicationSubmittedOnce(t *testing.T) {
+	store := &fakeApplicationStore{count: 1}
 	svc := NewService(config.Config{DefaultTokenMinuteLimit: 60, DefaultTokenDailyLimit: 5000}, store)
 	_, err := svc.Create(context.Background(), uuid.New(), model.CreateApplicationInput{ApplicantName: "Kun", ProjectURL: "https://example.com", ExpectedDailyRequests: 1, UsageScenario: "test", AgreeToTerms: true})
-	if err != model.ErrTooManyPending {
-		t.Fatalf("expected ErrTooManyPending, got %v", err)
+	if err != model.ErrApplicationExists {
+		t.Fatalf("expected ErrApplicationExists, got %v", err)
 	}
 	if store.created {
-		t.Fatal("must not create fourth pending application")
+		t.Fatal("must not create second account application")
 	}
 }
 

@@ -26,19 +26,13 @@ func (h *TokenHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 func (h *TokenHandler) Create(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r)
 	var req struct {
-		ApplicationID string `json:"applicationId"`
-		Name          string `json:"name"`
+		Name string `json:"name"`
 	}
 	if err := DecodeJSON(r, &req); err != nil {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
 		return
 	}
-	appID, err := uuid.Parse(req.ApplicationID)
-	if err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid applicationId")
-		return
-	}
-	result, err := h.svc.Create(r.Context(), user.ID, appID, req.Name)
+	result, err := h.svc.Create(r.Context(), user.ID, req.Name)
 	if err != nil {
 		Error(w, err)
 		return

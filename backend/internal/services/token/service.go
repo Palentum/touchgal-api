@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ type Store interface {
 }
 
 type ApplicationStore interface {
-	GetByIDForUser(ctx context.Context, id, userID uuid.UUID) (*model.Application, error)
+	GetApprovedByUser(ctx context.Context, userID uuid.UUID) (*model.Application, error)
 }
 
 type Service struct {
@@ -73,13 +74,16 @@ func CanCreateFromApplication(app *model.Application) bool {
 	return app != nil && app.Status == model.ApplicationApproved
 }
 
-func (s *Service) Create(ctx context.Context, userID, applicationID uuid.UUID, name string) (*CreateResult, error) {
+func (s *Service) Create(ctx context.Context, userID uuid.UUID, name string) (*CreateResult, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 100 {
 		return nil, model.ErrInvalidInput
 	}
-	app, err := s.applications.GetByIDForUser(ctx, applicationID, userID)
+	app, err := s.applications.GetApprovedByUser(ctx, userID)
 	if err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			return nil, model.ErrApplicationOpen
+		}
 		return nil, err
 	}
 	if !CanCreateFromApplication(app) {

@@ -12,10 +12,8 @@ import (
 
 type Store interface {
 	Create(ctx context.Context, userID uuid.UUID, input model.CreateApplicationInput, minuteLimit, dailyLimit int) (*model.Application, error)
-	CountPendingByUser(ctx context.Context, userID uuid.UUID) (int, error)
+	CountByUser(ctx context.Context, userID uuid.UUID) (int, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Application, error)
-	GetByIDForUser(ctx context.Context, id, userID uuid.UUID) (*model.Application, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*model.Application, error)
 	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error)
 	UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status, note string, minuteLimit, dailyLimit int) (*model.Application, error)
 }
@@ -57,18 +55,18 @@ func ValidateInput(input *model.CreateApplicationInput) error {
 	return nil
 }
 
-func CanSubmitPending(count int) bool { return count < 3 }
+func CanSubmitApplication(count int) bool { return count == 0 }
 
 func (s *Service) Create(ctx context.Context, userID uuid.UUID, input model.CreateApplicationInput) (*model.Application, error) {
 	if err := ValidateInput(&input); err != nil {
 		return nil, err
 	}
-	count, err := s.store.CountPendingByUser(ctx, userID)
+	count, err := s.store.CountByUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !CanSubmitPending(count) {
-		return nil, model.ErrTooManyPending
+	if !CanSubmitApplication(count) {
+		return nil, model.ErrApplicationExists
 	}
 	return s.store.Create(ctx, userID, input, s.cfg.DefaultTokenMinuteLimit, s.cfg.DefaultTokenDailyLimit)
 }

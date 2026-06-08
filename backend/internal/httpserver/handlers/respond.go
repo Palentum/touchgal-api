@@ -58,8 +58,8 @@ func classify(err error) (int, string, string) {
 		return http.StatusNotFound, "NOT_FOUND", "Resource not found"
 	case errors.Is(err, model.ErrRateLimited):
 		return http.StatusTooManyRequests, "RATE_LIMITED", "API rate limit exceeded"
-	case errors.Is(err, model.ErrTooManyPending):
-		return http.StatusForbidden, "FORBIDDEN", "Too many pending applications"
+	case errors.Is(err, model.ErrApplicationExists):
+		return http.StatusConflict, "CONFLICT", "Application already submitted"
 	case errors.Is(err, model.ErrCodeCooldown):
 		return http.StatusTooManyRequests, "RATE_LIMITED", "Please wait before requesting another code"
 	case errors.Is(err, model.ErrInvalidCode), errors.Is(err, model.ErrExpiredCode):

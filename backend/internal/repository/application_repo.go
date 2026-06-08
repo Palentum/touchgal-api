@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/touchgal/developer/backend/internal/model"
 )
 
@@ -21,12 +22,18 @@ func (r *ApplicationRepo) Create(ctx context.Context, userID uuid.UUID, input mo
 		RETURNING id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, review_note, reviewed_by, reviewed_at, created_at, updated_at`,
 		app.ID, userID, input.ApplicantName, input.ProjectName, input.ProjectURL, input.ExpectedDailyRequests, input.UsageScenario, minuteLimit, dailyLimit,
 	).Scan(&app.ID, &app.UserID, &app.ApplicantName, &app.ProjectName, &app.ProjectURL, &app.ExpectedDailyRequests, &app.UsageScenario, &app.Status, &app.DefaultMinuteLimit, &app.DefaultDailyLimit, &app.ReviewNote, &app.ReviewedBy, &app.ReviewedAt, &app.CreatedAt, &app.UpdatedAt)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, model.ErrApplicationExists
+		}
+	}
 	return app, err
 }
 
-func (r *ApplicationRepo) CountPendingByUser(ctx context.Context, userID uuid.UUID) (int, error) {
+func (r *ApplicationRepo) CountByUser(ctx context.Context, userID uuid.UUID) (int, error) {
 	var count int
-	err := r.db.QueryRow(ctx, `SELECT count(*) FROM api_applications WHERE user_id = $1 AND status = 'pending'`, userID).Scan(&count)
+	err := r.db.QueryRow(ctx, `SELECT count(*) FROM api_applications WHERE user_id = $1`, userID).Scan(&count)
 	return count, err
 }
 
@@ -36,6 +43,10 @@ func (r *ApplicationRepo) GetByIDForUser(ctx context.Context, id, userID uuid.UU
 
 func (r *ApplicationRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Application, error) {
 	return r.get(ctx, `WHERE id = $1`, id)
+}
+
+func (r *ApplicationRepo) GetApprovedByUser(ctx context.Context, userID uuid.UUID) (*model.Application, error) {
+	return r.get(ctx, `WHERE user_id = $1 AND status = 'approved' ORDER BY reviewed_at DESC NULLS LAST, created_at DESC LIMIT 1`, userID)
 }
 
 func (r *ApplicationRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Application, error) {

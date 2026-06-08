@@ -205,7 +205,7 @@ paths:
       responses: { '200': { description: OK } }
     post:
       security: []
-      summary: Submit API application
+      summary: Submit one-time account API application
       requestBody:
         required: true
         content:
@@ -220,7 +220,7 @@ paths:
                 expectedDailyRequests: { type: integer, minimum: 1 }
                 usageScenario: { type: string }
                 agreeToTerms: { type: boolean, const: true }
-      responses: { '201': { description: Created } }
+      responses: { '201': { description: Created }, '409': { description: Account already has an application } }
   /tokens:
     get:
       security: []
@@ -228,10 +228,10 @@ paths:
       responses: { '200': { description: OK } }
     post:
       security: []
-      summary: Create API token for approved application; plaintext is returned once
+      summary: Create API token for approved account; plaintext is returned once
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [applicationId, name], properties: { applicationId: { type: string, format: uuid }, name: { type: string } } } } }
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } }
       responses: { '201': { description: Token created } }
   /dashboard/stats/summary:
     get:

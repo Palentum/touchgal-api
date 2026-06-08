@@ -26,7 +26,7 @@ const items = [
   { to: '/dashboard/tokens', label: 'Token 管理' },
   { to: '/dashboard/stats', label: '请求统计' },
   { to: '/dashboard/console', label: 'API 调试台' },
-  { to: '/apply', label: '提交申请' },
+  { to: '/apply', label: '账号申请' },
 ]
 const logout = async () => {
   await auth.logout()
