@@ -9,7 +9,7 @@
       <ApplicationApplicationStatus :applications="apps" />
       <div class="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
         <h3 class="text-xl font-black">快捷入口</h3>
-        <div class="mt-5 grid gap-3"><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/tokens">生成 token</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/stats">查看统计</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/console">API 调试台</NuxtLink></div>
+        <div class="mt-5 grid gap-3"><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/apply">账号申请</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/tokens">生成 token</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/stats">查看统计</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/console">API 调试台</NuxtLink></div>
       </div>
     </div>
   </section>
