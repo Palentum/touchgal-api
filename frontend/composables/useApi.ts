@@ -14,11 +14,19 @@ export const useApi = () => {
   const baseURL = String(config.public.apiBaseUrl).replace(/\/$/, '')
 
   const apiFetch = async <T>(path: string, options: ApiOptions = {}) => {
+    const headers: Record<string, string> = { ...(options.headers || {}) }
+    if (import.meta.server) {
+      const requestHeaders = useRequestHeaders(['cookie'])
+      if (requestHeaders.cookie && !headers.cookie) {
+        headers.cookie = requestHeaders.cookie
+      }
+    }
+
     return await $fetch<ApiResponse<T>>(`${baseURL}${path}`, {
       method: options.method || 'GET',
       body: options.body,
       query: options.query,
-      headers: options.headers,
+      headers,
       credentials: 'include'
     })
   }
