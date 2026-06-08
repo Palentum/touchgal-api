@@ -9,7 +9,7 @@
     <div class="md:pl-64">
       <header class="flex items-center justify-between border-b border-white/10 px-6 py-4">
         <NuxtLink to="/" class="md:hidden">TouchGal API</NuxtLink>
-        <div class="text-sm text-slate-400">脱敏 Galgame API 控制台</div>
+        <div class="text-sm text-slate-400">控制台</div>
         <button class="rounded-full border border-white/10 px-4 py-2 text-sm" @click="logout">退出</button>
       </header>
       <main class="p-6">
@@ -27,7 +27,6 @@ const items = [
   { to: '/dashboard/stats', label: '请求统计' },
   { to: '/dashboard/console', label: 'API 调试台' },
   { to: '/apply', label: '提交申请' },
-  { to: '/admin', label: '管理员' }
 ]
 const logout = async () => {
   await auth.logout()
