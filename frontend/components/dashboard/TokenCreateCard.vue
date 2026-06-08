@@ -1,7 +1,7 @@
 <template>
   <div class="rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-6">
     <h3 class="text-xl font-black">创建 API Token</h3>
-    <p class="mt-2 text-sm text-slate-300">账号申请通过后，可无限创建 API token。明文 token 只显示一次。</p>
+    <p class="mt-2 text-sm text-slate-300">账号申请通过后可创建 API token；管理员账号默认视为已通过。明文 token 只显示一次。</p>
     <div v-if="!hasApprovedApplication" class="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
       <p>{{ hasApplication ? '账号申请尚未通过，暂不能创建 token。' : '请先提交账号级 API 申请。' }}</p>
       <NuxtLink to="/dashboard/apply" class="mt-3 inline-flex rounded-xl bg-amber-300 px-4 py-2 font-bold text-slate-950">{{ hasApplication ? '查看申请状态' : '提交申请' }}</NuxtLink>
@@ -21,10 +21,11 @@ import type { ApplicationItem } from '~/composables/useDashboard'
 const props = defineProps<{ applications: ApplicationItem[] }>()
 const emit = defineEmits<{ created: [] }>()
 const { apiFetch } = useApi()
+const auth = useAuthStore()
 const name = ref('')
 const plainToken = ref('')
 const hasApplication = computed(() => props.applications.length > 0)
-const hasApprovedApplication = computed(() => props.applications.some((app) => app.status === 'approved'))
+const hasApprovedApplication = computed(() => Boolean(auth.user?.isAdmin) || props.applications.some((app) => app.status === 'approved'))
 const create = async () => {
   if (!hasApprovedApplication.value) return
   const res = await apiFetch<{ token: string }>('/tokens', { method: 'POST', body: { name: name.value } })

@@ -228,7 +228,7 @@ paths:
       responses: { '200': { description: OK } }
     post:
       security: []
-      summary: Create API token for approved account; plaintext is returned once
+      summary: Create API token for approved account or admin user; plaintext is returned once
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } }

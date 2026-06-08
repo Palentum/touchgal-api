@@ -32,7 +32,7 @@ func (h *TokenHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
 		return
 	}
-	result, err := h.svc.Create(r.Context(), user.ID, req.Name)
+	result, err := h.svc.Create(r.Context(), user.ID, user.IsAdmin, req.Name)
 	if err != nil {
 		Error(w, err)
 		return

@@ -20,14 +20,27 @@
 </template>
 
 <script setup lang="ts">
+const route = useRoute()
 const auth = useAuthStore()
-const items = [
+const access = useApplicationAccess()
+const applyItem = { to: '/dashboard/apply', label: '账号申请' }
+const dashboardItems = [
   { to: '/dashboard', label: '概览' },
   { to: '/dashboard/tokens', label: 'Token 管理' },
   { to: '/dashboard/stats', label: '请求统计' },
   { to: '/dashboard/console', label: 'API 调试台' },
-  { to: '/dashboard/apply', label: '账号申请' },
 ]
+const items = computed(() => {
+  if (!route.path.startsWith('/dashboard')) {
+    return dashboardItems
+  }
+  return access.loaded.value && access.hasApprovedApplication.value ? dashboardItems : [applyItem]
+})
+onMounted(() => {
+  if (route.path.startsWith('/dashboard') && auth.user) {
+    void access.fetchApplications(auth.user.id, false, auth.user.isAdmin)
+  }
+})
 const logout = async () => {
   await auth.logout()
   await navigateTo('/auth/login')

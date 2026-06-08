@@ -49,6 +49,23 @@ func (r *ApplicationRepo) GetApprovedByUser(ctx context.Context, userID uuid.UUI
 	return r.get(ctx, `WHERE user_id = $1 AND status = 'approved' ORDER BY reviewed_at DESC NULLS LAST, created_at DESC LIMIT 1`, userID)
 }
 
+func (r *ApplicationRepo) EnsureAdminApproved(ctx context.Context, userID uuid.UUID, minuteLimit, dailyLimit int) (*model.Application, error) {
+	app := &model.Application{ID: uuid.New(), UserID: userID}
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO api_applications (id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, review_note, reviewed_at)
+		VALUES ($1, $2, 'Admin user', 'TouchGal API Admin', 'https://api.example.com/admin', $3, 'Admin account default approval', 'approved', $4, $5, 'Admin account default approval', now())
+		ON CONFLICT (user_id) DO UPDATE
+		SET status = 'approved',
+		    default_minute_limit = EXCLUDED.default_minute_limit,
+		    default_daily_limit = EXCLUDED.default_daily_limit,
+		    review_note = EXCLUDED.review_note,
+		    reviewed_at = now()
+		RETURNING id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, review_note, reviewed_by, reviewed_at, created_at, updated_at`,
+		app.ID, userID, dailyLimit, minuteLimit, dailyLimit,
+	).Scan(&app.ID, &app.UserID, &app.ApplicantName, &app.ProjectName, &app.ProjectURL, &app.ExpectedDailyRequests, &app.UsageScenario, &app.Status, &app.DefaultMinuteLimit, &app.DefaultDailyLimit, &app.ReviewNote, &app.ReviewedBy, &app.ReviewedAt, &app.CreatedAt, &app.UpdatedAt)
+	return app, err
+}
+
 func (r *ApplicationRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Application, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, review_note, reviewed_by, reviewed_at, created_at, updated_at

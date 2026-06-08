@@ -29,6 +29,7 @@ type Store interface {
 
 type ApplicationStore interface {
 	GetApprovedByUser(ctx context.Context, userID uuid.UUID) (*model.Application, error)
+	EnsureAdminApproved(ctx context.Context, userID uuid.UUID, minuteLimit, dailyLimit int) (*model.Application, error)
 }
 
 type Service struct {
@@ -74,17 +75,23 @@ func CanCreateFromApplication(app *model.Application) bool {
 	return app != nil && app.Status == model.ApplicationApproved
 }
 
-func (s *Service) Create(ctx context.Context, userID uuid.UUID, name string) (*CreateResult, error) {
+func (s *Service) Create(ctx context.Context, userID uuid.UUID, isAdmin bool, name string) (*CreateResult, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 100 {
 		return nil, model.ErrInvalidInput
 	}
 	app, err := s.applications.GetApprovedByUser(ctx, userID)
 	if err != nil {
-		if errors.Is(err, model.ErrNotFound) {
+		if !errors.Is(err, model.ErrNotFound) {
+			return nil, err
+		}
+		if !isAdmin {
 			return nil, model.ErrApplicationOpen
 		}
-		return nil, err
+		app, err = s.applications.EnsureAdminApproved(ctx, userID, s.cfg.DefaultTokenMinuteLimit, s.cfg.DefaultTokenDailyLimit)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if !CanCreateFromApplication(app) {
 		return nil, model.ErrApplicationOpen

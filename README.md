@@ -110,7 +110,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 1. 用户通过邮箱验证码注册或登录。
 2. 登录后访问 `/apply` 提交一次账户级申请：负责人、项目地址、预估请求量、使用场景、同意条款。
 3. 管理员在 `/admin/applications` 审核账户申请。
-4. 申请 `approved` 后，该账户可在 `/dashboard/tokens` 无限创建 token。
+4. 申请 `approved` 后，该账户可在 `/dashboard/tokens` 无限创建 token；管理员账户默认视为已通过申请。
 5. token 明文只返回一次；数据库只保存 hash。
 6. 用户可随时失效 token；revoked token 不能继续访问 `/v1`。
 
