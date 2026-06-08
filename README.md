@@ -1,6 +1,6 @@
 # TouchGal API
 
-TouchGal API 是一个完全独立于 TouchGal 主项目（`kun-touchgal-next`）的开发者 API 项目，包含 Go 后端、Nuxt 前端、独立 PostgreSQL、Redis、同步 Worker、OpenAPI 文档和 Docker Compose 部署示例。
+TouchGal API 是一个完全独立于 TouchGal 主项目（`kun-touchgal-next`）的开发者 API 项目，包含 Go 后端、Nuxt 前端、同步 Worker、OpenAPI 文档和 Docker Compose 部署示例；PostgreSQL 与 Redis 由主机提供，不再由项目编排启动。
 
 ## 架构图文字版
 
@@ -41,9 +41,9 @@ cp backend/.env.example backend/.env
 
 关键变量：
 
-- `DATABASE_DSN`：本项目独立 PostgreSQL。
+- `DATABASE_DSN`：本项目 clean DB，指向主机上的 PostgreSQL。
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`。
-- `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：验证码、session cache、API token 限流。
+- `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
 - `SESSION_SECRET`：登录 session hash secret。
 - `SMTP_*`：邮箱验证码 SMTP。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
@@ -57,6 +57,8 @@ cp frontend/.env.example frontend/.env
 ```
 
 ## 本地启动
+
+先确保主机上的 PostgreSQL 与 Redis 已启动，并在 `backend/.env` 中配置 `DATABASE_DSN`、`REDIS_ADDR`。如果后端运行在 Docker Compose 容器内，连接主机服务时通常使用 `host.docker.internal`，例如 `REDIS_ADDR=host.docker.internal:6379`，`DATABASE_DSN` 中的主机名同理改为 `host.docker.internal`。
 
 ```bash
 make dev
@@ -147,8 +149,8 @@ curl "https://api.example.com/v1/me" \
 
 ## 部署建议
 
-- 使用 `deploy/docker-compose.yml` 本地或小规模部署。
-- 生产使用独立 PostgreSQL、Redis、只读 SOURCE DB 账号。
+- `deploy/docker-compose.yml` 只编排 backend/frontend；PostgreSQL、Redis 使用主机服务。
+- 生产同样使用外部 PostgreSQL、Redis、只读 SOURCE DB 账号。
 - 可将 API HTTP 与 sync worker 分离：API 设置 `ENABLE_SYNC_WORKER=false`，使用 k8s CronJob 或系统 cron 执行 `touchgal-sync --mode=incremental`。
 - 推荐 nginx/Ingress 终止 TLS，并将 `SESSION_COOKIE_SECURE=true`。
 
@@ -160,4 +162,5 @@ curl "https://api.example.com/v1/me" \
 - 管理接口必须 `users.is_admin=true`。
 - 公开 API 默认只返回 SFW 条目。
 - 响应错误不暴露数据库结构。
+- 主机 PostgreSQL/Redis 只监听可信接口，并通过 PostgreSQL 用户权限、Redis 密码或本机防火墙限制访问；容器通过 `host.docker.internal` 连接主机服务时不应暴露无认证 Redis 到公网。
 - clean DB 不包含主项目 user/email/password/IP/role/session/token/resource link。

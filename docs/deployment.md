@@ -1,7 +1,9 @@
 # Deployment
 
 1. 创建 `backend/.env` 与 `frontend/.env`。
-2. 使用主库只读账号配置 `SOURCE_DATABASE_DSN`。
-3. 执行 `make migrate-up`。
-4. 执行 `make sync-full` 初始化 clean DB。
-5. 启动 `docker compose -f deploy/docker-compose.yml up --build`。
+2. 确认主机 PostgreSQL、Redis 已启动，并在 `backend/.env` 配置 `DATABASE_DSN`、`REDIS_ADDR`。
+3. 如果后端运行在 Docker Compose 容器内，连接主机服务时将连接主机名配置为 `host.docker.internal`。
+4. 使用主库只读账号配置 `SOURCE_DATABASE_DSN`。
+5. 执行 `make migrate-up`。
+6. 执行 `make sync-full` 初始化 clean DB。
+7. 启动 `docker compose -f deploy/docker-compose.yml up --build`。
