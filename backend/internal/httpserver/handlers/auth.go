@@ -1,0 +1,116 @@
+package handlers
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/touchgal/developer/backend/internal/config"
+	"github.com/touchgal/developer/backend/internal/httpserver/middleware"
+	"github.com/touchgal/developer/backend/internal/services/auth"
+)
+
+type AuthHandler struct {
+	cfg config.Config
+	svc *auth.Service
+}
+
+func NewAuthHandler(cfg config.Config, svc *auth.Service) *AuthHandler {
+	return &AuthHandler{cfg: cfg, svc: svc}
+}
+
+type registerStartRequest struct {
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
+}
+type emailRequest struct {
+	Email string `json:"email"`
+}
+type verifyRequest struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
+}
+
+func (h *AuthHandler) RegisterStart(w http.ResponseWriter, r *http.Request) {
+	var req registerStartRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+		return
+	}
+	if err := h.svc.RequestRegisterCode(r.Context(), req.Email, req.DisplayName, middleware.ClientIP(r)); err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, map[string]any{"sent": true})
+}
+
+func (h *AuthHandler) RegisterVerify(w http.ResponseWriter, r *http.Request) {
+	var req verifyRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+		return
+	}
+	result, err := h.svc.VerifyRegister(r.Context(), req.Email, req.Code, r.UserAgent(), middleware.ClientIP(r))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.setSessionCookie(w, result.SessionToken, result.ExpiresAt)
+	Success(w, http.StatusOK, result.User)
+}
+
+func (h *AuthHandler) LoginStart(w http.ResponseWriter, r *http.Request) {
+	var req emailRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+		return
+	}
+	if err := h.svc.RequestLoginCode(r.Context(), req.Email, middleware.ClientIP(r)); err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, map[string]any{"sent": true})
+}
+
+func (h *AuthHandler) LoginVerify(w http.ResponseWriter, r *http.Request) {
+	var req verifyRequest
+	if err := DecodeJSON(r, &req); err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+		return
+	}
+	result, err := h.svc.VerifyLogin(r.Context(), req.Email, req.Code, r.UserAgent(), middleware.ClientIP(r))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	h.setSessionCookie(w, result.SessionToken, result.ExpiresAt)
+	Success(w, http.StatusOK, result.User)
+}
+
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(h.cfg.SessionCookieName); err == nil {
+		_ = h.svc.RevokeSession(r.Context(), cookie.Value)
+	}
+	h.clearSessionCookie(w)
+	Success(w, http.StatusOK, map[string]bool{"loggedOut": true})
+}
+
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r)
+	if !ok {
+		ErrorCode(w, http.StatusUnauthorized, "UNAUTHORIZED", "Login required")
+		return
+	}
+	Success(w, http.StatusOK, user)
+}
+
+func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
+	http.SetCookie(w, &http.Cookie{
+		Name: h.cfg.SessionCookieName, Value: token, Path: "/", Domain: h.cfg.SessionCookieDomain,
+		Expires: expiresAt, MaxAge: int(time.Until(expiresAt).Seconds()), HttpOnly: true,
+		Secure: h.cfg.SessionCookieSecure, SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (h *AuthHandler) clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: h.cfg.SessionCookieName, Value: "", Path: "/", Domain: h.cfg.SessionCookieDomain, MaxAge: -1, HttpOnly: true, Secure: h.cfg.SessionCookieSecure, SameSite: http.SameSiteLaxMode})
+}

@@ -1,0 +1,18 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: touchgal-developer-sync
+spec:
+  schedule: "*/30 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sync
+              image: touchgal-developer-backend:latest
+              command: ["touchgal-sync", "--mode=incremental"]
+              envFrom:
+                - secretRef:
+                    name: touchgal-developer-backend-env

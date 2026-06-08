@@ -1,0 +1,256 @@
+openapi: 3.1.0
+info:
+  title: TouchGal Developer API
+  version: v1
+  description: Independent sanitized Galgame metadata API for developers.
+servers:
+  - url: http://localhost:8080
+security:
+  - ApiToken: []
+components:
+  securitySchemes:
+    ApiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: tgal_live
+    XApiToken:
+      type: apiKey
+      in: header
+      name: X-API-Token
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          properties:
+            code: { type: string, enum: [BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, RATE_LIMITED, INTERNAL_ERROR] }
+            message: { type: string }
+    HealthResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          properties:
+            status: { type: string, example: ok }
+            version: { type: string, example: v1 }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        status: { type: string }
+        isAdmin: { type: boolean }
+    Application:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        applicantName: { type: string }
+        projectName: { type: string }
+        projectUrl: { type: string }
+        expectedDailyRequests: { type: integer }
+        usageScenario: { type: string }
+        status: { type: string, enum: [pending, approved, rejected, revoked] }
+        reviewNote: { type: string }
+        createdAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time }
+    Token:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        tokenPrefix: { type: string }
+        status: { type: string }
+        minuteLimit: { type: integer }
+        dailyLimit: { type: integer }
+        lastUsedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time }
+    GameSearchItem:
+      type: object
+      properties:
+        name: { type: string }
+        uniqueId: { type: string, minLength: 8, maxLength: 8 }
+    GameDetail:
+      type: object
+      properties:
+        uniqueId: { type: string }
+        name: { type: string }
+        aliases: { type: array, items: { type: string } }
+        introduction: { type: string }
+        bannerUrl: { type: string }
+        type: { type: array, items: { type: string } }
+        platform: { type: array, items: { type: string } }
+        language: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        publishTime: { type: string, format: date-time }
+        releaseDate: { type: string }
+        updatedAt: { type: string, format: date-time }
+        resourceUpdateTime: { type: string, format: date-time }
+        companies:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              aliases: { type: array, items: { type: string } }
+        rating:
+          type: object
+          properties:
+            average: { type: number }
+            count: { type: integer }
+            recommend:
+              type: object
+              properties:
+                strongNo: { type: integer }
+                no: { type: integer }
+                neutral: { type: integer }
+                yes: { type: integer }
+                strongYes: { type: integer }
+        touchgalUrl: { type: string }
+paths:
+  /v1/health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/HealthResponse' } } } }
+  /v1/me:
+    get:
+      summary: API token self check
+      responses:
+        '200': { description: OK }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /v1/games/search:
+    get:
+      summary: Search sanitized games
+      parameters:
+        - { name: keyword, in: query, schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { name: q, in: query, schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    properties:
+                      items: { type: array, items: { $ref: '#/components/schemas/GameSearchItem' } }
+                      pagination: { type: object }
+        '401': { description: Unauthorized }
+        '429': { description: Rate limited }
+  /v1/games/{uniqueId}:
+    get:
+      summary: Get sanitized game detail
+      parameters:
+        - { name: uniqueId, in: path, required: true, schema: { type: string, minLength: 8, maxLength: 8 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { success: { type: boolean }, data: { $ref: '#/components/schemas/GameDetail' } } } } } }
+        '404': { description: Not found }
+  /auth/register/start:
+    post:
+      security: []
+      summary: Start email-code registration
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email, displayName], properties: { email: { type: string, format: email }, displayName: { type: string } } } } }
+      responses: { '200': { description: Code sent } }
+  /auth/register/verify:
+    post:
+      security: []
+      summary: Verify registration code and set HttpOnly session cookie
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email, code], properties: { email: { type: string }, code: { type: string, minLength: 6, maxLength: 6 } } } } }
+      responses: { '200': { description: Current user } }
+  /auth/login/start:
+    post:
+      security: []
+      summary: Start email-code login
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email], properties: { email: { type: string, format: email } } } } }
+      responses: { '200': { description: Code sent }, '404': { description: User not found } }
+  /auth/login/verify:
+    post:
+      security: []
+      summary: Verify login code and set HttpOnly session cookie
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email, code], properties: { email: { type: string }, code: { type: string } } } } }
+      responses: { '200': { description: Current user } }
+  /auth/logout:
+    post:
+      security: []
+      summary: Revoke current session
+      responses: { '200': { description: Logged out } }
+  /auth/me:
+    get:
+      security: []
+      summary: Current session user
+      responses: { '200': { description: Current user }, '401': { description: Login required } }
+  /applications:
+    get:
+      security: []
+      summary: List current user's applications
+      responses: { '200': { description: OK } }
+    post:
+      security: []
+      summary: Submit API application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [applicantName, projectUrl, expectedDailyRequests, usageScenario, agreeToTerms]
+              properties:
+                applicantName: { type: string }
+                projectName: { type: string }
+                projectUrl: { type: string, format: uri }
+                expectedDailyRequests: { type: integer, minimum: 1 }
+                usageScenario: { type: string }
+                agreeToTerms: { type: boolean, const: true }
+      responses: { '201': { description: Created } }
+  /tokens:
+    get:
+      security: []
+      summary: List current user's API tokens without plaintext or hash
+      responses: { '200': { description: OK } }
+    post:
+      security: []
+      summary: Create API token for approved application; plaintext is returned once
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [applicationId, name], properties: { applicationId: { type: string, format: uuid }, name: { type: string } } } } }
+      responses: { '201': { description: Token created } }
+  /dashboard/stats/summary:
+    get:
+      security: []
+      summary: Dashboard summary
+      parameters: [ { name: days, in: query, schema: { type: integer, default: 30 } }, { name: tokenId, in: query, schema: { type: string, format: uuid } } ]
+      responses: { '200': { description: OK } }
+  /dashboard/stats/trend:
+    get:
+      security: []
+      summary: Dashboard trend
+      responses: { '200': { description: OK } }
+  /dashboard/stats/sources:
+    get:
+      security: []
+      summary: Dashboard origins and referers
+      responses: { '200': { description: OK } }
+  /dashboard/stats/endpoints:
+    get:
+      security: []
+      summary: Dashboard endpoint stats
+      responses: { '200': { description: OK } }

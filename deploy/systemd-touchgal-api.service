@@ -1,0 +1,13 @@
+[Unit]
+Description=TouchGal Developer API
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/touchgal-developer/backend
+EnvironmentFile=/opt/touchgal-developer/backend/.env
+ExecStart=/usr/local/bin/touchgal-api
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
