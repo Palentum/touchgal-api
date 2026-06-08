@@ -6,7 +6,7 @@
       <h1 class="max-w-4xl text-5xl font-black leading-tight tracking-tight md:text-7xl">TouchGal API</h1>
       <p class="mt-6 max-w-2xl text-xl text-slate-300">面向第三方开发者的 TouchGal Metadata 信息 API。</p>
       <div class="mt-10 flex flex-wrap gap-4">
-        <NuxtLink to="/apply" class="rounded-full bg-emerald-400 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-emerald-500/20">立即申请 API</NuxtLink>
+        <NuxtLink to="/auth/register" class="rounded-full bg-emerald-400 px-6 py-3 font-bold text-slate-950 shadow-lg shadow-emerald-500/20">立即申请 API</NuxtLink>
         <NuxtLink to="/dashboard" class="rounded-full border border-white/15 px-6 py-3 font-bold text-white">登录控制台</NuxtLink>
       </div>
     </div>
