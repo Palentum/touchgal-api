@@ -2,11 +2,11 @@
   <form class="grid gap-4 rounded-3xl border border-white/10 bg-white/[0.06] p-6" @submit.prevent="step === 'email' ? sendCode() : verifyCode()">
     <label class="grid gap-2 text-sm">
       邮箱
-      <input v-model="email" type="email" required class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder="user@example.com">
+      <input v-model="email" type="email" required class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white" :placeholder="mode === 'login' ? 'user@example.com' : undefined">
     </label>
     <label v-if="mode === 'register'" class="grid gap-2 text-sm">
       昵称
-      <input v-model="displayName" required maxlength="80" class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder="Kun">
+      <input v-model="displayName" required maxlength="80" class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white">
     </label>
     <label v-if="step === 'code'" class="grid gap-2 text-sm">
       6 位验证码
