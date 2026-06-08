@@ -1,4 +1,10 @@
-<template><ClientOnly><VChart class="h-80 w-full" :option="option" autoresize /></ClientOnly></template>
+<template>
+  <ClientOnly>
+    <div class="h-80 min-h-0 w-full overflow-hidden">
+      <VChart class="h-full min-h-0 w-full overflow-hidden" :option="option" autoresize />
+    </div>
+  </ClientOnly>
+</template>
 <script setup lang="ts">
 import { PieChart } from 'echarts/charts'
 import { LegendComponent, TooltipComponent } from 'echarts/components'

@@ -1,6 +1,8 @@
 <template>
   <ClientOnly>
-    <VChart class="h-80 w-full" :option="option" autoresize />
+    <div class="h-80 min-h-0 w-full overflow-hidden">
+      <VChart class="h-full min-h-0 w-full overflow-hidden" :option="option" autoresize />
+    </div>
   </ClientOnly>
 </template>
 <script setup lang="ts">
