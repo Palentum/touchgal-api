@@ -73,6 +73,8 @@ make backend-dev
 make frontend-dev
 ```
 
+macOS 的默认临时目录路径可能过长，Nuxt dev 的 Vite Node IPC socket 会因此触发 `connect EINVAL`。`make frontend-dev` 会把 `TMPDIR` 固定到 `/tmp`；若直接进入 `frontend` 运行，请使用 `TMPDIR=/tmp pnpm dev`。
+
 ## 数据库迁移
 
 安装 goose 后执行：

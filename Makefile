@@ -1,4 +1,5 @@
 COMPOSE_FILE=deploy/docker-compose.yml
+FRONTEND_TMPDIR ?= /tmp
 
 .PHONY: dev backend-dev sync sync-full migrate-up frontend-dev test
 
@@ -18,7 +19,7 @@ migrate-up:
 	cd backend && goose -dir internal/db/migrations postgres "$$DATABASE_DSN" up
 
 frontend-dev:
-	cd frontend && pnpm dev
+	cd frontend && TMPDIR="$(FRONTEND_TMPDIR)" pnpm dev
 
 test:
 	cd backend && go test ./...
