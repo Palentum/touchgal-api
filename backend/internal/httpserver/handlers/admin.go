@@ -83,17 +83,17 @@ func (h *AdminHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusOK, tokens)
 }
 
-func (h *AdminHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
+func (h *AdminHandler) DeleteToken(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid token id")
 		return
 	}
-	if err := h.tokens.RevokeByAdmin(r.Context(), id); err != nil {
+	if err := h.tokens.DeleteByAdmin(r.Context(), id); err != nil {
 		Error(w, err)
 		return
 	}
-	Success(w, http.StatusOK, map[string]bool{"revoked": true})
+	Success(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 func (h *AdminHandler) SyncRuns(w http.ResponseWriter, r *http.Request) {

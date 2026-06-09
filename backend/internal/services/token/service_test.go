@@ -2,16 +2,22 @@ package token
 
 import (
 	"context"
-	"testing"
-
 	"github.com/google/uuid"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
+	"testing"
+	"time"
 )
 
 type fakeTokenStore struct {
-	created *model.APIToken
-	auth    *model.TokenAuthInfo
+	created          *model.APIToken
+	auth             *model.TokenAuthInfo
+	deletedForUserID uuid.UUID
+	deletedUserID    uuid.UUID
+	deletedID        uuid.UUID
+	updatedName      string
+	updatedForUserID uuid.UUID
+	updatedUserID    uuid.UUID
 }
 
 func (f *fakeTokenStore) Create(ctx context.Context, token model.APIToken) (*model.APIToken, error) {
@@ -31,10 +37,23 @@ func (f *fakeTokenStore) GetByHashWithApplication(ctx context.Context, tokenHash
 	}
 	return f.auth, nil
 }
-func (f *fakeTokenStore) RevokeForUser(ctx context.Context, id, userID uuid.UUID) error { return nil }
-func (f *fakeTokenStore) RevokeByAdmin(ctx context.Context, id uuid.UUID) error         { return nil }
-func (f *fakeTokenStore) UpdateLastUsed(ctx context.Context, id uuid.UUID) error        { return nil }
-func (f *fakeTokenStore) CountActive(ctx context.Context) (int, error)                  { return 0, nil }
+func (f *fakeTokenStore) UpdateNameForUser(ctx context.Context, id, userID uuid.UUID, name string) (*model.APIToken, error) {
+	f.updatedForUserID = id
+	f.updatedUserID = userID
+	f.updatedName = name
+	return &model.APIToken{ID: id, UserID: userID, Name: name, Status: model.TokenActive}, nil
+}
+func (f *fakeTokenStore) DeleteForUser(ctx context.Context, id, userID uuid.UUID) error {
+	f.deletedForUserID = id
+	f.deletedUserID = userID
+	return nil
+}
+func (f *fakeTokenStore) DeleteByID(ctx context.Context, id uuid.UUID) error {
+	f.deletedID = id
+	return nil
+}
+func (f *fakeTokenStore) UpdateLastUsed(ctx context.Context, id uuid.UUID) error { return nil }
+func (f *fakeTokenStore) CountActive(ctx context.Context) (int, error)           { return 0, nil }
 
 type fakeTokenAppStore struct {
 	app          *model.Application
@@ -104,12 +123,80 @@ func TestAdminCanCreateTokenWithoutSubmittedApplication(t *testing.T) {
 	}
 }
 
-func TestAuthenticateRejectsRevokedToken(t *testing.T) {
+func TestUpdateNameMineTrimsAndScopesToken(t *testing.T) {
+	tokenID := uuid.New()
+	userID := uuid.New()
+	store := &fakeTokenStore{}
+	svc := NewService(config.Config{}, store, fakeTokenAppStore{})
+
+	updated, err := svc.UpdateNameMine(context.Background(), tokenID, userID, "  renamed token  ")
+	if err != nil {
+		t.Fatalf("update token name: %v", err)
+	}
+	if updated.Name != "renamed token" || store.updatedName != "renamed token" {
+		t.Fatal("token name must be trimmed before persistence")
+	}
+	if store.updatedForUserID != tokenID || store.updatedUserID != userID {
+		t.Fatal("token rename must be scoped to the current user")
+	}
+}
+
+func TestUpdateNameMineRejectsBlankName(t *testing.T) {
+	svc := NewService(config.Config{}, &fakeTokenStore{}, fakeTokenAppStore{})
+	if _, err := svc.UpdateNameMine(context.Background(), uuid.New(), uuid.New(), "   "); err != model.ErrInvalidInput {
+		t.Fatalf("expected invalid input for blank token name, got %v", err)
+	}
+}
+
+func TestDeleteMineRemovesTokenRecord(t *testing.T) {
+	tokenID := uuid.New()
+	userID := uuid.New()
+	store := &fakeTokenStore{}
+	svc := NewService(config.Config{}, store, fakeTokenAppStore{})
+
+	if err := svc.DeleteMine(context.Background(), tokenID, userID); err != nil {
+		t.Fatalf("delete token: %v", err)
+	}
+	if store.deletedForUserID != tokenID || store.deletedUserID != userID {
+		t.Fatal("delete must remove the token row scoped to the current user")
+	}
+}
+
+func TestAuthenticateRejectsDeletedToken(t *testing.T) {
 	cfg := config.Config{APITokenPepper: "pepper"}
 	raw := "tgal_live_test"
-	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: uuid.New(), Status: model.TokenRevoked, TokenHash: HashAPIToken(raw, "pepper")}, ApplicationStatus: model.ApplicationApproved}}
+	store := &fakeTokenStore{}
 	svc := NewService(cfg, store, fakeTokenAppStore{})
 	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
-		t.Fatalf("expected revoked token unauthorized, got %v", err)
+		t.Fatalf("expected deleted token unauthorized, got %v", err)
+	}
+}
+
+func TestAuthenticateDeletesInactiveTokenRecord(t *testing.T) {
+	cfg := config.Config{APITokenPepper: "pepper"}
+	raw := "tgal_live_test"
+	tokenID := uuid.New()
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: "disabled", TokenHash: HashAPIToken(raw, "pepper")}, ApplicationStatus: model.ApplicationApproved}}
+	svc := NewService(cfg, store, fakeTokenAppStore{})
+	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected inactive token unauthorized, got %v", err)
+	}
+	if store.deletedID != tokenID {
+		t.Fatal("inactive token record must be deleted instead of kept as disabled/revoked")
+	}
+}
+
+func TestAuthenticateDeletesExpiredTokenRecord(t *testing.T) {
+	cfg := config.Config{APITokenPepper: "pepper"}
+	raw := "tgal_live_test"
+	tokenID := uuid.New()
+	expiredAt := time.Now().Add(-time.Second)
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), ExpiresAt: &expiredAt}, ApplicationStatus: model.ApplicationApproved}}
+	svc := NewService(cfg, store, fakeTokenAppStore{})
+	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected expired token unauthorized, got %v", err)
+	}
+	if store.deletedID != tokenID {
+		t.Fatal("expired token record must be deleted instead of kept in the database")
 	}
 }

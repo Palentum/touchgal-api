@@ -112,7 +112,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 3. 管理员在 `/admin/applications` 审核账户申请。
 4. 申请 `approved` 后，该账户可在 `/dashboard/tokens` 无限创建 token；管理员账户默认视为已通过申请。
 5. token 明文只返回一次；数据库只保存 hash。
-6. 用户可随时失效 token；revoked token 不能继续访问 `/v1`。
+6. 用户可随时删除 token；删除会直接移除数据库中的 token 记录，该 token 不能继续访问 `/v1`。
 
 ## API 调用示例
 

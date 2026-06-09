@@ -6,11 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	TokenActive   = "active"
-	TokenDisabled = "disabled"
-	TokenRevoked  = "revoked"
-)
+const TokenActive = "active"
 
 type APIToken struct {
 	ID            uuid.UUID  `json:"id"`
@@ -24,7 +20,6 @@ type APIToken struct {
 	DailyLimit    int        `json:"dailyLimit"`
 	LastUsedAt    *time.Time `json:"lastUsedAt,omitempty"`
 	ExpiresAt     *time.Time `json:"expiresAt,omitempty"`
-	RevokedAt     *time.Time `json:"revokedAt,omitempty"`
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
 }

@@ -23,7 +23,6 @@ export interface TokenItem {
   dailyLimit: number
   lastUsedAt?: string
   createdAt: string
-  revokedAt?: string
 }
 
 export interface StatsSummary {

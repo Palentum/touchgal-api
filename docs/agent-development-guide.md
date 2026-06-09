@@ -1,0 +1,147 @@
+# TouchGal API Agent Development Guide
+
+面向本仓库维护者和 AI agent 的项目专用开发指南。它补充 `AGENTS.md`、`README.md`、OpenAPI 与源码约定，重点记录改动时不能破坏的边界和推荐流程。
+
+## 不可变项目边界
+
+- 本项目是独立的开发者 API 与门户，不直接对外读取 TouchGal 主站 schema。
+- 同步层只从主库只读账号读取公开元数据，写入 clean DB 后再由 `/v1` 对外服务。
+- 禁止同步或返回主站用户、会话、评论、私信、举报、收藏、文件夹、资源下载链接、上传者 `user_id`、主库内部自增 id。
+- clean DB 可以保存 `source_patch_id` 供同步使用，但公开 API 永不返回它。
+- API token 明文只在创建响应中返回一次；数据库只保存 `sha256(token + "." + API_TOKEN_PEPPER)`。
+- API token 删除/失效必须直接删除 `api_tokens` 记录；不要用 `revoked`/`disabled` 状态保留已失效 token。
+- 登录态只走 HttpOnly Cookie；前端不得把 session、API token 或验证码写入 `localStorage`。
+
+## 系统地图
+
+```text
+TouchGal main PostgreSQL (read-only)
+  -> backend/cmd/sync full|incremental
+  -> TouchGal API clean PostgreSQL
+  -> backend/cmd/api chi router + services
+  -> /v1 API + Nuxt Developer Portal
+```
+
+关键入口：
+
+- `backend/cmd/api/main.go`：加载配置、连接 PostgreSQL/Redis、应用嵌入迁移、组装仓储/服务、启动 HTTP server。
+- `backend/cmd/sync/main.go`：以 `SOURCE_DATABASE_DSN` 跑 `full` 或 `incremental` 同步。
+- `backend/internal/httpserver/server.go`：`chi` route topology 与 middleware 顺序。
+- `frontend/nuxt.config.ts`：Nuxt 模块、严格 TypeScript、`runtimeConfig.public`。
+- `frontend/composables/useApi.ts`：前端 API 统一入口，负责 `credentials: 'include'` 与 SSR Cookie 转发。
+
+## 后端改动流程
+
+### 分层职责
+
+- `handlers`：HTTP 解析、`DecodeJSON`、URL/query 参数、响应映射。
+- `services`：输入规范化、业务规则、权限/状态机、组合多个 store。
+- `repository`：SQL、pgx row/transaction handling、clean DB 表访问。
+- `model`：领域类型、状态常量、sentinel errors。
+- `middleware`：request id、recover、CORS、session auth、admin checks、API token auth、rate limiting、request logging。
+
+新增或修改 API 时通常按这个顺序落地：
+
+1. 在 `model` 补充领域类型/status/error。
+2. 若需要 schema 变化，新建 `backend/internal/db/migrations/NNNNNN_*.sql`，包含 goose `Up`/`Down`。
+3. 在 `repository` 写 SQL；通过 `repository.Queryer` 支持 pool/tx/test fake 注入。
+4. 在 `services` 写规范化和业务规则；依赖窄 store interface。
+5. 在 `handlers` 复用 `DecodeJSON`、`Success`、`Error`、`ErrorCode`，保持响应形状。
+6. 在 `server.go` 挂路由；复用现有 group 和 middleware。
+7. 同步 `backend/internal/openapi/openapi.yaml` 与 `docs/openapi.yaml`。
+8. 增加/更新邻近 Go tests，再运行对应包测试或 `cd backend && go test ./...`。
+
+### chi 约定
+
+Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter 组织 REST API，并在 route group 上施加局部 middleware。本项目采用：
+
+- 全局 middleware：`RequestIDMiddleware` -> `Recover` -> `CORS` -> `SessionAuth`。
+- Cookie 登录路由：`/auth`。
+- 已登录 portal API：`r.Group(... RequireUser ...)`。
+- 管理 API：`/admin` + `RequireUser` + `RequireAdmin`。
+- Public API：`/v1` + `APITokenAuth` + `APIRequestLog` + `APIRateLimit`。
+
+改路由时优先把新 endpoint 放入现有职责 group；不要创建并行认证路径。
+
+### pgx 约定
+
+Context7 查询的 `pgx/v5` 文档要点：
+
+- `pgxpool.Pool` 是并发安全连接池；repository 只依赖 `Queryer`。
+- `QueryRow` 的错误延迟到 `Scan`；没行时处理 `pgx.ErrNoRows` 并映射到 `model.ErrNotFound` 或合适 sentinel error。
+- `Query` 返回的 `Rows` 必须 `defer rows.Close()`，循环后检查 `rows.Err()`。
+- 从 pool `Begin(ctx)` 后，必须 `Commit` 或 `Rollback`；`defer tx.Rollback(ctx)` 在成功 `Commit` 后是安全模式。
+- `Exec` 返回 command tag；只有业务确实需要确认行数时才检查 `RowsAffected()`。
+
+### 错误与响应
+
+- 服务层返回 `model` sentinel errors；HTTP status/code 映射集中在 `handlers/respond.go`。
+- `DecodeJSON` 使用 `DisallowUnknownFields()`；新增 handler 必须保持未知字段拒绝行为。
+- 成功响应固定为 `{ "success": true, "data": ... }`。
+- 失败响应固定为 `{ "success": false, "error": { "code", "message" } }`。
+- 不把 DB 结构、SQL 错误、token、OTP、DSN、pepper 输出给客户端或日志。
+
+## 同步改动流程
+
+同步边界比 API 更严格：
+
+- `SOURCE_DATABASE_DSN` 必须只读；本项目禁止修改主站数据库。
+- 来源读取集中在 `backend/internal/services/sync/source_queries.go`。
+- 字段清洗与默认值在 `mapper.go`。
+- clean DB upsert 与 full-sync unseen deletion 在 repository/service 层。
+- full sync 可以标记未见行 deleted；公开 API 默认只查 `deleted_at IS NULL` 且 SFW。
+
+修改同步字段时需要同时检查：
+
+1. 来源 SQL 是否只读取允许公开的字段。
+2. clean DB migration 是否没有引入敏感数据列。
+3. mapper 是否 trim/dedupe/default。
+4. public repository/API 是否不返回 `source_*` 内部字段。
+5. OpenAPI 与测试是否覆盖新增公开字段。
+
+## 前端改动流程
+
+Context7 查询的 Nuxt 3 文档要点：
+
+- runtime config 在 `nuxt.config.ts` 的 `runtimeConfig` 中定义；客户端可见值必须放在 `runtimeConfig.public`。
+- route middleware 使用 `defineNuxtRouteMiddleware((to, from) => ...)` 与 `navigateTo()`。
+- 数据获取可以用 `$fetch` / `useFetch` / `useAsyncData`；本项目的后端调用统一封装在 `useApi()`。
+
+本项目约定：
+
+- 所有后端请求走 `frontend/composables/useApi.ts` 或基于它的 typed composables。
+- `useApi()` 已设置 `credentials: 'include'`；SSR 时会转发请求 Cookie。
+- 认证状态在 Pinia `frontend/stores/auth.ts`；页面保护在 `frontend/middleware/auth.ts` 与 `frontend/middleware/admin.ts`。
+- 不在组件里硬编码后端地址；使用 `runtimeConfig.public.apiBaseUrl`。
+- Nuxt/UI 改动后运行 `cd frontend && pnpm typecheck`；涉及 SSR、routes、config 时再运行 `pnpm build`。
+
+## OpenAPI 与文档同步
+
+API schema 或路由变更时，必须同时更新：
+
+- `backend/internal/openapi/openapi.yaml`：后端 `/openapi.yaml` 服务的嵌入版本。
+- `docs/openapi.yaml`：文档副本。
+
+两份文件应保持内容一致。公共 API 的响应 schema 不得包含 `source_patch_id`、用户资料、下载链接、评论、上传者或内部权限字段。
+
+## 测试与验证
+
+- 后端行为改动：在相邻 package 增加/更新 `_test.go`，优先测服务层的规范化、状态机、权限、边界值与 sentinel error。
+- middleware 改动：用 `httptest` 覆盖 header/cookie/context/rate-limit 分支。
+- repository 改动：优先保持 SQL 小而直接；需要事务时用 `Queryer`/`NewWithQueryer` 注入。
+- 前端改动：运行 `cd frontend && pnpm typecheck`；修改 Nuxt config、route structure 或 SSR-sensitive code 时运行 `pnpm build`。
+- 全量检查：`make test` 等价于 `cd backend && go test ./...` 加 `cd frontend && pnpm typecheck`。
+
+## 安全检查清单
+
+交付前逐项确认：
+
+- [ ] 是否仍只暴露 clean DB 中的公开元数据。
+- [ ] 是否没有把主站内部 id 或敏感主站表字段加入公开响应。
+- [ ] 是否没有记录 plaintext API token、OTP、session token、DSN、pepper。
+- [ ] 是否保持 Cookie 登录而非前端存储 session。
+- [ ] 是否保持 token hash + pepper 校验。
+- [ ] 是否保持管理员路由 `RequireUser` + `RequireAdmin`。
+- [ ] 是否保持 `/v1` token auth、request log、rate limit middleware。
+- [ ] 是否同步 OpenAPI 双份文件。
+- [ ] 是否运行了直接覆盖改动的测试/类型检查。

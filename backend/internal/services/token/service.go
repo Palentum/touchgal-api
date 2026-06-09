@@ -21,8 +21,9 @@ type Store interface {
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.APIToken, error)
 	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error)
 	GetByHashWithApplication(ctx context.Context, tokenHash string) (*model.TokenAuthInfo, error)
-	RevokeForUser(ctx context.Context, id, userID uuid.UUID) error
-	RevokeByAdmin(ctx context.Context, id uuid.UUID) error
+	DeleteForUser(ctx context.Context, id, userID uuid.UUID) error
+	UpdateNameForUser(ctx context.Context, id, userID uuid.UUID, name string) (*model.APIToken, error)
+	DeleteByID(ctx context.Context, id uuid.UUID) error
 	UpdateLastUsed(ctx context.Context, id uuid.UUID) error
 	CountActive(ctx context.Context) (int, error)
 }
@@ -133,11 +134,19 @@ func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int)
 	}
 	return s.tokens.ListAdmin(ctx, status, page, limit)
 }
-func (s *Service) RevokeMine(ctx context.Context, id, userID uuid.UUID) error {
-	return s.tokens.RevokeForUser(ctx, id, userID)
+func (s *Service) UpdateNameMine(ctx context.Context, id, userID uuid.UUID, name string) (*model.APIToken, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 100 {
+		return nil, model.ErrInvalidInput
+	}
+	return s.tokens.UpdateNameForUser(ctx, id, userID, name)
 }
-func (s *Service) RevokeByAdmin(ctx context.Context, id uuid.UUID) error {
-	return s.tokens.RevokeByAdmin(ctx, id)
+
+func (s *Service) DeleteMine(ctx context.Context, id, userID uuid.UUID) error {
+	return s.tokens.DeleteForUser(ctx, id, userID)
+}
+func (s *Service) DeleteByAdmin(ctx context.Context, id uuid.UUID) error {
+	return s.tokens.DeleteByID(ctx, id)
 }
 func (s *Service) CountActive(ctx context.Context) (int, error) { return s.tokens.CountActive(ctx) }
 
@@ -150,10 +159,15 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (*model.TokenAut
 	if err != nil {
 		return nil, model.ErrUnauthorized
 	}
-	if info.Token.Status != model.TokenActive || info.ApplicationStatus != model.ApplicationApproved {
+	if info.Token.Status != model.TokenActive {
+		_ = s.tokens.DeleteByID(ctx, info.Token.ID)
+		return nil, model.ErrUnauthorized
+	}
+	if info.ApplicationStatus != model.ApplicationApproved {
 		return nil, model.ErrUnauthorized
 	}
 	if info.Token.ExpiresAt != nil && time.Now().After(*info.Token.ExpiresAt) {
+		_ = s.tokens.DeleteByID(ctx, info.Token.ID)
 		return nil, model.ErrUnauthorized
 	}
 	_ = s.tokens.UpdateLastUsed(ctx, info.Token.ID)

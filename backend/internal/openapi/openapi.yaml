@@ -63,12 +63,11 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         tokenPrefix: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [active] }
         minuteLimit: { type: integer }
         dailyLimit: { type: integer }
         lastUsedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
-        revokedAt: { type: string, format: date-time }
     GameSearchItem:
       type: object
       properties:
@@ -233,6 +232,22 @@ paths:
         required: true
         content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } }
       responses: { '201': { description: Token created } }
+  /tokens/{id}:
+    patch:
+      security: []
+      summary: Update current user's API token name
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 100 } } } } }
+      responses: { '200': { description: Token updated }, '400': { description: Invalid token name }, '404': { description: Token not found } }
+    delete:
+      security: []
+      summary: Delete current user's API token; invalidated token records are removed instead of retained
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses: { '200': { description: Token deleted }, '404': { description: Token not found } }
   /dashboard/stats/summary:
     get:
       security: []

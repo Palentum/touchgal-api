@@ -3,7 +3,7 @@ export interface ApiFailure { success: false; error: { code: string; message: st
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure
 
 type ApiOptions = {
-  method?: 'GET' | 'POST'
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: any
   query?: Record<string, string | number | boolean | undefined>
   headers?: Record<string, string>

@@ -47,16 +47,38 @@ func (h *TokenHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *TokenHandler) RevokeMine(w http.ResponseWriter, r *http.Request) {
+func (h *TokenHandler) UpdateMine(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r)
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid token id")
 		return
 	}
-	if err := h.svc.RevokeMine(r.Context(), id, user.ID); err != nil {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := DecodeJSON(r, &req); err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+		return
+	}
+	updated, err := h.svc.UpdateNameMine(r.Context(), id, user.ID, req.Name)
+	if err != nil {
 		Error(w, err)
 		return
 	}
-	Success(w, http.StatusOK, map[string]bool{"revoked": true})
+	Success(w, http.StatusOK, updated)
+}
+
+func (h *TokenHandler) DeleteMine(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r)
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid token id")
+		return
+	}
+	if err := h.svc.DeleteMine(r.Context(), id, user.ID); err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, map[string]bool{"deleted": true})
 }
