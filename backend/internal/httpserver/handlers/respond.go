@@ -52,6 +52,8 @@ func classify(err error) (int, string, string) {
 		return http.StatusBadRequest, "BAD_REQUEST", "Invalid request parameters"
 	case errors.Is(err, model.ErrUnauthorized):
 		return http.StatusUnauthorized, "UNAUTHORIZED", "Missing or invalid credentials"
+	case errors.Is(err, model.ErrAccountDisabled):
+		return http.StatusForbidden, "ACCOUNT_DISABLED", "Account is disabled"
 	case errors.Is(err, model.ErrForbidden):
 		return http.StatusForbidden, "FORBIDDEN", "Permission denied"
 	case errors.Is(err, model.ErrNotFound):

@@ -6,6 +6,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!auth.loaded) {
     await auth.fetchMe()
   }
+  if (auth.isAccountDisabled) {
+    return navigateTo('/account-disabled')
+  }
   if (!auth.user) {
     return navigateTo(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }

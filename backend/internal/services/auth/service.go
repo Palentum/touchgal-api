@@ -203,9 +203,6 @@ func (s *Service) verifyCode(ctx context.Context, purpose, emailAddr, code strin
 }
 
 func (s *Service) createSession(ctx context.Context, user *model.User, userAgent, ip string) (*VerifyResult, error) {
-	if user.Status != "active" {
-		return nil, model.ErrForbidden
-	}
 	raw, err := GenerateSessionToken()
 	if err != nil {
 		return nil, err

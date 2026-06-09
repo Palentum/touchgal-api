@@ -14,4 +14,5 @@ var (
 	ErrInvalidCode       = errors.New("invalid verification code")
 	ErrExpiredCode       = errors.New("expired verification code")
 	ErrApplicationOpen   = errors.New("application is not approved")
+	ErrAccountDisabled   = errors.New("account disabled")
 )

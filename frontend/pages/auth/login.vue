@@ -26,6 +26,9 @@ definePageMeta({
     if (!auth.loaded) {
       await auth.fetchMe()
     }
+    if (auth.isAccountDisabled) {
+      return navigateTo('/account-disabled')
+    }
     if (auth.user) {
       return navigateTo('/dashboard')
     }

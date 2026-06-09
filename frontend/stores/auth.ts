@@ -13,6 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<CurrentUser | null>(null)
   const loaded = ref(false)
   const loading = ref(false)
+  const accountDisabled = ref(false)
   const applicationAccess = useApplicationAccess()
 
   const fetchMe = async () => {
@@ -22,12 +23,18 @@ export const useAuthStore = defineStore('auth', () => {
       const res = await apiFetch<CurrentUser>('/auth/me')
       if (res.success) {
         user.value = res.data
+        accountDisabled.value = res.data.status === 'disabled'
+        if (accountDisabled.value) {
+          applicationAccess.resetApplications()
+        }
       } else {
         user.value = null
+        accountDisabled.value = res.error.code === 'ACCOUNT_DISABLED'
         applicationAccess.resetApplications()
       }
-    } catch {
+    } catch (err) {
       user.value = null
+      accountDisabled.value = apiErrorCode(err) === 'ACCOUNT_DISABLED'
       applicationAccess.resetApplications()
     } finally {
       loaded.value = true
@@ -39,9 +46,25 @@ export const useAuthStore = defineStore('auth', () => {
     const { apiFetch } = useApi()
     await apiFetch('/auth/logout', { method: 'POST' })
     user.value = null
+    accountDisabled.value = false
+    loaded.value = true
+    applicationAccess.resetApplications()
+  }
+  const isAccountDisabled = computed(() => accountDisabled.value || user.value?.status === 'disabled')
+
+  const markAccountDisabled = () => {
+    accountDisabled.value = true
     loaded.value = true
     applicationAccess.resetApplications()
   }
 
-  return { user, loaded, loading, fetchMe, logout }
+  const clearAccountDisabled = () => {
+    accountDisabled.value = false
+  }
+
+  const apiErrorCode = (err: unknown) => {
+    return (err as { data?: { error?: { code?: string } } }).data?.error?.code
+  }
+
+  return { user, loaded, loading, accountDisabled, isAccountDisabled, fetchMe, logout, markAccountDisabled, clearAccountDisabled }
 })

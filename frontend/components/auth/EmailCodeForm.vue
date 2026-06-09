@@ -52,7 +52,11 @@ const sendCode = async () => {
     await apiFetch(path, { method: 'POST', body })
     step.value = 'code'
     message.value = '验证码已发送，请检查邮箱。'
-  } catch {
+  } catch (err) {
+    if (apiErrorCode(err) === 'ACCOUNT_DISABLED') {
+      await redirectAccountDisabled()
+      return
+    }
     error.value = true
     message.value = '发送失败，请检查邮箱或稍后重试。'
   } finally {
@@ -68,12 +72,29 @@ const verifyCode = async () => {
     const path = props.mode === 'register' ? '/auth/register/verify' : '/auth/login/verify'
     await apiFetch(path, { method: 'POST', body: { email: email.value, code: code.value } })
     await auth.fetchMe()
+    if (auth.isAccountDisabled) {
+      await redirectAccountDisabled()
+      return
+    }
     emit('verified')
-  } catch {
+  } catch (err) {
+    if (apiErrorCode(err) === 'ACCOUNT_DISABLED') {
+      await redirectAccountDisabled()
+      return
+    }
     error.value = true
     message.value = '验证码错误或已过期。'
   } finally {
     loading.value = false
   }
+}
+
+const redirectAccountDisabled = async () => {
+  auth.markAccountDisabled()
+  await navigateTo('/account-disabled')
+}
+
+const apiErrorCode = (err: unknown) => {
+  return (err as { data?: { error?: { code?: string } } }).data?.error?.code
 }
 </script>

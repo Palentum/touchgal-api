@@ -69,7 +69,7 @@ func (r *AuthRepo) GetSessionUser(ctx context.Context, sessionHash string, now t
 		       u.id, u.email, u.display_name, u.status, u.is_admin, u.minute_limit, u.daily_limit, u.last_login_at, u.created_at, u.updated_at
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
-		WHERE s.session_hash = $1 AND s.expires_at > $2 AND s.revoked_at IS NULL AND u.status = 'active'`,
+		WHERE s.session_hash = $1 AND s.expires_at > $2 AND s.revoked_at IS NULL`,
 		sessionHash, now,
 	).Scan(&session.ID, &session.UserID, &session.SessionHash, &session.UserAgent, &session.IP, &session.ExpiresAt, &session.RevokedAt, &session.CreatedAt, &session.LastSeenAt, &user.ID, &user.Email, &user.DisplayName, &user.Status, &user.IsAdmin, &user.MinuteLimit, &user.DailyLimit, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {

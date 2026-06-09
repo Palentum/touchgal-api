@@ -28,8 +28,13 @@ func SessionAuth(cfg config.Config, service SessionAuthService) func(http.Handle
 
 func RequireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := CurrentUser(r); !ok {
+		user, ok := CurrentUser(r)
+		if !ok {
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Login required")
+			return
+		}
+		if user.Status != model.UserStatusActive {
+			writeError(w, http.StatusForbidden, "ACCOUNT_DISABLED", "Account is disabled")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -41,6 +46,10 @@ func RequireAdmin(next http.Handler) http.Handler {
 		user, ok := CurrentUser(r)
 		if !ok {
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Login required")
+			return
+		}
+		if user.Status != model.UserStatusActive {
+			writeError(w, http.StatusForbidden, "ACCOUNT_DISABLED", "Account is disabled")
 			return
 		}
 		if !user.IsAdmin {
