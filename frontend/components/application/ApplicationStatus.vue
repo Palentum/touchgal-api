@@ -5,14 +5,14 @@
 
     <div class="tg-dashboard-stack mt-5">
       <div v-for="app in applications" :key="app.id" class="tg-card-outline">
-        <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p class="tg-title-md">{{ app.projectName || app.projectUrl }}</p>
             <p class="tg-muted mt-1">{{ app.projectUrl }}</p>
           </div>
           <span class="tg-badge" :class="badge(app.status)">{{ statusText(app.status) }}</span>
         </div>
-        <p v-if="app.reviewNote" class="tg-muted mt-4">{{ app.reviewNote }}</p>
+        <p v-if="app.reviewNote && app.reviewNote !== 'Reviewed'" class="tg-muted mt-4">{{ app.reviewNote }}</p>
       </div>
 
       <p v-if="applications.length === 0" class="tg-empty">暂无账号申请。</p>

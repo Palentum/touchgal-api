@@ -14,6 +14,6 @@ definePageMeta({ layout: 'admin', middleware: 'admin' })
 const { apiFetch } = useApi()
 const applications = ref<ApplicationItem[]>([])
 const load = async () => { const res = await apiFetch<ApplicationItem[]>('/admin/applications', { query: { page: 1, limit: 50 } }); if (res.success) applications.value = res.data }
-const review = async (id: string, action: 'approve' | 'reject' | 'revoke') => { await apiFetch(`/admin/applications/${id}/${action}`, { method: 'POST', body: { minuteLimit: 60, dailyLimit: 5000, reviewNote: action === 'approve' ? 'Approved' : 'Reviewed' } }); await load() }
+const review = async (id: string, action: 'approve' | 'reject' | 'revoke') => { await apiFetch(`/admin/applications/${id}/${action}`, { method: 'POST', body: { minuteLimit: 60, dailyLimit: 5000 } }); await load() }
 onMounted(load)
 </script>

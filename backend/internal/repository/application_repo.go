@@ -31,12 +31,6 @@ func (r *ApplicationRepo) Create(ctx context.Context, userID uuid.UUID, input mo
 	return app, err
 }
 
-func (r *ApplicationRepo) CountByUser(ctx context.Context, userID uuid.UUID) (int, error) {
-	var count int
-	err := r.db.QueryRow(ctx, `SELECT count(*) FROM api_applications WHERE user_id = $1`, userID).Scan(&count)
-	return count, err
-}
-
 func (r *ApplicationRepo) GetByIDForUser(ctx context.Context, id, userID uuid.UUID) (*model.Application, error) {
 	return r.get(ctx, `WHERE id = $1 AND user_id = $2`, id, userID)
 }
@@ -54,7 +48,7 @@ func (r *ApplicationRepo) EnsureAdminApproved(ctx context.Context, userID uuid.U
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO api_applications (id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, review_note, reviewed_at)
 		VALUES ($1, $2, 'Admin user', 'TouchGal API Admin', 'https://api.example.com/admin', $3, 'Admin account default approval', 'approved', $4, $5, 'Admin account default approval', now())
-		ON CONFLICT (user_id) DO UPDATE
+		ON CONFLICT (user_id) WHERE status <> 'rejected' DO UPDATE
 		SET status = 'approved',
 		    default_minute_limit = EXCLUDED.default_minute_limit,
 		    default_daily_limit = EXCLUDED.default_daily_limit,

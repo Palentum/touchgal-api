@@ -1,35 +1,32 @@
 <template>
   <div class="tg-dashboard-stack">
-    <div v-if="existingApplication" class="tg-card">
+    <div v-if="shownApplication" class="tg-card">
       <p class="tg-eyebrow">申请状态</p>
-      <h2 class="tg-title-lg">账号申请已提交</h2>
+      <h2 class="tg-title-lg">API 申请已提交</h2>
 
       <div class="tg-card-outline mt-6">
-        <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p class="tg-title-md">{{ existingApplication.projectName || existingApplication.projectUrl }}</p>
-            <p class="tg-muted mt-1">{{ existingApplication.projectUrl }}</p>
+            <p class="tg-title-md">{{ shownApplication.projectName || shownApplication.projectUrl }}</p>
+            <p class="tg-muted mt-1">{{ shownApplication.projectUrl }}</p>
           </div>
-          <span class="tg-badge" :class="badge(existingApplication.status)">{{ statusText(existingApplication.status) }}</span>
+          <span class="tg-badge" :class="badge(shownApplication.status)">{{ statusText(shownApplication.status) }}</span>
         </div>
-        <p v-if="existingApplication.reviewNote" class="tg-muted mt-4">{{ existingApplication.reviewNote }}</p>
+        <p v-if="shownApplication.reviewNote && shownApplication.reviewNote !== 'Reviewed'" class="tg-muted mt-4">{{ shownApplication.reviewNote }}</p>
       </div>
 
-      <NuxtLink v-if="existingApplication.status === 'approved'" to="/dashboard/tokens" class="tg-btn tg-btn-primary mt-6">创建 API Token</NuxtLink>
+      <div v-if="shownApplication.status === 'approved' || shownApplication.status === 'rejected'" class="tg-actions mt-6">
+        <NuxtLink v-if="shownApplication.status === 'approved'" to="/dashboard/tokens" class="tg-btn tg-btn-primary">创建 API Token</NuxtLink>
+        <button v-if="shownApplication.status === 'rejected'" type="button" class="tg-btn tg-btn-primary" @click="startReapply">重新申请</button>
+      </div>
     </div>
 
     <form v-else class="tg-card tg-form" @submit.prevent="submit">
 
-      <div class="tg-form-grid">
-        <label class="tg-label">
-          申请用户/负责人
-          <input v-model="form.applicantName" required class="tg-input">
-        </label>
-        <label class="tg-label">
-          项目名称
-          <input v-model="form.projectName" class="tg-input">
-        </label>
-      </div>
+      <label class="tg-label">
+        项目名称
+        <input v-model="form.projectName" class="tg-input">
+      </label>
 
       <label class="tg-label">
         项目地址
@@ -60,12 +57,22 @@ const { apiFetch } = useApi()
 const auth = useAuthStore()
 const access = useApplicationAccess()
 const applications = access.applications
-const form = reactive({ applicantName: '', projectName: '', projectUrl: '', expectedDailyRequests: '1000', usageScenario: '' })
+const initialForm = () => ({ projectName: '', projectUrl: '', expectedDailyRequests: '1000', usageScenario: '' })
+const form = reactive(initialForm())
 const message = ref('')
 const ok = ref(false)
+const isReapplying = ref(false)
 const existingApplication = computed(() => applications.value[0])
+const shownApplication = computed(() => isReapplying.value ? null : existingApplication.value)
 const badge = (status: string) => status === 'approved' ? 'tg-badge-success' : status === 'pending' ? 'tg-badge-warning' : 'tg-badge-error'
 const statusText = (status: string) => status === 'approved' ? '已通过' : status === 'pending' ? '审核中' : status === 'rejected' ? '未通过' : '已撤销'
+
+const startReapply = () => {
+  Object.assign(form, initialForm())
+  message.value = ''
+  ok.value = false
+  isReapplying.value = true
+}
 
 const loadApplications = async () => {
   await access.fetchApplications(auth.user?.id)
@@ -73,9 +80,11 @@ const loadApplications = async () => {
 
 const submit = async () => {
   try {
-    const res = await apiFetch<ApplicationItem>('/applications', { method: 'POST', body: { ...form, expectedDailyRequests: Number(form.expectedDailyRequests) } })
+    const applicantName = auth.user?.displayName?.trim() || auth.user?.email || ''
+    const res = await apiFetch<ApplicationItem>('/applications', { method: 'POST', body: { ...form, applicantName, expectedDailyRequests: Number(form.expectedDailyRequests) } })
     if (res.success) {
-      applications.value = [res.data]
+      applications.value = [res.data, ...applications.value.filter((app) => app.id !== res.data.id)]
+      isReapplying.value = false
       ok.value = true
       message.value = '申请已提交，等待管理员审核。'
     }
