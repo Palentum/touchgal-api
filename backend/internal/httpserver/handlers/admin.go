@@ -49,18 +49,42 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Status string `json:"status"`
+		Email       *string `json:"email"`
+		DisplayName *string `json:"displayName"`
+		Status      *string `json:"status"`
+		MinuteLimit *int    `json:"minuteLimit"`
+		DailyLimit  *int    `json:"dailyLimit"`
 	}
 	if err := DecodeJSON(r, &req); err != nil {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
 		return
 	}
-	user, err := h.users.UpdateStatus(r.Context(), admin.ID, id, req.Status)
+	user, err := h.users.UpdateAdmin(r.Context(), admin.ID, id, usersvc.AdminUpdate{
+		Email:       req.Email,
+		DisplayName: req.DisplayName,
+		Status:      req.Status,
+		MinuteLimit: req.MinuteLimit,
+		DailyLimit:  req.DailyLimit,
+	})
 	if err != nil {
 		Error(w, err)
 		return
 	}
 	Success(w, http.StatusOK, user)
+}
+
+func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	admin, _ := middleware.CurrentUser(r)
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid user id")
+		return
+	}
+	if err := h.users.DeleteAdmin(r.Context(), admin.ID, id); err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 func (h *AdminHandler) ListApplications(w http.ResponseWriter, r *http.Request) {

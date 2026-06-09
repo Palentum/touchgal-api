@@ -15,9 +15,15 @@ type fakeStore struct {
 	listPage   int
 	listLimit  int
 
-	updateID     uuid.UUID
-	updateStatus string
-	updated      *model.User
+	updateID          uuid.UUID
+	updateEmail       *string
+	updateDisplayName *string
+	updateStatus      *string
+	updateMinuteLimit *int
+	updateDailyLimit  *int
+	updated           *model.User
+
+	deletedID uuid.UUID
 }
 
 func (f *fakeStore) ListAdmin(ctx context.Context, status, query string, page, limit int) ([]model.User, error) {
@@ -28,13 +34,38 @@ func (f *fakeStore) ListAdmin(ctx context.Context, status, query string, page, l
 	return []model.User{{ID: uuid.New(), Status: model.UserStatusActive}}, nil
 }
 
-func (f *fakeStore) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*model.User, error) {
+func (f *fakeStore) UpdateAdmin(ctx context.Context, id uuid.UUID, email, displayName, status *string, minuteLimit, dailyLimit *int) (*model.User, error) {
 	f.updateID = id
+	f.updateEmail = email
+	f.updateDisplayName = displayName
 	f.updateStatus = status
+	f.updateMinuteLimit = minuteLimit
+	f.updateDailyLimit = dailyLimit
 	if f.updated != nil {
 		return f.updated, nil
 	}
-	return &model.User{ID: id, Status: status}, nil
+	user := &model.User{ID: id}
+	if email != nil {
+		user.Email = *email
+	}
+	if displayName != nil {
+		user.DisplayName = *displayName
+	}
+	if status != nil {
+		user.Status = *status
+	}
+	if minuteLimit != nil {
+		user.MinuteLimit = *minuteLimit
+	}
+	if dailyLimit != nil {
+		user.DailyLimit = *dailyLimit
+	}
+	return user, nil
+}
+
+func (f *fakeStore) DeleteByID(ctx context.Context, id uuid.UUID) error {
+	f.deletedID = id
+	return nil
 }
 
 func TestListAdminNormalizesFiltersAndPage(t *testing.T) {
@@ -65,14 +96,15 @@ func TestListAdminRejectsInvalidFilters(t *testing.T) {
 	}
 }
 
-func TestUpdateStatusNormalizesStatus(t *testing.T) {
+func TestUpdateAdminNormalizesStatus(t *testing.T) {
 	store := &fakeStore{}
 	svc := NewService(store)
 	actorID := uuid.New()
 	targetID := uuid.New()
-	user, err := svc.UpdateStatus(context.Background(), actorID, targetID, " disabled ")
+	status := " disabled "
+	user, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{Status: &status})
 	if err != nil {
-		t.Fatalf("UpdateStatus returned error: %v", err)
+		t.Fatalf("UpdateAdmin returned error: %v", err)
 	}
 	if user.ID != targetID {
 		t.Fatalf("expected updated user id %s, got %s", targetID, user.ID)
@@ -80,24 +112,109 @@ func TestUpdateStatusNormalizesStatus(t *testing.T) {
 	if store.updateID != targetID {
 		t.Fatalf("unexpected target id: %s", store.updateID)
 	}
-	if store.updateStatus != model.UserStatusDisabled {
-		t.Fatalf("status was not normalized: %q", store.updateStatus)
+	if store.updateStatus == nil || *store.updateStatus != model.UserStatusDisabled {
+		t.Fatalf("status was not normalized: %v", store.updateStatus)
 	}
 }
 
-func TestUpdateStatusRejectsSelfDisable(t *testing.T) {
+func TestUpdateAdminRejectsSelfDisable(t *testing.T) {
 	svc := NewService(&fakeStore{})
 	actorID := uuid.New()
-	if _, err := svc.UpdateStatus(context.Background(), actorID, actorID, model.UserStatusDisabled); err != model.ErrInvalidInput {
+	status := model.UserStatusDisabled
+	if _, err := svc.UpdateAdmin(context.Background(), actorID, actorID, AdminUpdate{Status: &status}); err != model.ErrInvalidInput {
 		t.Fatalf("expected self-disable rejection, got %v", err)
 	}
 }
 
-func TestUpdateStatusRejectsInvalidStatus(t *testing.T) {
+func TestUpdateAdminRejectsInvalidStatus(t *testing.T) {
 	svc := NewService(&fakeStore{})
 	actorID := uuid.New()
 	targetID := uuid.New()
-	if _, err := svc.UpdateStatus(context.Background(), actorID, targetID, "pending"); err != model.ErrInvalidInput {
+	status := "pending"
+	if _, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{Status: &status}); err != model.ErrInvalidInput {
 		t.Fatalf("expected invalid status rejection, got %v", err)
+	}
+}
+
+func TestUpdateAdminNormalizesProfileAndLimits(t *testing.T) {
+	store := &fakeStore{}
+	svc := NewService(store)
+	actorID := uuid.New()
+	targetID := uuid.New()
+	email := " Dev@Example.COM "
+	displayName := "  Developer  "
+	status := " active "
+	minuteLimit := 30
+	dailyLimit := 3000
+	user, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{
+		Email:       &email,
+		DisplayName: &displayName,
+		Status:      &status,
+		MinuteLimit: &minuteLimit,
+		DailyLimit:  &dailyLimit,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAdmin returned error: %v", err)
+	}
+	if user.ID != targetID {
+		t.Fatalf("expected updated user id %s, got %s", targetID, user.ID)
+	}
+	if store.updateEmail == nil || *store.updateEmail != "dev@example.com" {
+		t.Fatalf("email was not normalized: %v", store.updateEmail)
+	}
+	if store.updateDisplayName == nil || *store.updateDisplayName != "Developer" {
+		t.Fatalf("display name was not normalized: %v", store.updateDisplayName)
+	}
+	if store.updateStatus == nil || *store.updateStatus != model.UserStatusActive {
+		t.Fatalf("status was not normalized: %v", store.updateStatus)
+	}
+	if store.updateMinuteLimit == nil || *store.updateMinuteLimit != minuteLimit || store.updateDailyLimit == nil || *store.updateDailyLimit != dailyLimit {
+		t.Fatalf("limits were not passed through: minute=%v daily=%v", store.updateMinuteLimit, store.updateDailyLimit)
+	}
+}
+
+func TestUpdateAdminRejectsInvalidProfileAndLimits(t *testing.T) {
+	svc := NewService(&fakeStore{})
+	actorID := uuid.New()
+	targetID := uuid.New()
+	if _, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{}); err != model.ErrInvalidInput {
+		t.Fatalf("expected empty update rejection, got %v", err)
+	}
+	badEmail := "not-an-email"
+	if _, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{Email: &badEmail}); err != model.ErrInvalidInput {
+		t.Fatalf("expected invalid email rejection, got %v", err)
+	}
+	longName := strings.Repeat("a", maxDisplayNameLength+1)
+	if _, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{DisplayName: &longName}); err != model.ErrInvalidInput {
+		t.Fatalf("expected long display name rejection, got %v", err)
+	}
+	minuteLimit := 100
+	dailyLimit := 50
+	if _, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{MinuteLimit: &minuteLimit, DailyLimit: &dailyLimit}); err != model.ErrInvalidInput {
+		t.Fatalf("expected inverted limits rejection, got %v", err)
+	}
+	if _, err := svc.UpdateAdmin(context.Background(), actorID, targetID, AdminUpdate{MinuteLimit: &minuteLimit}); err != model.ErrInvalidInput {
+		t.Fatalf("expected partial limits rejection, got %v", err)
+	}
+}
+
+func TestDeleteAdminRejectsSelfDelete(t *testing.T) {
+	svc := NewService(&fakeStore{})
+	actorID := uuid.New()
+	if err := svc.DeleteAdmin(context.Background(), actorID, actorID); err != model.ErrInvalidInput {
+		t.Fatalf("expected self-delete rejection, got %v", err)
+	}
+}
+
+func TestDeleteAdminDeletesTarget(t *testing.T) {
+	store := &fakeStore{}
+	svc := NewService(store)
+	actorID := uuid.New()
+	targetID := uuid.New()
+	if err := svc.DeleteAdmin(context.Background(), actorID, targetID); err != nil {
+		t.Fatalf("DeleteAdmin returned error: %v", err)
+	}
+	if store.deletedID != targetID {
+		t.Fatalf("unexpected deleted id: %s", store.deletedID)
 	}
 }

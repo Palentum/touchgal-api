@@ -31,3 +31,32 @@ func TestAPIRateLimit(t *testing.T) {
 		t.Fatalf("second request got %d", code)
 	}
 }
+
+func TestAPIRateLimitAppliesUserCap(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+	info := &model.TokenAuthInfo{
+		Token:           model.APIToken{ID: uuid.New(), MinuteLimit: 10, DailyLimit: 100},
+		UserMinuteLimit: 1,
+		UserDailyLimit:  10,
+	}
+	handler := APIRateLimit(client)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	request := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+		req = req.WithContext(WithTokenInfo(req.Context(), info))
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		return res
+	}
+	first := request()
+	if first.Code != http.StatusNoContent {
+		t.Fatalf("first request got %d", first.Code)
+	}
+	if got := first.Header().Get("X-RateLimit-Limit-Minute"); got != "1" {
+		t.Fatalf("minute limit header got %q", got)
+	}
+	if code := request().Code; code != http.StatusTooManyRequests {
+		t.Fatalf("second request got %d", code)
+	}
+}

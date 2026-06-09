@@ -77,6 +77,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 		r.Use(middleware.RequireAdmin)
 		r.Get("/users", adminHandler.ListUsers)
 		r.Patch("/users/{id}", adminHandler.UpdateUser)
+		r.Delete("/users/{id}", adminHandler.DeleteUser)
 		r.Get("/applications", adminHandler.ListApplications)
 		r.Post("/applications/{id}/approve", adminHandler.ApproveApplication)
 		r.Post("/applications/{id}/reject", adminHandler.RejectApplication)

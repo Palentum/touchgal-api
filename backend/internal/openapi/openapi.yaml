@@ -29,7 +29,7 @@ components:
         error:
           type: object
           properties:
-            code: { type: string, enum: [BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, RATE_LIMITED, INTERNAL_ERROR] }
+            code: { type: string, enum: [BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, RATE_LIMITED, INTERNAL_ERROR] }
             message: { type: string }
     HealthResponse:
       type: object
@@ -48,15 +48,20 @@ components:
         displayName: { type: string }
         status: { type: string, enum: [active, disabled] }
         isAdmin: { type: boolean }
+        minuteLimit: { type: integer, minimum: 1 }
+        dailyLimit: { type: integer, minimum: 1 }
         lastLoginAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     AdminUserPatch:
       type: object
-      required: [status]
       additionalProperties: false
       properties:
         status: { type: string, enum: [active, disabled] }
+        email: { type: string, format: email, maxLength: 254 }
+        displayName: { type: string, maxLength: 80 }
+        minuteLimit: { type: integer, minimum: 1 }
+        dailyLimit: { type: integer, minimum: 1 }
     Application:
       type: object
       properties:
@@ -239,7 +244,7 @@ paths:
     patch:
       security:
         - CookieSession: []
-      summary: Update a developer portal user's status
+      summary: Update a developer portal user's profile, status, or rate limits
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -257,7 +262,31 @@ paths:
                 properties:
                   success: { type: boolean, const: true }
                   data: { $ref: '#/components/schemas/User' }
-        '400': { description: Invalid status or unsafe self-disable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '400': { description: Invalid profile, limits, status, or unsafe self-disable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: User not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '409': { description: Email already exists, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    delete:
+      security:
+        - CookieSession: []
+      summary: Delete a developer portal user
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    properties:
+                      deleted: { type: boolean, const: true }
+        '400': { description: Invalid user id or unsafe self-delete, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '404': { description: User not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }

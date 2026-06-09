@@ -23,19 +23,21 @@ func APIRateLimit(redisClient *redis.Client) func(http.Handler) http.Handler {
 				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
 				return
 			}
-			minuteRemaining := info.Token.MinuteLimit - minuteCount
-			dayRemaining := info.Token.DailyLimit - dayCount
+			minuteLimit := info.EffectiveMinuteLimit()
+			dayLimit := info.EffectiveDailyLimit()
+			minuteRemaining := minuteLimit - minuteCount
+			dayRemaining := dayLimit - dayCount
 			if minuteRemaining < 0 {
 				minuteRemaining = 0
 			}
 			if dayRemaining < 0 {
 				dayRemaining = 0
 			}
-			w.Header().Set("X-RateLimit-Limit-Minute", strconv.Itoa(info.Token.MinuteLimit))
+			w.Header().Set("X-RateLimit-Limit-Minute", strconv.Itoa(minuteLimit))
 			w.Header().Set("X-RateLimit-Remaining-Minute", strconv.Itoa(minuteRemaining))
-			w.Header().Set("X-RateLimit-Limit-Day", strconv.Itoa(info.Token.DailyLimit))
+			w.Header().Set("X-RateLimit-Limit-Day", strconv.Itoa(dayLimit))
 			w.Header().Set("X-RateLimit-Remaining-Day", strconv.Itoa(dayRemaining))
-			if minuteCount > info.Token.MinuteLimit || dayCount > info.Token.DailyLimit {
+			if minuteCount > minuteLimit || dayCount > dayLimit {
 				writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "API rate limit exceeded")
 				return
 			}

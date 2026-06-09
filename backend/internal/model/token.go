@@ -28,5 +28,21 @@ type TokenAuthInfo struct {
 	Token             APIToken
 	ApplicationStatus string
 	UserID            uuid.UUID
+	UserMinuteLimit   int
+	UserDailyLimit    int
 	ApplicationID     uuid.UUID
+}
+
+func (i TokenAuthInfo) EffectiveMinuteLimit() int {
+	if i.UserMinuteLimit > 0 && i.UserMinuteLimit < i.Token.MinuteLimit {
+		return i.UserMinuteLimit
+	}
+	return i.Token.MinuteLimit
+}
+
+func (i TokenAuthInfo) EffectiveDailyLimit() int {
+	if i.UserDailyLimit > 0 && i.UserDailyLimit < i.Token.DailyLimit {
+		return i.UserDailyLimit
+	}
+	return i.Token.DailyLimit
 }

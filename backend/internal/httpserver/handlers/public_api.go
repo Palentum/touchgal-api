@@ -21,8 +21,8 @@ func (h *PublicAPIHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"tokenPrefix":       info.Token.TokenPrefix,
 		"applicationId":     info.Token.ApplicationID,
 		"applicationStatus": info.ApplicationStatus,
-		"minuteLimit":       info.Token.MinuteLimit,
-		"dailyLimit":        info.Token.DailyLimit,
+		"minuteLimit":       info.EffectiveMinuteLimit(),
+		"dailyLimit":        info.EffectiveDailyLimit(),
 	})
 }
 

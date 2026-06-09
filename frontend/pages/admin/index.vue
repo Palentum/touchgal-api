@@ -9,7 +9,7 @@
       <NuxtLink class="tg-card-outline" to="/admin/users">
         <p class="tg-eyebrow">用户管理</p>
         <h2 class="tg-title-lg">用户管理</h2>
-        <p class="tg-muted mt-3">查看账号状态，停用或恢复门户登录。</p>
+        <p class="tg-muted mt-3">查看账号状态，编辑资料、限流或删除用户。</p>
       </NuxtLink>
       <NuxtLink class="tg-card-outline" to="/admin/applications">
         <p class="tg-eyebrow">申请审核</p>

@@ -65,7 +65,7 @@ func classify(err error) (int, string, string) {
 	case errors.Is(err, model.ErrInvalidCode), errors.Is(err, model.ErrExpiredCode):
 		return http.StatusBadRequest, "BAD_REQUEST", "Invalid or expired verification code"
 	case errors.Is(err, model.ErrConflict):
-		return http.StatusBadRequest, "BAD_REQUEST", "Resource already exists"
+		return http.StatusConflict, "CONFLICT", "Resource already exists"
 	case errors.Is(err, model.ErrApplicationOpen):
 		return http.StatusForbidden, "FORBIDDEN", "Application is not approved"
 	default:

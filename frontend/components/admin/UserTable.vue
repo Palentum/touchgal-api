@@ -15,6 +15,7 @@
             <th>账号</th>
             <th class="text-center">状态</th>
             <th class="text-center">权限</th>
+            <th>限流</th>
             <th>最近登录</th>
             <th>创建时间</th>
             <th class="text-right" aria-label="操作"></th>
@@ -32,10 +33,24 @@
             <td class="text-center">
               <span class="tg-badge" :class="user.isAdmin ? 'tg-badge-warning' : ''">{{ user.isAdmin ? '管理员' : '开发者' }}</span>
             </td>
+            <td class="tg-muted">{{ user.minuteLimit }}/{{ user.dailyLimit }}</td>
             <td class="tg-muted">{{ formatDateTime(user.lastLoginAt) }}</td>
             <td class="tg-muted">{{ formatDateTime(user.createdAt) }}</td>
             <td>
               <div class="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  class="tg-icon-btn"
+                  :aria-label="`编辑 ${user.displayName || user.email}`"
+                  title="编辑"
+                  :disabled="isBusy(user)"
+                  @click="emit('edit', user)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   :class="user.status === 'active' ? 'tg-icon-btn text-red-700' : 'tg-icon-btn text-[var(--tg-success)]'"
@@ -57,6 +72,22 @@
                     </svg>
                   </template>
                 </button>
+                <button
+                  type="button"
+                  class="tg-icon-btn text-red-700"
+                  :aria-label="`删除 ${user.displayName || user.email}`"
+                  title="删除"
+                  :disabled="isSelf(user) || isBusy(user)"
+                  @click="emit('delete', user)"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="m6 6 1 18h10l1-18" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
+                </button>
               </div>
             </td>
           </tr>
@@ -76,13 +107,19 @@ export interface AdminUser {
   displayName: string
   status: UserStatus
   isAdmin: boolean
+  minuteLimit: number
+  dailyLimit: number
   lastLoginAt?: string
   createdAt: string
   updatedAt: string
 }
 
 export interface AdminUserPatch {
-  status: UserStatus
+  email?: string
+  displayName?: string
+  status?: UserStatus
+  minuteLimit?: number
+  dailyLimit?: number
 }
 
 const props = withDefaults(defineProps<{
@@ -94,13 +131,13 @@ const props = withDefaults(defineProps<{
   busyUserId: null
 })
 
-const emit = defineEmits<{ update: [id: string, patch: AdminUserPatch] }>()
+const emit = defineEmits<{ update: [id: string, patch: AdminUserPatch]; edit: [user: AdminUser]; delete: [user: AdminUser] }>()
 
 const isSelf = (user: AdminUser) => user.id === props.currentUserId
 const isBusy = (user: AdminUser) => props.busyUserId === user.id
 
 const formatDateTime = (value?: string) => value ? value.slice(0, 19).replace('T', ' ') : '未登录'
-const statusText = (status: UserStatus) => status === 'active' ? '正常' : '封禁'
+const statusText = (status: UserStatus) => status === 'active' ? '正常' : '停用'
 const statusBadgeClass = (status: UserStatus) => status === 'active' ? 'tg-badge-success' : 'tg-badge-error'
 
 const toggleStatus = (user: AdminUser) => {

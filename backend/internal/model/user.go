@@ -17,6 +17,8 @@ type User struct {
 	DisplayName string     `json:"displayName"`
 	Status      string     `json:"status"`
 	IsAdmin     bool       `json:"isAdmin"`
+	MinuteLimit int        `json:"minuteLimit"`
+	DailyLimit  int        `json:"dailyLimit"`
 	LastLoginAt *time.Time `json:"lastLoginAt,omitempty"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
