@@ -13,11 +13,11 @@
         <thead>
           <tr>
             <th>账号</th>
-            <th>状态</th>
-            <th>权限</th>
+            <th class="text-center">状态</th>
+            <th class="text-center">权限</th>
             <th>最近登录</th>
             <th>创建时间</th>
-            <th class="text-right">操作</th>
+            <th class="text-right" aria-label="操作"></th>
           </tr>
         </thead>
         <tbody>
@@ -25,12 +25,11 @@
             <td>
               <p class="tg-title-sm">{{ user.displayName || '未设置昵称' }}</p>
               <p class="tg-muted mt-1">{{ user.email }}</p>
-              <span v-if="isSelf(user)" class="tg-badge mt-2">当前账号</span>
             </td>
-            <td>
+            <td class="text-center">
               <span class="tg-badge" :class="statusBadgeClass(user.status)">{{ statusText(user.status) }}</span>
             </td>
-            <td>
+            <td class="text-center">
               <span class="tg-badge" :class="user.isAdmin ? 'tg-badge-warning' : ''">{{ user.isAdmin ? '管理员' : '开发者' }}</span>
             </td>
             <td class="tg-muted">{{ formatDateTime(user.lastLoginAt) }}</td>
@@ -39,12 +38,24 @@
               <div class="flex flex-wrap justify-end gap-2">
                 <button
                   type="button"
-                  class="tg-btn"
-                  :class="user.status === 'active' ? 'tg-btn-amber' : 'tg-btn-primary'"
+                  :class="user.status === 'active' ? 'tg-icon-btn text-red-700' : 'tg-icon-btn text-[var(--tg-success)]'"
+                  :aria-label="`${user.status === 'active' ? '停用' : '启用'} ${user.displayName || user.email}`"
+                  :title="user.status === 'active' ? '停用' : '启用'"
                   :disabled="isSelf(user) || isBusy(user)"
                   @click="toggleStatus(user)"
                 >
-                  {{ user.status === 'active' ? '停用' : '启用' }}
+                  <template v-if="user.status === 'active'">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="8.5" />
+                      <path d="m6.5 6.5 11 11" />
+                    </svg>
+                  </template>
+                  <template v-else>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="8.5" />
+                      <path d="m8 12.5 3 3 5.5-7" />
+                    </svg>
+                  </template>
                 </button>
               </div>
             </td>
@@ -89,7 +100,7 @@ const isSelf = (user: AdminUser) => user.id === props.currentUserId
 const isBusy = (user: AdminUser) => props.busyUserId === user.id
 
 const formatDateTime = (value?: string) => value ? value.slice(0, 19).replace('T', ' ') : '未登录'
-const statusText = (status: UserStatus) => status === 'active' ? '启用中' : '已停用'
+const statusText = (status: UserStatus) => status === 'active' ? '正常' : '封禁'
 const statusBadgeClass = (status: UserStatus) => status === 'active' ? 'tg-badge-success' : 'tg-badge-error'
 
 const toggleStatus = (user: AdminUser) => {
