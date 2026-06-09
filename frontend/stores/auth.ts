@@ -6,6 +6,8 @@ export interface CurrentUser {
   displayName: string
   status: string
   isAdmin: boolean
+  minuteLimit: number
+  dailyLimit: number
   createdAt: string
 }
 
