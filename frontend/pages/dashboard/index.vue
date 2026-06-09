@@ -1,9 +1,8 @@
 <template>
   <section class="tg-dashboard-stack">
     <div>
-      <p class="tg-eyebrow">开发者门户</p>
-      <h1 class="tg-display-md">开发者后台</h1>
-      <p class="tg-lead">当前用户：{{ auth.user?.email }}</p>
+      <p class="tg-eyebrow">OVERVIEW</p>
+      <h1 class="tg-display-md">概览</h1>
     </div>
 
     <DashboardRequestSummaryCards :summary="summaryData" />

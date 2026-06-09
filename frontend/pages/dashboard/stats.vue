@@ -2,7 +2,7 @@
   <section class="tg-dashboard-stack">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="tg-eyebrow">请求分析</p>
+        <p class="tg-eyebrow">Analysis</p>
         <h1 class="tg-display-md">请求统计</h1>
         <p class="tg-lead">按时间窗口与 token 查看调用质量、来源与 endpoint 表现。</p>
       </div>

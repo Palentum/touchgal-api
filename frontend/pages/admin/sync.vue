@@ -2,7 +2,7 @@
   <section class="tg-dashboard-stack">
     <div class="tg-card-dark flex flex-wrap items-center justify-between gap-4">
       <div>
-        <p class="tg-eyebrow">同步任务</p>
+        <p class="tg-eyebrow">Sync Status</p>
         <h1 class="tg-display-md">同步状态</h1>
         <p class="tg-muted mt-3">触发 clean DB 同步并查看最近运行记录。</p>
       </div>

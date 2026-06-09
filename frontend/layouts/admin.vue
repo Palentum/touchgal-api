@@ -12,9 +12,6 @@
         </NuxtLink>
       </nav>
 
-      <div style="margin-top: auto; padding-top: 32px;">
-        <p class="tg-muted" style="margin: 0; font-size: 13px;">{{ auth.user?.email || '未登录' }}</p>
-      </div>
     </aside>
 
     <div class="tg-dashboard-content">
@@ -36,9 +33,9 @@
 <script setup lang="ts">
 const auth = useAuthStore()
 const items = [
-  { to: '/admin', label: '管理员概览' },
+  { to: '/admin', label: '概览' },
   { to: '/admin/users', label: '用户管理' },
-  { to: '/admin/applications', label: '审核申请' },
+  { to: '/admin/applications', label: '申请审核' },
   { to: '/admin/tokens', label: '全部 Token' },
   { to: '/admin/sync', label: '同步状态' }
 ]

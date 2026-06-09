@@ -2,7 +2,7 @@
   <div :class="props.canEdit ? 'tg-card' : 'tg-card-dark'">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p class="tg-eyebrow">Token 列表</p>
+        <p class="tg-eyebrow">Token List</p>
         <h2 class="tg-title-lg">Token 列表</h2>
       </div>
       <span class="tg-badge tg-badge-coral">{{ props.tokens.length }} 个</span>

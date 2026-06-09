@@ -2,7 +2,7 @@
   <div class="tg-card">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p class="tg-eyebrow">Users</p>
+        <p class="tg-eyebrow">User List</p>
         <h2 class="tg-title-lg">用户列表</h2>
       </div>
       <span class="tg-badge tg-badge-coral">{{ props.users.length }} 个</span>

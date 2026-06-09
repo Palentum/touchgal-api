@@ -1,7 +1,10 @@
 <template>
   <div class="tg-card">
-    <div class="mb-4 flex items-center justify-between gap-4">
-      <h3 class="tg-title-lg">同步记录</h3>
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="tg-eyebrow">Sync Record</p>
+        <h3 class="tg-title-lg">同步记录</h3>
+      </div>
       <span class="tg-badge tg-badge-coral">{{ runs.length }} 次运行</span>
     </div>
     <div class="tg-table-wrap">

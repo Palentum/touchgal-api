@@ -12,15 +12,12 @@
         </NuxtLink>
       </nav>
 
-      <div v-if="!showPending" style="margin-top: auto; padding-top: 32px;">
-        <p class="tg-muted" style="margin: 0; font-size: 13px;">{{ auth.user?.email || '未登录' }}</p>
-      </div>
     </aside>
 
     <div class="tg-dashboard-content">
       <header class="tg-dashboard-header">
         <div>
-          <p class="tg-eyebrow" style="margin-bottom: 4px;">Developer Portal</p>
+          <p class="tg-eyebrow" style="margin-bottom: 4px;">Developer Console</p>
           <p style="margin: 0; color: var(--tg-muted); font-size: 14px;">开发者控制台</p>
         </div>
         <button class="tg-btn tg-btn-secondary" type="button" :disabled="showPending" @click="logout">退出</button>

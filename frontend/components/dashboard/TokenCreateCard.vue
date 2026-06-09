@@ -1,6 +1,6 @@
 <template>
   <div class="tg-card-dark">
-    <p class="tg-eyebrow">创建 Token</p>
+    <p class="tg-eyebrow">Create Token</p>
     <h2 class="tg-title-lg">创建 API Token</h2>
     <p class="tg-muted mt-3">账号申请通过后可创建 API token。明文 token 只显示一次。</p>
 
@@ -15,7 +15,7 @@
 
     <div v-if="showCreateDialog" class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="create-token-title">
       <form class="tg-card w-full max-w-md" @submit.prevent="create">
-        <p class="tg-eyebrow">创建 Token</p>
+        <p class="tg-eyebrow">Create Token</p>
         <h2 id="create-token-title" class="tg-title-lg">输入 API Token 名称</h2>
         <label class="tg-label mt-6" for="new-token-name">API Token 名称</label>
         <input id="new-token-name" v-model="name" class="tg-input mt-2" maxlength="100" autocomplete="off" autofocus>

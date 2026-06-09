@@ -2,7 +2,7 @@
   <div class="tg-card">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p class="tg-eyebrow">Endpoint</p>
+        <p class="tg-eyebrow">Endpoint Call Statistics</p>
         <h2 class="tg-title-lg">Endpoint 调用统计</h2>
       </div>
       <span class="tg-badge">{{ data.length }} 条路由</span>

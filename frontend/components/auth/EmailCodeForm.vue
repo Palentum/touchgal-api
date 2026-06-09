@@ -1,5 +1,10 @@
 <template>
   <form class="tg-card tg-form" @submit.prevent="step === 'email' ? sendCode() : verifyCode()">
+    <label v-if="mode === 'register'" class="tg-label">
+      昵称
+      <input v-model="displayName" required maxlength="80" class="tg-input">
+    </label>
+
     <label class="tg-label">
       邮箱
       <input
@@ -7,13 +12,7 @@
         type="email"
         required
         class="tg-input"
-        :placeholder="mode === 'login' ? 'user@example.com' : undefined"
       >
-    </label>
-
-    <label v-if="mode === 'register'" class="tg-label">
-      昵称
-      <input v-model="displayName" required maxlength="80" class="tg-input" placeholder="用于控制台展示">
     </label>
 
     <label v-if="step === 'code'" class="tg-label">

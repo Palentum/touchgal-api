@@ -2,7 +2,7 @@
   <section class="tg-dashboard-stack">
     <div class="tg-card-dark flex flex-wrap items-end justify-between gap-6">
       <div>
-        <p class="tg-eyebrow">用户管理</p>
+        <p class="tg-eyebrow">User Management</p>
         <h1 class="tg-display-md">用户管理</h1>
         <p class="tg-muted mt-3">检索开发者账号，编辑资料、限流、状态或删除用户。</p>
       </div>

@@ -1,10 +1,6 @@
 <template>
   <div class="tg-card-dark">
-    <p class="tg-eyebrow">实时请求</p>
-    <h2 class="tg-title-lg">API 调试台</h2>
-    <p class="tg-muted mt-3">选择 endpoint，临时输入 API token 明文后发送请求。token 不会写入浏览器存储。</p>
-
-    <div class="tg-card-outline tg-form-grid mt-6">
+    <div class="tg-card-outline tg-form-grid">
       <label class="tg-label">
         Token 记录
         <select v-model="selectedToken" class="tg-select">

@@ -1,7 +1,7 @@
 <template>
   <section class="tg-dashboard-stack">
     <div>
-      <p class="tg-eyebrow">API Tokens</p>
+      <p class="tg-eyebrow">API Tokens Management</p>
       <h1 class="tg-display-md">Token 管理</h1>
       <p class="tg-lead">创建、复制、重命名和删除 token。</p>
     </div>
