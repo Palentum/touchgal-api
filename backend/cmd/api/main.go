@@ -22,6 +22,7 @@ import (
 	"github.com/touchgal/developer/backend/internal/services/stats"
 	syncsvc "github.com/touchgal/developer/backend/internal/services/sync"
 	"github.com/touchgal/developer/backend/internal/services/token"
+	usersvc "github.com/touchgal/developer/backend/internal/services/users"
 )
 
 func main() {
@@ -71,6 +72,7 @@ func run() error {
 	authService := auth.NewService(cfg, repos.Users, repos.Auth, redisClient, mailer)
 	applicationService := application.NewService(cfg, repos.Applications)
 	tokenService := token.NewService(cfg, repos.Tokens, repos.Applications)
+	userService := usersvc.NewService(repos.Users)
 	publicService := publicapi.NewService(cfg, repos.Games)
 	statsService := stats.NewService(repos.Stats)
 	syncService := syncsvc.NewService(cfg, source, target, repos.Sync, logger)
@@ -82,8 +84,16 @@ func run() error {
 	defer scheduler.Stop()
 
 	server := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           httpserver.NewRouter(cfg, httpserver.Services{Auth: authService, Applications: applicationService, Tokens: tokenService, PublicAPI: publicService, Stats: statsService, Sync: syncService}, repos, redisClient, logger),
+		Addr: cfg.HTTPAddr,
+		Handler: httpserver.NewRouter(cfg, httpserver.Services{
+			Auth:         authService,
+			Applications: applicationService,
+			Tokens:       tokenService,
+			Users:        userService,
+			PublicAPI:    publicService,
+			Stats:        statsService,
+			Sync:         syncService,
+		}, repos, redisClient, logger),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

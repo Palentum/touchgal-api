@@ -12,11 +12,13 @@ import (
 	"github.com/touchgal/developer/backend/internal/services/application"
 	syncsvc "github.com/touchgal/developer/backend/internal/services/sync"
 	"github.com/touchgal/developer/backend/internal/services/token"
+	usersvc "github.com/touchgal/developer/backend/internal/services/users"
 )
 
 type AdminHandler struct {
 	applications *application.Service
 	tokens       *token.Service
+	users        *usersvc.Service
 	syncService  *syncsvc.Service
 	syncStore    syncRunStore
 }
@@ -25,8 +27,40 @@ type syncRunStore interface {
 	ListRuns(ctx context.Context, limit int) ([]model.SyncRun, error)
 }
 
-func NewAdminHandler(apps *application.Service, tokens *token.Service, syncService *syncsvc.Service, syncStore syncRunStore) *AdminHandler {
-	return &AdminHandler{applications: apps, tokens: tokens, syncService: syncService, syncStore: syncStore}
+func NewAdminHandler(apps *application.Service, tokens *token.Service, users *usersvc.Service, syncService *syncsvc.Service, syncStore syncRunStore) *AdminHandler {
+	return &AdminHandler{applications: apps, tokens: tokens, users: users, syncService: syncService, syncStore: syncStore}
+}
+
+func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	page, limit := pageLimit(r)
+	users, err := h.users.ListAdmin(r.Context(), r.URL.Query().Get("status"), r.URL.Query().Get("q"), page, limit)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, users)
+}
+
+func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	admin, _ := middleware.CurrentUser(r)
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid user id")
+		return
+	}
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := DecodeJSON(r, &req); err != nil {
+		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+		return
+	}
+	user, err := h.users.UpdateStatus(r.Context(), admin.ID, id, req.Status)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, user)
 }
 
 func (h *AdminHandler) ListApplications(w http.ResponseWriter, r *http.Request) {

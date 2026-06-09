@@ -5,7 +5,12 @@
       <h1 class="tg-display-md">管理员后台</h1>
       <p class="tg-lead">集中处理开发者申请、API Token 与同步任务状态。</p>
     </div>
-    <div class="tg-grid-3">
+    <div class="tg-grid-4">
+      <NuxtLink class="tg-card-outline" to="/admin/users">
+        <p class="tg-eyebrow">用户管理</p>
+        <h2 class="tg-title-lg">用户管理</h2>
+        <p class="tg-muted mt-3">查看账号状态，停用或恢复门户登录。</p>
+      </NuxtLink>
       <NuxtLink class="tg-card-outline" to="/admin/applications">
         <p class="tg-eyebrow">申请审核</p>
         <h2 class="tg-title-lg">审核申请</h2>

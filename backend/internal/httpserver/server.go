@@ -16,12 +16,14 @@ import (
 	"github.com/touchgal/developer/backend/internal/services/stats"
 	syncsvc "github.com/touchgal/developer/backend/internal/services/sync"
 	"github.com/touchgal/developer/backend/internal/services/token"
+	usersvc "github.com/touchgal/developer/backend/internal/services/users"
 )
 
 type Services struct {
 	Auth         *auth.Service
 	Applications *application.Service
 	Tokens       *token.Service
+	Users        *usersvc.Service
 	PublicAPI    *publicapi.Service
 	Stats        *stats.Service
 	Sync         *syncsvc.Service
@@ -41,7 +43,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	tokenHandler := handlers.NewTokenHandler(services.Tokens)
 	publicHandler := handlers.NewPublicAPIHandler(services.PublicAPI)
 	statsHandler := handlers.NewStatsHandler(services.Stats)
-	adminHandler := handlers.NewAdminHandler(services.Applications, services.Tokens, services.Sync, repos.Sync)
+	adminHandler := handlers.NewAdminHandler(services.Applications, services.Tokens, services.Users, services.Sync, repos.Sync)
 
 	r.Get("/openapi.yaml", docs.OpenAPI)
 	r.Get("/docs", docs.Swagger)
@@ -73,6 +75,8 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(middleware.RequireUser)
 		r.Use(middleware.RequireAdmin)
+		r.Get("/users", adminHandler.ListUsers)
+		r.Patch("/users/{id}", adminHandler.UpdateUser)
 		r.Get("/applications", adminHandler.ListApplications)
 		r.Post("/applications/{id}/approve", adminHandler.ApproveApplication)
 		r.Post("/applications/{id}/reject", adminHandler.RejectApplication)

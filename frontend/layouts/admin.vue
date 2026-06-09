@@ -37,6 +37,7 @@
 const auth = useAuthStore()
 const items = [
   { to: '/admin', label: '管理员概览' },
+  { to: '/admin/users', label: '用户管理' },
   { to: '/admin/applications', label: '审核申请' },
   { to: '/admin/tokens', label: '全部 Token' },
   { to: '/admin/sync', label: '同步状态' }

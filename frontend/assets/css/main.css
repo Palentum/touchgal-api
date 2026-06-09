@@ -579,6 +579,10 @@ select:disabled {
   font-weight: 500;
 }
 
+.tg-label-on-dark {
+  color: var(--tg-on-dark);
+}
+
 .tg-input,
 .tg-select,
 .tg-textarea {

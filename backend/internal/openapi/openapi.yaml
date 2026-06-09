@@ -17,6 +17,10 @@ components:
       type: apiKey
       in: header
       name: X-API-Token
+    CookieSession:
+      type: apiKey
+      in: cookie
+      name: tgal_dev_session
   schemas:
     ErrorResponse:
       type: object
@@ -42,8 +46,17 @@ components:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
         displayName: { type: string }
-        status: { type: string }
+        status: { type: string, enum: [active, disabled] }
         isAdmin: { type: boolean }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminUserPatch:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { type: string, enum: [active, disabled] }
     Application:
       type: object
       properties:
@@ -197,6 +210,57 @@ paths:
       security: []
       summary: Current session user
       responses: { '200': { description: Current user }, '401': { description: Login required } }
+  /admin/users:
+    get:
+      security:
+        - CookieSession: []
+      summary: List developer portal users for administrators
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, disabled] } }
+        - { name: q, in: query, schema: { type: string, maxLength: 160 }, description: Search email or display name }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+        '400': { description: Invalid filters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/users/{id}:
+    patch:
+      security:
+        - CookieSession: []
+      summary: Update a developer portal user's status
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminUserPatch' }
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data: { $ref: '#/components/schemas/User' }
+        '400': { description: Invalid status or unsafe self-disable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: User not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /applications:
     get:
       security: []
