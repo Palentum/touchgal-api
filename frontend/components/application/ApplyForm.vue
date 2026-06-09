@@ -3,7 +3,6 @@
     <div v-if="existingApplication" class="tg-card">
       <p class="tg-eyebrow">申请状态</p>
       <h2 class="tg-title-lg">账号申请已提交</h2>
-      <p class="tg-muted mt-3">每个账户仅需提交一次申请。审核通过后，该账户可无限创建 API token。</p>
 
       <div class="tg-card-outline mt-6">
         <div class="flex flex-wrap items-start justify-between gap-4">
@@ -20,11 +19,6 @@
     </div>
 
     <form v-else class="tg-card tg-form" @submit.prevent="submit">
-      <div>
-        <p class="tg-eyebrow">提交申请</p>
-        <h2 class="tg-title-lg">账号级 API 申请</h2>
-        <p class="tg-muted mt-3">此申请为账户级申请，每个账户只能提交一次。</p>
-      </div>
 
       <div class="tg-form-grid">
         <label class="tg-label">
@@ -44,7 +38,7 @@
 
       <label class="tg-label">
         预估每日请求量
-        <input v-model.number="form.expectedDailyRequests" type="number" min="1" required class="tg-input">
+        <input v-model="form.expectedDailyRequests" required class="tg-input">
       </label>
 
       <label class="tg-label">
@@ -52,13 +46,9 @@
         <textarea v-model="form.usageScenario" required rows="5" class="tg-textarea" />
       </label>
 
-      <label class="flex items-start gap-3 text-sm">
-        <input v-model="form.agreeToTerms" type="checkbox" class="mt-1">
-        <span class="tg-muted">我确认不会使用 API 还原用户、资源下载、评论或任何主站隐私数据。</span>
-      </label>
 
       <p v-if="message" :class="ok ? 'tg-message-ok' : 'tg-message-error'">{{ message }}</p>
-      <button class="tg-btn tg-btn-primary justify-self-start">提交账号申请</button>
+      <button class="tg-btn tg-btn-primary justify-self-start">提交申请</button>
     </form>
   </div>
 </template>
@@ -70,7 +60,7 @@ const { apiFetch } = useApi()
 const auth = useAuthStore()
 const access = useApplicationAccess()
 const applications = access.applications
-const form = reactive({ applicantName: '', projectName: '', projectUrl: '', expectedDailyRequests: 1000, usageScenario: '', agreeToTerms: false })
+const form = reactive({ applicantName: '', projectName: '', projectUrl: '', expectedDailyRequests: '1000', usageScenario: '' })
 const message = ref('')
 const ok = ref(false)
 const existingApplication = computed(() => applications.value[0])
@@ -83,7 +73,7 @@ const loadApplications = async () => {
 
 const submit = async () => {
   try {
-    const res = await apiFetch<ApplicationItem>('/applications', { method: 'POST', body: form })
+    const res = await apiFetch<ApplicationItem>('/applications', { method: 'POST', body: { ...form, expectedDailyRequests: Number(form.expectedDailyRequests) } })
     if (res.success) {
       applications.value = [res.data]
       ok.value = true

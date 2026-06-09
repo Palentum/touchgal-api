@@ -32,13 +32,12 @@ func (h *ApplicationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ProjectURL            string `json:"projectUrl"`
 		ExpectedDailyRequests int    `json:"expectedDailyRequests"`
 		UsageScenario         string `json:"usageScenario"`
-		AgreeToTerms          bool   `json:"agreeToTerms"`
 	}
 	if err := DecodeJSON(r, &req); err != nil {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
 		return
 	}
-	app, err := h.svc.Create(r.Context(), user.ID, model.CreateApplicationInput{ApplicantName: req.ApplicantName, ProjectName: req.ProjectName, ProjectURL: req.ProjectURL, ExpectedDailyRequests: req.ExpectedDailyRequests, UsageScenario: req.UsageScenario, AgreeToTerms: req.AgreeToTerms})
+	app, err := h.svc.Create(r.Context(), user.ID, model.CreateApplicationInput{ApplicantName: req.ApplicantName, ProjectName: req.ProjectName, ProjectURL: req.ProjectURL, ExpectedDailyRequests: req.ExpectedDailyRequests, UsageScenario: req.UsageScenario})
 	if err != nil {
 		Error(w, err)
 		return

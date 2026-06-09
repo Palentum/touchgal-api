@@ -275,14 +275,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [applicantName, projectUrl, expectedDailyRequests, usageScenario, agreeToTerms]
+              required: [applicantName, projectUrl, expectedDailyRequests, usageScenario]
               properties:
                 applicantName: { type: string }
                 projectName: { type: string }
                 projectUrl: { type: string, format: uri }
                 expectedDailyRequests: { type: integer, minimum: 1 }
                 usageScenario: { type: string }
-                agreeToTerms: { type: boolean, const: true }
       responses: { '201': { description: Created }, '409': { description: Account already has an application } }
   /tokens:
     get:

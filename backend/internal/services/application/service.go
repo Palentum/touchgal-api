@@ -49,9 +49,6 @@ func ValidateInput(input *model.CreateApplicationInput) error {
 	if input.UsageScenario == "" {
 		return model.ErrInvalidInput
 	}
-	if !input.AgreeToTerms {
-		return model.ErrInvalidInput
-	}
 	return nil
 }
 

@@ -34,7 +34,7 @@ func (f *fakeApplicationStore) UpdateReview(ctx context.Context, id, reviewer uu
 func TestApplicationSubmittedOnce(t *testing.T) {
 	store := &fakeApplicationStore{count: 1}
 	svc := NewService(config.Config{DefaultTokenMinuteLimit: 60, DefaultTokenDailyLimit: 5000}, store)
-	_, err := svc.Create(context.Background(), uuid.New(), model.CreateApplicationInput{ApplicantName: "Kun", ProjectURL: "https://example.com", ExpectedDailyRequests: 1, UsageScenario: "test", AgreeToTerms: true})
+	_, err := svc.Create(context.Background(), uuid.New(), model.CreateApplicationInput{ApplicantName: "Kun", ProjectURL: "https://example.com", ExpectedDailyRequests: 1, UsageScenario: "test"})
 	if err != model.ErrApplicationExists {
 		t.Fatalf("expected ErrApplicationExists, got %v", err)
 	}
@@ -44,7 +44,7 @@ func TestApplicationSubmittedOnce(t *testing.T) {
 }
 
 func TestValidateApplicationInput(t *testing.T) {
-	input := model.CreateApplicationInput{ApplicantName: "Kun", ProjectURL: "https://example.com", ExpectedDailyRequests: 100, UsageScenario: "用于展示条目信息", AgreeToTerms: true}
+	input := model.CreateApplicationInput{ApplicantName: "Kun", ProjectURL: "https://example.com", ExpectedDailyRequests: 100, UsageScenario: "用于展示条目信息"}
 	if err := ValidateInput(&input); err != nil {
 		t.Fatalf("valid input rejected: %v", err)
 	}

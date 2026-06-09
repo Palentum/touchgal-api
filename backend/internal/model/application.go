@@ -37,5 +37,4 @@ type CreateApplicationInput struct {
 	ProjectURL            string
 	ExpectedDailyRequests int
 	UsageScenario         string
-	AgreeToTerms          bool
 }
