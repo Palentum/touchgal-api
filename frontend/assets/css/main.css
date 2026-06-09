@@ -87,9 +87,15 @@ select:disabled {
 }
 
 .tg-page {
+  display: flex;
   min-height: 100vh;
+  flex-direction: column;
   background: var(--tg-canvas);
   color: var(--tg-ink);
+}
+
+.tg-page > main {
+  flex: 1;
 }
 
 .tg-container {

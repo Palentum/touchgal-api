@@ -5,7 +5,7 @@
         <div>
           <p class="tg-eyebrow">Console Login</p>
           <h1 class="tg-display-lg">登录开发者控制台</h1>
-          <p class="tg-lead">使用邮箱验证码登录</p>
+          <p class="tg-lead">使用邮箱验证码登录。</p>
           <NuxtLink to="/auth/register" class="tg-link" style="margin-top: 28px; display: inline-flex;">还没有账号？立即注册</NuxtLink>
         </div>
 
