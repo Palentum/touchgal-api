@@ -1,13 +1,15 @@
 <template>
-  <div class="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-    <div v-for="card in cards" :key="card.label" class="rounded-3xl border border-white/10 bg-white/[0.06] p-5">
-      <p class="text-sm text-slate-400">{{ card.label }}</p>
-      <p class="mt-2 text-3xl font-black">{{ card.value }}</p>
+  <div class="tg-grid-6">
+    <div v-for="card in cards" :key="card.label" class="tg-stat-card">
+      <p class="tg-stat-label">{{ card.label }}</p>
+      <p class="tg-stat-value">{{ card.value }}</p>
     </div>
   </div>
 </template>
+
 <script setup lang="ts">
 import type { StatsSummary } from '~/composables/useDashboard'
+
 const props = defineProps<{ summary: StatsSummary }>()
 const cards = computed(() => [
   { label: '总请求', value: props.summary.totalRequests },

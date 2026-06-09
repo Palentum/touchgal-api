@@ -7,10 +7,8 @@ export const useApplicationAccess = () => {
   const loaded = useState('dashboard:applicationsLoaded', () => false)
   const loading = useState('dashboard:applicationsLoading', () => false)
   const userId = useState<string | null>('dashboard:applicationsUserId', () => null)
-  const adminApproved = useState('dashboard:applicationsAdminApproved', () => false)
 
-  const setUserScope = (currentUserId?: string, currentUserIsAdmin = false) => {
-    adminApproved.value = currentUserIsAdmin
+  const setUserScope = (currentUserId?: string) => {
     if (!currentUserId || userId.value === currentUserId) {
       return
     }
@@ -19,15 +17,10 @@ export const useApplicationAccess = () => {
     userId.value = currentUserId
   }
 
-  const hasApprovedApplication = computed(() => adminApproved.value || applications.value.some((app) => app.status === approvedApplicationStatus))
+  const hasApprovedApplication = computed(() => applications.value.some((app) => app.status === approvedApplicationStatus))
 
-  const fetchApplications = async (currentUserId?: string, force = false, currentUserIsAdmin = false) => {
-    setUserScope(currentUserId, currentUserIsAdmin)
-    if (currentUserIsAdmin) {
-      loaded.value = true
-      loading.value = false
-      return true
-    }
+  const fetchApplications = async (currentUserId?: string, force = false) => {
+    setUserScope(currentUserId)
     if (loaded.value && !force) {
       return true
     }
@@ -58,7 +51,6 @@ export const useApplicationAccess = () => {
     loaded.value = false
     loading.value = false
     userId.value = null
-    adminApproved.value = false
   }
 
   return { applications, loaded, loading, hasApprovedApplication, fetchApplications, resetApplications }

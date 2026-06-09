@@ -1,16 +1,56 @@
 <template>
-  <section class="grid gap-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-4xl font-black">请求统计</h1>
-      <div class="flex gap-3"><select v-model.number="days" class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option :value="7">7 天</option><option :value="14">14 天</option><option :value="30">30 天</option><option :value="90">90 天</option></select><select v-model="tokenId" class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white"><option value="">全部 token</option><option v-for="token in tokens" :key="token.id" :value="token.id">{{ token.name }}</option></select></div>
+  <section class="tg-dashboard-stack">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="tg-eyebrow">请求分析</p>
+        <h1 class="tg-display-md">请求统计</h1>
+        <p class="tg-lead">按时间窗口与 token 查看调用质量、来源与 endpoint 表现。</p>
+      </div>
+
+      <div class="tg-actions">
+        <label class="tg-label">
+          时间范围
+          <select v-model.number="days" class="tg-select">
+            <option :value="7">7 天</option>
+            <option :value="14">14 天</option>
+            <option :value="30">30 天</option>
+            <option :value="90">90 天</option>
+          </select>
+        </label>
+        <label class="tg-label">
+          Token
+          <select v-model="tokenId" class="tg-select">
+            <option value="">全部 token</option>
+            <option v-for="token in tokens" :key="token.id" :value="token.id">{{ token.name }}</option>
+          </select>
+        </label>
+      </div>
     </div>
+
     <DashboardRequestSummaryCards :summary="summaryData" />
-    <div class="grid gap-6 xl:grid-cols-2"><div class="rounded-3xl border border-white/10 bg-white/[0.06] p-6"><h3 class="text-xl font-black">请求趋势 / 成功失败</h3><DashboardRequestTrendChart :data="trendData" /></div><div class="rounded-3xl border border-white/10 bg-white/[0.06] p-6"><h3 class="text-xl font-black">请求来源</h3><DashboardSourcePieChart :data="sourceData" /></div></div>
+
+    <div class="tg-grid-2">
+      <div class="tg-card">
+        <h2 class="tg-title-lg">请求趋势 / 成功失败</h2>
+        <div class="tg-chart-box mt-4">
+          <DashboardRequestTrendChart :data="trendData" />
+        </div>
+      </div>
+      <div class="tg-card">
+        <h2 class="tg-title-lg">请求来源</h2>
+        <div class="tg-chart-box mt-4">
+          <DashboardSourcePieChart :data="sourceData" />
+        </div>
+      </div>
+    </div>
+
     <DashboardEndpointTable :data="endpointData" />
   </section>
 </template>
+
 <script setup lang="ts">
 import type { EndpointItem, SourceItem, StatsSummary, TokenItem, TrendItem } from '~/composables/useDashboard'
+
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 const dash = useDashboard()
 const days = ref(30)
@@ -20,6 +60,7 @@ const summaryData = ref<StatsSummary>({ totalRequests: 0, successRequests: 0, er
 const trendData = ref<TrendItem[]>([])
 const sourceData = ref<SourceItem[]>([])
 const endpointData = ref<EndpointItem[]>([])
+
 const load = async () => {
   const id = tokenId.value || undefined
   const [summaryRes, trendRes, sourceRes, endpointRes, tokenRes] = await Promise.all([dash.summary(days.value, id), dash.trend(days.value, id), dash.sources(days.value, id), dash.endpoints(days.value, id), dash.tokens()])
@@ -29,6 +70,7 @@ const load = async () => {
   if (endpointRes.success) endpointData.value = endpointRes.data
   if (tokenRes.success) tokens.value = tokenRes.data
 }
+
 watch([days, tokenId], load)
 onMounted(load)
 </script>

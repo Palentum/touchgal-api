@@ -1,23 +1,47 @@
 <template>
-  <div class="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.06]">
-    <table class="w-full text-left text-sm">
-      <thead class="bg-white/5 text-slate-300"><tr><th class="p-4">名称</th><th class="p-4">Prefix</th><th class="p-4">状态</th><th class="p-4">限流</th><th class="p-4">上次使用</th><th class="p-4">操作</th></tr></thead>
-      <tbody>
-        <tr v-for="token in tokens" :key="token.id" class="border-t border-white/10">
-          <td class="p-4 font-semibold">{{ token.name }}</td>
-          <td class="p-4 font-mono text-emerald-200">{{ token.tokenPrefix }}</td>
-          <td class="p-4">{{ token.status }}</td>
-          <td class="p-4">{{ token.minuteLimit }}/min · {{ token.dailyLimit }}/day</td>
-          <td class="p-4 text-slate-400">{{ token.lastUsedAt || '未使用' }}</td>
-          <td class="p-4"><button v-if="token.status === 'active'" class="rounded-lg bg-rose-400 px-3 py-2 text-slate-950" @click="$emit('revoke', token.id)">失效</button></td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-if="tokens.length === 0" class="p-6 text-slate-400">暂无 token。</p>
+  <div class="tg-card-dark">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="tg-eyebrow">Token 列表</p>
+        <h2 class="tg-title-lg">Token 列表</h2>
+      </div>
+      <span class="tg-badge tg-badge-coral">{{ tokens.length }} 个</span>
+    </div>
+
+    <div class="tg-table-wrap mt-6">
+      <table class="tg-table">
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>Prefix</th>
+            <th>状态</th>
+            <th>限流</th>
+            <th>上次使用</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="token in tokens" :key="token.id">
+            <td class="font-semibold">{{ token.name }}</td>
+            <td class="font-mono">{{ token.tokenPrefix }}</td>
+            <td><span class="tg-badge" :class="token.status === 'active' ? 'tg-badge-success' : 'tg-badge-error'">{{ statusText(token.status) }}</span></td>
+            <td>{{ token.minuteLimit }}/min · {{ token.dailyLimit }}/day</td>
+            <td class="tg-muted">{{ token.lastUsedAt || '未使用' }}</td>
+            <td>
+              <button v-if="token.status === 'active'" class="tg-btn tg-btn-danger" @click="$emit('revoke', token.id)">失效</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="tokens.length === 0" class="tg-empty">暂无 token。</p>
+    </div>
   </div>
 </template>
+
 <script setup lang="ts">
 import type { TokenItem } from '~/composables/useDashboard'
+
+const statusText = (status: string) => status === 'active' ? '启用中' : '已失效'
 defineProps<{ tokens: TokenItem[] }>()
 defineEmits<{ revoke: [id: string] }>()
 </script>

@@ -2,6 +2,11 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-06-07',
   modules: ['@pinia/nuxt', '@nuxt/ui'],
   css: ['~/assets/css/main.css'],
+  app: {
+    head: {
+      link: [{ rel: 'icon', type: 'image/webp', href: '/logo.webp' }]
+    }
+  },
   runtimeConfig: {
     public: {
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || 'http://localhost:8080',

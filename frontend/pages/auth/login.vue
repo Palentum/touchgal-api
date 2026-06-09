@@ -1,11 +1,20 @@
 <template>
-  <section class="mx-auto max-w-md px-6 py-16">
-    <h1 class="text-4xl font-black">邮箱验证码登录</h1>
-    <p class="mt-3 text-slate-300">登录后可提交 API 申请、生成 token 并查看请求统计。</p>
-    <AuthEmailCodeForm class="mt-8" mode="login" @verified="done" />
-    <NuxtLink to="/auth/register" class="mt-5 block text-sm text-emerald-300">还没有账号？立即注册</NuxtLink>
+  <section class="tg-section">
+    <div class="tg-container-narrow">
+      <div class="tg-grid-2">
+        <div>
+          <p class="tg-eyebrow">Console Login</p>
+          <h1 class="tg-display-lg">邮箱验证码登录</h1>
+          <p class="tg-lead">登录后可提交 API 申请、生成 token，并查看请求统计。session 继续由 HttpOnly Cookie 维护。</p>
+          <NuxtLink to="/auth/register" class="tg-link" style="margin-top: 28px; display: inline-flex;">还没有账号？立即注册</NuxtLink>
+        </div>
+
+        <AuthEmailCodeForm mode="login" @verified="done" />
+      </div>
+    </div>
   </section>
 </template>
+
 <script setup lang="ts">
 const route = useRoute()
 const done = async () => {

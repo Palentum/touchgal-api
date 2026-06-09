@@ -1,12 +1,16 @@
 <template>
-  <section class="grid gap-6">
-    <h1 class="text-4xl font-black">申请审核</h1>
+  <section class="tg-dashboard-stack">
+    <div>
+      <p class="tg-eyebrow">申请审核</p>
+      <h1 class="tg-display-md">申请审核</h1>
+      <p class="tg-lead">按项目查看开发者 API 访问申请，并执行管理员审核动作。</p>
+    </div>
     <AdminApplicationReviewTable :applications="applications" @review="review" />
   </section>
 </template>
 <script setup lang="ts">
 import type { ApplicationItem } from '~/composables/useDashboard'
-definePageMeta({ layout: 'dashboard', middleware: 'admin' })
+definePageMeta({ layout: 'admin', middleware: 'admin' })
 const { apiFetch } = useApi()
 const applications = ref<ApplicationItem[]>([])
 const load = async () => { const res = await apiFetch<ApplicationItem[]>('/admin/applications', { query: { page: 1, limit: 50 } }); if (res.success) applications.value = res.data }

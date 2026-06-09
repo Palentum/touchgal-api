@@ -6,7 +6,7 @@
         <span>TouchGal API</span>
       </NuxtLink>
 
-      <nav class="tg-sidebar-nav" aria-label="控制台导航">
+      <nav class="tg-sidebar-nav" aria-label="管理员后台导航">
         <NuxtLink v-for="item in items" :key="item.to" :to="item.to" class="tg-sidebar-link">
           {{ item.label }}
         </NuxtLink>
@@ -20,8 +20,8 @@
     <div class="tg-dashboard-content">
       <header class="tg-dashboard-header">
         <div>
-          <p class="tg-eyebrow" style="margin-bottom: 4px;">Developer Portal</p>
-          <p style="margin: 0; color: var(--tg-muted); font-size: 14px;">开发者控制台</p>
+          <p class="tg-eyebrow" style="margin-bottom: 4px;">Admin Console</p>
+          <p style="margin: 0; color: var(--tg-muted); font-size: 14px;">管理员后台</p>
         </div>
         <button class="tg-btn tg-btn-secondary" type="button" @click="logout">退出</button>
       </header>
@@ -35,25 +35,12 @@
 
 <script setup lang="ts">
 const auth = useAuthStore()
-const access = useApplicationAccess()
-const applyItem = { to: '/dashboard/apply', label: '账号申请' }
-const dashboardItems = [
-  { to: '/dashboard', label: '概览' },
-  { to: '/dashboard/tokens', label: 'Token 管理' },
-  { to: '/dashboard/stats', label: '请求统计' },
-  { to: '/dashboard/console', label: 'API 调试台' }
+const items = [
+  { to: '/admin', label: '管理员概览' },
+  { to: '/admin/applications', label: '审核申请' },
+  { to: '/admin/tokens', label: '全部 Token' },
+  { to: '/admin/sync', label: '同步状态' }
 ]
-const items = computed(() => {
-  if (!(access.loaded.value && access.hasApprovedApplication.value)) {
-    return [applyItem]
-  }
-  return dashboardItems
-})
-onMounted(() => {
-  if (auth.user) {
-    void access.fetchApplications(auth.user.id)
-  }
-})
 const logout = async () => {
   await auth.logout()
   await navigateTo('/auth/login')

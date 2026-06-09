@@ -1,26 +1,39 @@
 <template>
-  <section class="grid gap-6">
+  <section class="tg-dashboard-stack">
     <div>
-      <h1 class="text-4xl font-black">开发者后台</h1>
-      <p class="mt-2 text-slate-400">当前用户：{{ auth.user?.email }}</p>
+      <p class="tg-eyebrow">开发者门户</p>
+      <h1 class="tg-display-md">开发者后台</h1>
+      <p class="tg-lead">当前用户：{{ auth.user?.email }}</p>
     </div>
+
     <DashboardRequestSummaryCards :summary="summaryData" />
-    <div class="grid gap-6 lg:grid-cols-2">
-      <ApplicationApplicationStatus :applications="apps" />
-      <div class="rounded-3xl border border-white/10 bg-white/[0.06] p-6">
-        <h3 class="text-xl font-black">快捷入口</h3>
-        <div class="mt-5 grid gap-3"><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/apply">账号申请</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/tokens">生成 token</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/stats">查看统计</NuxtLink><NuxtLink class="rounded-2xl bg-slate-950 px-4 py-3 text-emerald-200" to="/dashboard/console">API 调试台</NuxtLink></div>
+
+    <div class="tg-grid-2">
+      <div class="tg-card">
+        <p class="tg-eyebrow">快捷入口</p>
+        <h2 class="tg-title-lg">快捷入口</h2>
+        <p class="tg-muted mt-3">从这里进入 token、统计与 API 调试台。</p>
+        <div class="tg-actions mt-6">
+          <NuxtLink class="tg-btn tg-btn-primary" to="/dashboard/tokens">生成 token</NuxtLink>
+          <NuxtLink class="tg-btn tg-btn-secondary" to="/dashboard/stats">查看统计</NuxtLink>
+          <NuxtLink class="tg-btn tg-btn-secondary" to="/dashboard/console">API 调试台</NuxtLink>
+        </div>
       </div>
+
+      <ApplicationApplicationStatus :applications="apps" />
     </div>
   </section>
 </template>
+
 <script setup lang="ts">
 import type { ApplicationItem } from '~/composables/useDashboard'
+
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 const auth = useAuthStore()
 const dash = useDashboard()
 const apps = ref<ApplicationItem[]>([])
 const summaryData = ref({ totalRequests: 0, successRequests: 0, errorRequests: 0, avgLatencyMs: 0, uniqueOrigins: 0, uniqueIPs: 0 })
+
 onMounted(async () => {
   const [appRes, summaryRes] = await Promise.all([dash.applications(), dash.summary(7)])
   if (appRes.success) apps.value = appRes.data

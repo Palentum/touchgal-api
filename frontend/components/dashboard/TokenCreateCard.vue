@@ -1,31 +1,46 @@
 <template>
-  <div class="rounded-3xl border border-emerald-300/20 bg-emerald-300/10 p-6">
-    <h3 class="text-xl font-black">创建 API Token</h3>
-    <p class="mt-2 text-sm text-slate-300">账号申请通过后可创建 API token；管理员账号默认视为已通过。明文 token 只显示一次。</p>
-    <div v-if="!hasApprovedApplication" class="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
-      <p>{{ hasApplication ? '账号申请尚未通过，暂不能创建 token。' : '请先提交账号级 API 申请。' }}</p>
-      <NuxtLink to="/dashboard/apply" class="mt-3 inline-flex rounded-xl bg-amber-300 px-4 py-2 font-bold text-slate-950">{{ hasApplication ? '查看申请状态' : '提交申请' }}</NuxtLink>
+  <div class="tg-card-dark">
+    <p class="tg-eyebrow">创建 Token</p>
+    <h2 class="tg-title-lg">创建 API Token</h2>
+    <p class="tg-muted mt-3">账号申请通过后可创建 API token。明文 token 只显示一次。</p>
+
+    <div v-if="!hasApprovedApplication" class="tg-card-outline mt-6">
+      <p class="tg-title-sm">{{ hasApplication ? '账号申请尚未通过，暂不能创建 token。' : '请先提交账号级 API 申请。' }}</p>
+      <NuxtLink to="/dashboard/apply" class="tg-btn tg-btn-amber mt-4">{{ hasApplication ? '查看申请状态' : '提交申请' }}</NuxtLink>
     </div>
-    <form v-else class="mt-5 grid gap-3" @submit.prevent="create">
-      <input v-model="name" class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder="Production Token" required>
-      <button class="rounded-xl bg-emerald-400 px-4 py-3 font-bold text-slate-950">生成 token</button>
+
+    <form v-else class="tg-card-outline tg-form mt-6" @submit.prevent="create">
+      <label class="tg-label">
+        Token 名称
+        <input v-model="name" class="tg-input" placeholder="Production Token" required>
+      </label>
+      <button class="tg-btn tg-btn-primary justify-self-start">生成 token</button>
     </form>
-    <div v-if="plainToken" class="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4">
-      <p class="font-bold text-amber-100">请立即复制，之后无法再次查看。</p>
-      <code class="mt-3 block break-all rounded-xl bg-slate-950 p-3 text-sm text-emerald-200">{{ plainToken }}</code>
+
+    <div v-if="plainToken" class="tg-code-window mt-6">
+      <div class="tg-code-window-bar">
+        <span>一次性明文 token</span>
+        <span class="tg-window-dots"><span /><span /><span /></span>
+      </div>
+      <div class="p-4">
+        <p class="tg-code-amber font-semibold">请立即复制，之后无法再次查看。</p>
+        <pre class="mt-3"><code>{{ plainToken }}</code></pre>
+      </div>
     </div>
   </div>
 </template>
+
 <script setup lang="ts">
 import type { ApplicationItem } from '~/composables/useDashboard'
+
 const props = defineProps<{ applications: ApplicationItem[] }>()
 const emit = defineEmits<{ created: [] }>()
 const { apiFetch } = useApi()
-const auth = useAuthStore()
 const name = ref('')
 const plainToken = ref('')
 const hasApplication = computed(() => props.applications.length > 0)
-const hasApprovedApplication = computed(() => Boolean(auth.user?.isAdmin) || props.applications.some((app) => app.status === 'approved'))
+const hasApprovedApplication = computed(() => props.applications.some((app) => app.status === 'approved'))
+
 const create = async () => {
   if (!hasApprovedApplication.value) return
   const res = await apiFetch<{ token: string }>('/tokens', { method: 'POST', body: { name: name.value } })

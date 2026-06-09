@@ -1,12 +1,18 @@
 <template>
-  <div class="min-h-screen bg-[#f6f1e8] text-slate-950">
-    <header class="border-b border-slate-900/10 bg-[#f6f1e8]/90 backdrop-blur">
-      <div class="mx-auto flex max-w-5xl justify-between px-6 py-4">
-        <NuxtLink to="/" class="font-black">TouchGal API</NuxtLink>
-        <NuxtLink to="/dashboard" class="text-sm font-semibold">控制台</NuxtLink>
-      </div>
+  <div class="tg-page">
+    <header class="tg-nav-shell">
+      <nav class="tg-container tg-nav" aria-label="文档导航">
+        <NuxtLink to="/" class="tg-brand">
+          <img class="tg-logo" src="/logo.webp" width="32" height="32" alt="" aria-hidden="true">
+          <span>TouchGal API</span>
+        </NuxtLink>
+        <div class="tg-nav-actions">
+          <NuxtLink to="/docs/api" class="tg-link">API 文档</NuxtLink>
+          <NuxtLink to="/dashboard" class="tg-btn tg-btn-secondary">控制台</NuxtLink>
+        </div>
+      </nav>
     </header>
-    <main class="mx-auto max-w-5xl px-6 py-10">
+    <main class="tg-container-narrow tg-section-tight">
       <slot />
     </main>
   </div>

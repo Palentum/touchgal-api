@@ -1,15 +1,31 @@
 <template>
-  <article class="prose-code">
-    <h1 class="text-5xl font-black">TouchGal API 文档</h1>
-    <p class="mt-4 text-lg text-slate-700">稳定、脱敏、可限流的 Galgame 条目 API。业务接口需要 API token，health 除外。</p>
+  <article class="tg-doc-article">
+    <header class="tg-card-coral">
+      <p class="tg-eyebrow" style="color: var(--tg-on-primary);">TouchGal API Docs</p>
+      <h1 class="tg-display-lg">TouchGal API 文档</h1>
+      <p style="margin-top: 20px; max-width: 680px; line-height: 1.7;">
+        稳定、脱敏、可限流的 Galgame 条目 API。业务接口需要 API token，health 除外。
+      </p>
+    </header>
 
-    <section v-for="section in sections" :key="section.title" class="mt-10 rounded-3xl border border-slate-900/10 bg-white/60 p-6 shadow-sm">
-      <h2 class="text-2xl font-black">{{ section.title }}</h2>
-      <p class="mt-3 whitespace-pre-line text-slate-700">{{ section.body }}</p>
-      <pre v-if="section.code" class="mt-4"><code>{{ section.code }}</code></pre>
+    <section v-for="section in sections" :key="section.title" class="tg-card-outline">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between;">
+        <h2 class="tg-title-lg">{{ section.title }}</h2>
+        <span v-if="section.code" class="tg-badge tg-badge-coral">Example</span>
+      </div>
+      <p class="tg-muted" style="margin-top: 14px; white-space: pre-line; line-height: 1.75;">{{ section.body }}</p>
+
+      <div v-if="section.code" class="tg-code-window" style="margin-top: 18px;">
+        <div class="tg-code-window-bar">
+          <span class="tg-window-dots" aria-hidden="true"><span /><span /><span /></span>
+          <span>{{ section.title }}</span>
+        </div>
+        <pre><code>{{ section.code }}</code></pre>
+      </div>
     </section>
   </article>
 </template>
+
 <script setup lang="ts">
 definePageMeta({ layout: 'docs' })
 const sections = [

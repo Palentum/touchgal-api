@@ -1,19 +1,31 @@
 <template>
-  <form class="grid gap-4 rounded-3xl border border-white/10 bg-white/[0.06] p-6" @submit.prevent="step === 'email' ? sendCode() : verifyCode()">
-    <label class="grid gap-2 text-sm">
+  <form class="tg-card tg-form" @submit.prevent="step === 'email' ? sendCode() : verifyCode()">
+    <label class="tg-label">
       邮箱
-      <input v-model="email" type="email" required class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white" :placeholder="mode === 'login' ? 'user@example.com' : undefined">
+      <input
+        v-model="email"
+        type="email"
+        required
+        class="tg-input"
+        :placeholder="mode === 'login' ? 'user@example.com' : undefined"
+      >
     </label>
-    <label v-if="mode === 'register'" class="grid gap-2 text-sm">
+
+    <label v-if="mode === 'register'" class="tg-label">
       昵称
-      <input v-model="displayName" required maxlength="80" class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white">
+      <input v-model="displayName" required maxlength="80" class="tg-input" placeholder="用于控制台展示">
     </label>
-    <label v-if="step === 'code'" class="grid gap-2 text-sm">
+
+    <label v-if="step === 'code'" class="tg-label">
       6 位验证码
-      <input v-model="code" inputmode="numeric" maxlength="6" required class="rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-white" placeholder="123456">
+      <input v-model="code" inputmode="numeric" maxlength="6" required class="tg-input" placeholder="123456">
     </label>
-    <p v-if="message" class="text-sm" :class="error ? 'text-rose-300' : 'text-emerald-300'">{{ message }}</p>
-    <button class="rounded-xl bg-emerald-400 px-4 py-3 font-bold text-slate-950" :disabled="loading">{{ loading ? '处理中...' : step === 'email' ? '发送验证码' : '完成验证' }}</button>
+
+    <p v-if="message" :class="error ? 'tg-message-error' : 'tg-message-ok'">{{ message }}</p>
+
+    <button class="tg-btn tg-btn-primary" type="submit" :disabled="loading">
+      {{ loading ? '处理中...' : step === 'email' ? '发送验证码' : '完成验证' }}
+    </button>
   </form>
 </template>
 
