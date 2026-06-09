@@ -16,5 +16,21 @@
 </template>
 
 <script setup lang="ts">
+definePageMeta({
+  middleware: async () => {
+    if (import.meta.server) {
+      return
+    }
+
+    const auth = useAuthStore()
+    if (!auth.loaded) {
+      await auth.fetchMe()
+    }
+    if (auth.user) {
+      return navigateTo('/dashboard')
+    }
+  }
+})
+
 const done = async () => { await navigateTo('/dashboard/apply') }
 </script>
