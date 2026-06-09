@@ -626,6 +626,10 @@ select:disabled {
   border: 1px solid var(--tg-hairline);
   border-radius: 12px;
   background: var(--tg-canvas);
+  color: var(--tg-body);
+}
+.tg-table-wrap .tg-muted {
+  color: var(--tg-muted);
 }
 
 .tg-table {
