@@ -14,7 +14,7 @@
       <NuxtLink class="tg-card-outline" to="/admin/applications">
         <p class="tg-eyebrow">申请审核</p>
         <h2 class="tg-title-lg">审核申请</h2>
-        <p class="tg-muted mt-3">批准、拒绝或撤销开发者项目访问。</p>
+        <p class="tg-muted mt-3">批准或拒绝开发者项目访问申请。</p>
       </NuxtLink>
       <NuxtLink class="tg-card-outline" to="/admin/tokens">
         <p class="tg-eyebrow">API Token</p>
