@@ -26,17 +26,15 @@
 </template>
 
 <script setup lang="ts">
-import type { ApplicationItem } from '~/composables/useDashboard'
-
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 const auth = useAuthStore()
 const dash = useDashboard()
-const apps = ref<ApplicationItem[]>([])
+const access = useApplicationAccess()
+const apps = access.applications
 const summaryData = ref({ totalRequests: 0, successRequests: 0, errorRequests: 0, avgLatencyMs: 0, uniqueOrigins: 0, uniqueIPs: 0 })
 
 onMounted(async () => {
-  const [appRes, summaryRes] = await Promise.all([dash.applications(), dash.summary(7)])
-  if (appRes.success) apps.value = appRes.data
+  const [, summaryRes] = await Promise.all([access.fetchApplications(auth.user?.id), dash.summary(7)])
   if (summaryRes.success) summaryData.value = summaryRes.data
 })
 </script>

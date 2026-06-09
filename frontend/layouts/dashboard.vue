@@ -3,16 +3,16 @@
     <aside class="tg-dashboard-sidebar">
       <NuxtLink to="/" class="tg-brand tg-brand-on-dark">
         <img class="tg-logo" src="/logo.webp" width="32" height="32" alt="" aria-hidden="true">
-        <span>TouchGal API</span>
+        <span>TouchGAL API</span>
       </NuxtLink>
 
-      <nav class="tg-sidebar-nav" aria-label="控制台导航">
+      <nav v-if="!showPending" class="tg-sidebar-nav" aria-label="控制台导航">
         <NuxtLink v-for="item in items" :key="item.to" :to="item.to" class="tg-sidebar-link">
           {{ item.label }}
         </NuxtLink>
       </nav>
 
-      <div style="margin-top: auto; padding-top: 32px;">
+      <div v-if="!showPending" style="margin-top: auto; padding-top: 32px;">
         <p class="tg-muted" style="margin: 0; font-size: 13px;">{{ auth.user?.email || '未登录' }}</p>
       </div>
     </aside>
@@ -23,11 +23,12 @@
           <p class="tg-eyebrow" style="margin-bottom: 4px;">Developer Portal</p>
           <p style="margin: 0; color: var(--tg-muted); font-size: 14px;">开发者控制台</p>
         </div>
-        <button class="tg-btn tg-btn-secondary" type="button" @click="logout">退出</button>
+        <button class="tg-btn tg-btn-secondary" type="button" :disabled="showPending" @click="logout">退出</button>
       </header>
 
       <main class="tg-dashboard-body">
-        <slot />
+        <h1 v-if="showPending" class="tg-display-md">加载中...</h1>
+        <slot v-else />
       </main>
     </div>
   </div>
@@ -36,6 +37,8 @@
 <script setup lang="ts">
 const auth = useAuthStore()
 const access = useApplicationAccess()
+const hydrated = ref(false)
+
 const applyItem = { to: '/dashboard/apply', label: '账号申请' }
 const dashboardItems = [
   { to: '/dashboard', label: '概览' },
@@ -43,13 +46,18 @@ const dashboardItems = [
   { to: '/dashboard/stats', label: '请求统计' },
   { to: '/dashboard/console', label: 'API 调试台' }
 ]
+const showPending = computed(() => !hydrated.value || !auth.loaded || !auth.user || !access.checked.value)
 const items = computed(() => {
-  if (!(access.loaded.value && access.hasApprovedApplication.value)) {
+  if (showPending.value) {
+    return []
+  }
+  if (!access.hasApprovedApplication.value) {
     return [applyItem]
   }
   return dashboardItems
 })
 onMounted(() => {
+  hydrated.value = true
   if (auth.user) {
     void access.fetchApplications(auth.user.id)
   }

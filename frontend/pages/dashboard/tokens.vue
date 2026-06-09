@@ -37,12 +37,14 @@
 </template>
 
 <script setup lang="ts">
-import type { ApplicationItem, TokenItem } from '~/composables/useDashboard'
+import type { TokenItem } from '~/composables/useDashboard'
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 const dash = useDashboard()
 const { apiFetch } = useApi()
-const apps = ref<ApplicationItem[]>([])
+const auth = useAuthStore()
+const access = useApplicationAccess()
+const apps = access.applications
 const tokens = ref<TokenItem[]>([])
 const editingToken = ref<TokenItem | null>(null)
 const editName = ref('')
@@ -52,8 +54,7 @@ const deletingToken = ref<TokenItem | null>(null)
 const deleteError = ref('')
 const deleting = ref(false)
 const load = async () => {
-  const [appRes, tokenRes] = await Promise.all([dash.applications(), dash.tokens()])
-  if (appRes.success) apps.value = appRes.data
+  const [, tokenRes] = await Promise.all([access.fetchApplications(auth.user?.id), dash.tokens()])
   if (tokenRes.success) tokens.value = tokenRes.data
 }
 

@@ -67,7 +67,9 @@
 import type { ApplicationItem } from '~/composables/useDashboard'
 
 const { apiFetch } = useApi()
-const applications = ref<ApplicationItem[]>([])
+const auth = useAuthStore()
+const access = useApplicationAccess()
+const applications = access.applications
 const form = reactive({ applicantName: '', projectName: '', projectUrl: '', expectedDailyRequests: 1000, usageScenario: '', agreeToTerms: false })
 const message = ref('')
 const ok = ref(false)
@@ -76,8 +78,7 @@ const badge = (status: string) => status === 'approved' ? 'tg-badge-success' : s
 const statusText = (status: string) => status === 'approved' ? '已通过' : status === 'pending' ? '审核中' : status === 'rejected' ? '未通过' : '已撤销'
 
 const loadApplications = async () => {
-  const res = await apiFetch<ApplicationItem[]>('/applications')
-  if (res.success) applications.value = res.data
+  await access.fetchApplications(auth.user?.id)
 }
 
 const submit = async () => {
