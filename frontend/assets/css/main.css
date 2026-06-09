@@ -418,6 +418,9 @@ select:disabled {
   color: var(--tg-primary);
 }
 
+.tg-card-dark .tg-card .tg-title-lg,
+.tg-card-dark .tg-card .tg-title-md,
+.tg-card-dark .tg-card .tg-title-sm,
 .tg-card-dark .tg-card-outline .tg-title-lg,
 .tg-card-dark .tg-card-outline .tg-title-md,
 .tg-card-dark .tg-card-outline .tg-title-sm {
