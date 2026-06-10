@@ -84,3 +84,28 @@ func TestPostgresPoolConfigRoundsRuntimeTimeoutsUpToOneMillisecond(t *testing.T)
 		t.Fatalf("expected sub-millisecond idle timeout to round up to 1ms, got %q", got)
 	}
 }
+
+func TestRedisOptionsFromConfigAppliesPoolAndTimeoutSettings(t *testing.T) {
+	cfg := config.Config{
+		RedisAddr:         "redis.example.com:6380",
+		RedisPassword:     "secret",
+		RedisDB:           2,
+		RedisPoolSize:     128,
+		RedisMinIdleConns: 16,
+		RedisDialTimeout:  250 * time.Millisecond,
+		RedisReadTimeout:  750 * time.Millisecond,
+		RedisWriteTimeout: time.Second,
+		RedisPoolTimeout:  2 * time.Second,
+	}
+
+	options := redisOptionsFromConfig(cfg)
+	if options.Addr != cfg.RedisAddr || options.Password != cfg.RedisPassword || options.DB != cfg.RedisDB {
+		t.Fatalf("unexpected Redis endpoint options: %+v", options)
+	}
+	if options.PoolSize != cfg.RedisPoolSize || options.MinIdleConns != cfg.RedisMinIdleConns {
+		t.Fatalf("unexpected Redis pool options: pool=%d minIdle=%d", options.PoolSize, options.MinIdleConns)
+	}
+	if options.DialTimeout != cfg.RedisDialTimeout || options.ReadTimeout != cfg.RedisReadTimeout || options.WriteTimeout != cfg.RedisWriteTimeout || options.PoolTimeout != cfg.RedisPoolTimeout {
+		t.Fatalf("unexpected Redis timeout options: dial=%s read=%s write=%s pool=%s", options.DialTimeout, options.ReadTimeout, options.WriteTimeout, options.PoolTimeout)
+	}
+}

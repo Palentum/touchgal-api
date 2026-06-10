@@ -181,6 +181,55 @@ func TestValidateRejectsUnknownLogLevel(t *testing.T) {
 	}
 }
 
+func TestLoadRedisDefaultsAndEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, key := range []string{
+		"REDIS_ADDR",
+		"REDIS_PASSWORD",
+		"REDIS_DB",
+		"REDIS_POOL_SIZE",
+		"REDIS_MIN_IDLE_CONNS",
+		"REDIS_DIAL_TIMEOUT",
+		"REDIS_READ_TIMEOUT",
+		"REDIS_WRITE_TIMEOUT",
+		"REDIS_POOL_TIMEOUT",
+	} {
+		t.Setenv(key, "")
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.RedisAddr != "localhost:6379" || cfg.RedisPassword != "" || cfg.RedisDB != 0 {
+		t.Fatalf("unexpected Redis endpoint defaults: addr=%q password=%q db=%d", cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	}
+	if cfg.RedisPoolSize != 0 || cfg.RedisMinIdleConns != 0 || cfg.RedisDialTimeout != 0 || cfg.RedisReadTimeout != 0 || cfg.RedisWriteTimeout != 0 || cfg.RedisPoolTimeout != 0 {
+		t.Fatalf("expected Redis pool/timeout defaults to defer to go-redis, got %+v", cfg)
+	}
+
+	t.Setenv("REDIS_ADDR", "redis.example.com:6380")
+	t.Setenv("REDIS_PASSWORD", "secret")
+	t.Setenv("REDIS_DB", "2")
+	t.Setenv("REDIS_POOL_SIZE", "128")
+	t.Setenv("REDIS_MIN_IDLE_CONNS", "16")
+	t.Setenv("REDIS_DIAL_TIMEOUT", "250ms")
+	t.Setenv("REDIS_READ_TIMEOUT", "750ms")
+	t.Setenv("REDIS_WRITE_TIMEOUT", "1s")
+	t.Setenv("REDIS_POOL_TIMEOUT", "2s")
+
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("expected env config to load: %v", err)
+	}
+	if cfg.RedisAddr != "redis.example.com:6380" || cfg.RedisPassword != "secret" || cfg.RedisDB != 2 {
+		t.Fatalf("unexpected Redis endpoint env config: addr=%q password=%q db=%d", cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	}
+	if cfg.RedisPoolSize != 128 || cfg.RedisMinIdleConns != 16 || cfg.RedisDialTimeout != 250*time.Millisecond || cfg.RedisReadTimeout != 750*time.Millisecond || cfg.RedisWriteTimeout != time.Second || cfg.RedisPoolTimeout != 2*time.Second {
+		t.Fatalf("unexpected Redis pool/timeout env config: %+v", cfg)
+	}
+}
+
 func TestLoadTokenLimitDefaultsAndEnv(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("MAX_ACTIVE_TOKENS_PER_USER", "")
@@ -261,6 +310,34 @@ func TestValidatePostgresSettings(t *testing.T) {
 	cfg.SourceDatabasePool.QueryTimeout = -time.Second
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected invalid SOURCE_DB_QUERY_TIMEOUT error")
+	}
+}
+
+func TestValidateRedisSettings(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{name: "negative pool size", mutate: func(cfg *Config) { cfg.RedisPoolSize = -1 }},
+		{name: "negative min idle", mutate: func(cfg *Config) { cfg.RedisMinIdleConns = -1 }},
+		{name: "min idle greater than explicit pool", mutate: func(cfg *Config) {
+			cfg.RedisPoolSize = 1
+			cfg.RedisMinIdleConns = 2
+		}},
+		{name: "negative dial timeout", mutate: func(cfg *Config) { cfg.RedisDialTimeout = -time.Second }},
+		{name: "negative read timeout", mutate: func(cfg *Config) { cfg.RedisReadTimeout = -time.Second }},
+		{name: "negative write timeout", mutate: func(cfg *Config) { cfg.RedisWriteTimeout = -time.Second }},
+		{name: "negative pool timeout", mutate: func(cfg *Config) { cfg.RedisPoolTimeout = -time.Second }},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validConfig()
+			tc.mutate(&cfg)
+			if err := cfg.Validate(); err == nil {
+				t.Fatal("expected invalid Redis config error")
+			}
+		})
 	}
 }
 

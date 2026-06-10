@@ -71,12 +71,22 @@ func OpenOptionalPostgres(ctx context.Context, dsn string, cfg config.PostgresCo
 	return OpenPostgres(ctx, dsn, cfg)
 }
 
+func redisOptionsFromConfig(cfg config.Config) *redis.Options {
+	return &redis.Options{
+		Addr:         cfg.RedisAddr,
+		Password:     cfg.RedisPassword,
+		DB:           cfg.RedisDB,
+		PoolSize:     cfg.RedisPoolSize,
+		MinIdleConns: cfg.RedisMinIdleConns,
+		DialTimeout:  cfg.RedisDialTimeout,
+		ReadTimeout:  cfg.RedisReadTimeout,
+		WriteTimeout: cfg.RedisWriteTimeout,
+		PoolTimeout:  cfg.RedisPoolTimeout,
+	}
+}
+
 func OpenRedis(ctx context.Context, cfg config.Config) (*redis.Client, error) {
-	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisAddr,
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-	})
+	client := redis.NewClient(redisOptionsFromConfig(cfg))
 	if err := client.Ping(ctx).Err(); err != nil {
 		_ = client.Close()
 		return nil, err

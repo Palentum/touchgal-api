@@ -50,9 +50,15 @@ type Config struct {
 	SyncDatabasePool   PostgresConfig
 	SourceDatabasePool PostgresConfig
 
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
+	RedisAddr         string
+	RedisPassword     string
+	RedisDB           int
+	RedisPoolSize     int
+	RedisMinIdleConns int
+	RedisDialTimeout  time.Duration
+	RedisReadTimeout  time.Duration
+	RedisWriteTimeout time.Duration
+	RedisPoolTimeout  time.Duration
 
 	SessionSecret                     string
 	SessionCookieName                 string
@@ -171,9 +177,15 @@ func Load() (Config, error) {
 		SyncDatabasePool:   postgresConfigFromEnv("SYNC_DB", defaultSyncPostgresConfig()),
 		SourceDatabasePool: postgresConfigFromEnv("SOURCE_DB", defaultSourcePostgresConfig()),
 
-		RedisAddr:     env("REDIS_ADDR", "localhost:6379"),
-		RedisPassword: env("REDIS_PASSWORD", ""),
-		RedisDB:       envInt("REDIS_DB", 0),
+		RedisAddr:         env("REDIS_ADDR", "localhost:6379"),
+		RedisPassword:     env("REDIS_PASSWORD", ""),
+		RedisDB:           envInt("REDIS_DB", 0),
+		RedisPoolSize:     envInt("REDIS_POOL_SIZE", 0),
+		RedisMinIdleConns: envInt("REDIS_MIN_IDLE_CONNS", 0),
+		RedisDialTimeout:  envDuration("REDIS_DIAL_TIMEOUT", 0),
+		RedisReadTimeout:  envDuration("REDIS_READ_TIMEOUT", 0),
+		RedisWriteTimeout: envDuration("REDIS_WRITE_TIMEOUT", 0),
+		RedisPoolTimeout:  envDuration("REDIS_POOL_TIMEOUT", 0),
 
 		SessionSecret:                     env("SESSION_SECRET", "please-change-this-64-byte-secret"),
 		SessionCookieName:                 env("SESSION_COOKIE_NAME", "tgal_dev_session"),
@@ -261,6 +273,31 @@ func validatePostgresConfig(prefix string, cfg PostgresConfig) error {
 	return nil
 }
 
+func validateRedisConfig(cfg Config) error {
+	if cfg.RedisPoolSize < 0 {
+		return errors.New("REDIS_POOL_SIZE must be zero or positive")
+	}
+	if cfg.RedisMinIdleConns < 0 {
+		return errors.New("REDIS_MIN_IDLE_CONNS must be zero or positive")
+	}
+	if cfg.RedisPoolSize > 0 && cfg.RedisMinIdleConns > cfg.RedisPoolSize {
+		return errors.New("REDIS_MIN_IDLE_CONNS must be less than or equal to REDIS_POOL_SIZE when REDIS_POOL_SIZE is positive")
+	}
+	if cfg.RedisDialTimeout < 0 {
+		return errors.New("REDIS_DIAL_TIMEOUT must be zero or positive")
+	}
+	if cfg.RedisReadTimeout < 0 {
+		return errors.New("REDIS_READ_TIMEOUT must be zero or positive")
+	}
+	if cfg.RedisWriteTimeout < 0 {
+		return errors.New("REDIS_WRITE_TIMEOUT must be zero or positive")
+	}
+	if cfg.RedisPoolTimeout < 0 {
+		return errors.New("REDIS_POOL_TIMEOUT must be zero or positive")
+	}
+	return nil
+}
+
 func (c Config) Validate() error {
 	if c.DatabaseDSN == "" {
 		return errors.New("DATABASE_DSN is required")
@@ -290,6 +327,9 @@ func (c Config) Validate() error {
 		return err
 	}
 	if err := validatePostgresConfig("SOURCE_DB", c.SourceDatabasePool); err != nil {
+		return err
+	}
+	if err := validateRedisConfig(c); err != nil {
 		return err
 	}
 	if c.SessionSecret == "" {
