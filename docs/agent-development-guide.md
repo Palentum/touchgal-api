@@ -63,6 +63,7 @@ Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter �
 - 管理 API：`/admin` + `RequireUser` + `RequireAdmin`。
 - Public API：`/v1` + `APIPreAuthRateLimit` + `APITokenAuth` + `APIRateLimit` + `APILastUsed` + `APIRequestLog`。
 
+- `/v1` Redis 限流必须同时按 token、user、application 维度独立计数；不要只取 `Effective*Limit` 后按 token key 计数，否则多 token 会放大账号上限。
 - `/v1` request logging 只允许通过 `services/requestlog.Writer` 的有界队列批量写入；不要在 middleware 中为每个请求启动 goroutine 或同步写 DB。Dashboard 统计应读取 `api_usage_*` 聚合表，raw `api_request_logs` 只短期保留用于排查，聚合明细按 dashboard 最大查询窗口清理。
 - `ClientIP` 只在直接 peer 是 loopback/private/link-local 时信任 `X-Forwarded-For` / `X-Real-IP`，避免公网直连伪造 pre-auth IP 限流 key。
 
@@ -151,6 +152,6 @@ API schema 或路由变更时，必须同时更新：
 - [ ] 是否保持 Cookie 登录而非前端存储 session。
 - [ ] 是否保持 token hash + pepper 校验。
 - [ ] 是否保持管理员路由 `RequireUser` + `RequireAdmin`。
-- [ ] 是否保持 `/v1` token auth、request log、rate limit middleware。
+- [ ] 是否保持 `/v1` token auth、request log、token/user/application 三维 rate limit middleware。
 - [ ] 是否同步 OpenAPI 双份文件。
 - [ ] 是否运行了直接覆盖改动的测试/类型检查。

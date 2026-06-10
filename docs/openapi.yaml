@@ -29,7 +29,7 @@ components:
         error:
           type: object
           properties:
-            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, RATE_LIMITED, INTERNAL_ERROR] }
+            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, INTERNAL_ERROR] }
             message: { type: string }
     HealthResponse:
       type: object
@@ -319,11 +319,11 @@ paths:
       responses: { '200': { description: OK } }
     post:
       security: []
-      summary: Create API token for approved account or admin user; plaintext is returned once
+      summary: Create API token for approved account or admin user; plaintext is returned once; active token count is capped per user
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } }
-      responses: { '201': { description: Token created } }
+      responses: { '201': { description: Token created }, '409': { description: Active token limit exceeded } }
   /tokens/{id}:
     patch:
       security: []

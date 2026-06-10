@@ -77,6 +77,47 @@ func (r tokenRow) Scan(dest ...any) error {
 	*(dest[12].(*time.Time)) = r.token.UpdatedAt
 	return nil
 }
+func TestTokenRepoCreateLocksUserAndPassesActiveLimit(t *testing.T) {
+	userID := uuid.New()
+	tokenID := uuid.New()
+	applicationID := uuid.New()
+	queryer := &queryRowOnlyQueryer{row: tokenRow{token: model.APIToken{
+		ID: tokenID, UserID: userID, ApplicationID: applicationID, Name: "prod",
+		TokenPrefix: "tgal_live_abcd", TokenHash: "hash", Status: model.TokenActive,
+		MinuteLimit: 60, DailyLimit: 1000, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}}}
+	repo := NewTokenRepo(queryer)
+
+	created, err := repo.Create(context.Background(), model.APIToken{
+		ID: tokenID, UserID: userID, ApplicationID: applicationID, Name: "prod",
+		TokenPrefix: "tgal_live_abcd", TokenHash: "hash", MinuteLimit: 60, DailyLimit: 1000,
+	}, 10)
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	if created.ID != tokenID || created.UserID != userID || created.ApplicationID != applicationID {
+		t.Fatalf("unexpected token: %#v", created)
+	}
+	if !strings.Contains(queryer.sql, "FROM (SELECT id FROM users WHERE id = $2 FOR UPDATE) AS u") {
+		t.Fatalf("create must lock the user row before counting active tokens: %q", queryer.sql)
+	}
+	if !strings.Contains(queryer.sql, "t.status = 'active'") || !strings.Contains(queryer.sql, "t.expires_at IS NULL OR t.expires_at > now()") {
+		t.Fatalf("create must count active non-expired tokens: %q", queryer.sql)
+	}
+	if len(queryer.args) != 10 || queryer.args[0] != tokenID || queryer.args[1] != userID || queryer.args[9] != 10 {
+		t.Fatalf("unexpected create args: %#v", queryer.args)
+	}
+}
+
+func TestTokenRepoCreateMapsActiveLimitToSentinel(t *testing.T) {
+	queryer := &queryRowOnlyQueryer{row: tokenRow{err: pgx.ErrNoRows}}
+	repo := NewTokenRepo(queryer)
+
+	_, err := repo.Create(context.Background(), model.APIToken{ID: uuid.New(), UserID: uuid.New()}, 1)
+	if err != model.ErrTokenLimitExceeded {
+		t.Fatalf("expected token limit error, got %v", err)
+	}
+}
 
 func TestTokenRepoUpdateNameForUserRenamesScopedRow(t *testing.T) {
 	tokenID := uuid.New()

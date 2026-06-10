@@ -11,19 +11,25 @@ import (
 )
 
 type fakeTokenStore struct {
-	created          *model.APIToken
-	auth             *model.TokenAuthInfo
-	authLookups      int
-	deletedForUserID uuid.UUID
-	deletedUserID    uuid.UUID
-	deletedID        uuid.UUID
-	updatedName      string
-	updatedForUserID uuid.UUID
-	updatedUserID    uuid.UUID
-	lastUsedUpdates  int
+	created               *model.APIToken
+	createMaxActiveTokens int
+	activeTokenCount      int
+	auth                  *model.TokenAuthInfo
+	authLookups           int
+	deletedForUserID      uuid.UUID
+	deletedUserID         uuid.UUID
+	deletedID             uuid.UUID
+	updatedName           string
+	updatedForUserID      uuid.UUID
+	updatedUserID         uuid.UUID
+	lastUsedUpdates       int
 }
 
-func (f *fakeTokenStore) Create(ctx context.Context, token model.APIToken) (*model.APIToken, error) {
+func (f *fakeTokenStore) Create(ctx context.Context, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error) {
+	f.createMaxActiveTokens = maxActiveTokensPerUser
+	if f.activeTokenCount >= maxActiveTokensPerUser {
+		return nil, model.ErrTokenLimitExceeded
+	}
 	token.Status = model.TokenActive
 	f.created = &token
 	return &token, nil
@@ -108,6 +114,30 @@ func TestTokenOnlyApprovedAccountCanCreate(t *testing.T) {
 	}
 	if store.created.ApplicationID != approved.ID {
 		t.Fatal("token must be tied to the account application selected by the service")
+	}
+}
+func TestCreateTokenEnforcesActiveTokenLimit(t *testing.T) {
+	userID := uuid.New()
+	cfg := config.Config{
+		APITokenPrefix:          "tgal_live",
+		APITokenPepper:          "pepper",
+		DefaultTokenMinuteLimit: 60,
+		DefaultTokenDailyLimit:  5000,
+		MaxActiveTokensPerUser:  2,
+	}
+	app := &model.Application{ID: uuid.New(), UserID: userID, Status: model.ApplicationApproved, DefaultMinuteLimit: 10, DefaultDailyLimit: 100}
+	store := &fakeTokenStore{activeTokenCount: 2}
+	svc := NewService(cfg, store, fakeTokenAppStore{app: app})
+
+	_, err := svc.Create(context.Background(), userID, false, "prod")
+	if err != model.ErrTokenLimitExceeded {
+		t.Fatalf("expected token limit error, got %v", err)
+	}
+	if store.createMaxActiveTokens != 2 {
+		t.Fatalf("expected max token limit 2, got %d", store.createMaxActiveTokens)
+	}
+	if store.created != nil {
+		t.Fatal("token over the active limit must not be created")
 	}
 }
 

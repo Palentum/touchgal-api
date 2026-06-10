@@ -151,6 +151,36 @@ func TestValidateRejectsUnknownLogLevel(t *testing.T) {
 	}
 }
 
+func TestLoadTokenLimitDefaultsAndEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("MAX_ACTIVE_TOKENS_PER_USER", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.MaxActiveTokensPerUser != DefaultMaxActiveTokensPerUser {
+		t.Fatalf("unexpected max active token default: %d", cfg.MaxActiveTokensPerUser)
+	}
+
+	t.Setenv("MAX_ACTIVE_TOKENS_PER_USER", "3")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("expected env config to load: %v", err)
+	}
+	if cfg.MaxActiveTokensPerUser != 3 {
+		t.Fatalf("unexpected max active token env: %d", cfg.MaxActiveTokensPerUser)
+	}
+}
+
+func TestValidateTokenLimitSettings(t *testing.T) {
+	cfg := validConfig()
+	cfg.MaxActiveTokensPerUser = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid MAX_ACTIVE_TOKENS_PER_USER error")
+	}
+}
+
 func TestValidateAPIRequestLogSettings(t *testing.T) {
 	cfg := validConfig()
 	cfg.APIRequestLogQueueSize = 0
@@ -224,6 +254,7 @@ func validConfig() Config {
 		APIPreAuthIPMinuteLimit:       1,
 		APIPreAuthIPDailyLimit:        1,
 		APITokenAuthCacheTTLSeconds:   1,
+		MaxActiveTokensPerUser:        1,
 		APILastUsedUpdateIntervalSecs: 1,
 		APIRequestLogQueueSize:        1,
 		APIRequestLogBatchSize:        1,

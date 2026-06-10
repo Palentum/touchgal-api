@@ -49,6 +49,41 @@ func TestAPIPreAuthRateLimitBlocksBeforeNext(t *testing.T) {
 		t.Fatalf("next handler called %d times", called)
 	}
 }
+func TestRateLimitExpirySetOnlyWhenBucketCreated(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+	checks := []rateLimitCheck{{
+		scope:       "token",
+		subject:     uuid.NewString(),
+		minuteLimit: 10,
+		dayLimit:    100,
+	}}
+
+	if _, err := incrementLimitChecks(context.Background(), client, checks); err != nil {
+		t.Fatalf("first increment: %v", err)
+	}
+	keys, err := client.Keys(context.Background(), "ratelimit:token:"+checks[0].subject+":minute:*").Result()
+	if err != nil {
+		t.Fatalf("list minute keys: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("expected one minute key, got %d", len(keys))
+	}
+	initialTTL := server.TTL(keys[0])
+	if initialTTL != 2*time.Minute {
+		t.Fatalf("unexpected initial ttl %s", initialTTL)
+	}
+	server.FastForward(30 * time.Second)
+	beforeSecondIncrementTTL := server.TTL(keys[0])
+	if _, err := incrementLimitChecks(context.Background(), client, checks); err != nil {
+		t.Fatalf("second increment: %v", err)
+	}
+	afterSecondIncrementTTL := server.TTL(keys[0])
+	if afterSecondIncrementTTL != beforeSecondIncrementTTL {
+		t.Fatalf("ttl reset on existing bucket: before=%s after=%s", beforeSecondIncrementTTL, afterSecondIncrementTTL)
+	}
+}
 
 func TestAPIRateLimit(t *testing.T) {
 	server := miniredis.RunT(t)
@@ -115,31 +150,75 @@ func TestAPILastUsedThrottlesDatabaseUpdates(t *testing.T) {
 	}
 }
 
-func TestAPIRateLimitAppliesUserCap(t *testing.T) {
+func TestAPIRateLimitAppliesUserCapAcrossTokens(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()
-	info := &model.TokenAuthInfo{
-		Token:           model.APIToken{ID: uuid.New(), MinuteLimit: 10, DailyLimit: 100},
+	userID := uuid.New()
+	firstToken := &model.TokenAuthInfo{
+		Token:           model.APIToken{ID: uuid.New(), UserID: userID, MinuteLimit: 10, DailyLimit: 100},
+		UserID:          userID,
+		UserMinuteLimit: 1,
+		UserDailyLimit:  10,
+	}
+	secondToken := &model.TokenAuthInfo{
+		Token:           model.APIToken{ID: uuid.New(), UserID: userID, MinuteLimit: 10, DailyLimit: 100},
+		UserID:          userID,
 		UserMinuteLimit: 1,
 		UserDailyLimit:  10,
 	}
 	handler := APIRateLimit(client)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
-	request := func() *httptest.ResponseRecorder {
+	request := func(info *model.TokenAuthInfo) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
 		req = req.WithContext(WithTokenInfo(req.Context(), info))
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, req)
 		return res
 	}
-	first := request()
+	first := request(firstToken)
 	if first.Code != http.StatusNoContent {
 		t.Fatalf("first request got %d", first.Code)
 	}
 	if got := first.Header().Get("X-RateLimit-Limit-Minute"); got != "1" {
 		t.Fatalf("minute limit header got %q", got)
 	}
-	if code := request().Code; code != http.StatusTooManyRequests {
-		t.Fatalf("second request got %d", code)
+	if got := first.Header().Get("X-RateLimit-Remaining-Minute"); got != "0" {
+		t.Fatalf("minute remaining header got %q", got)
+	}
+	if code := request(secondToken).Code; code != http.StatusTooManyRequests {
+		t.Fatalf("second token request got %d", code)
+	}
+}
+
+func TestAPIRateLimitAppliesApplicationCapAcrossTokens(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+	applicationID := uuid.New()
+	firstToken := &model.TokenAuthInfo{
+		Token:                  model.APIToken{ID: uuid.New(), ApplicationID: applicationID, MinuteLimit: 10, DailyLimit: 100},
+		ApplicationID:          applicationID,
+		ApplicationMinuteLimit: 1,
+		ApplicationDailyLimit:  10,
+	}
+	secondToken := &model.TokenAuthInfo{
+		Token:                  model.APIToken{ID: uuid.New(), ApplicationID: applicationID, MinuteLimit: 10, DailyLimit: 100},
+		ApplicationID:          applicationID,
+		ApplicationMinuteLimit: 1,
+		ApplicationDailyLimit:  10,
+	}
+	handler := APIRateLimit(client)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	request := func(info *model.TokenAuthInfo) int {
+		req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+		req = req.WithContext(WithTokenInfo(req.Context(), info))
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		return res.Code
+	}
+	if code := request(firstToken); code != http.StatusNoContent {
+		t.Fatalf("first request got %d", code)
+	}
+	if code := request(secondToken); code != http.StatusTooManyRequests {
+		t.Fatalf("second token request got %d", code)
 	}
 }

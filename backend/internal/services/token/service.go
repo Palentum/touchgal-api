@@ -18,7 +18,7 @@ import (
 )
 
 type Store interface {
-	Create(ctx context.Context, token model.APIToken) (*model.APIToken, error)
+	Create(ctx context.Context, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.APIToken, error)
 	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error)
 	GetByHashWithApplication(ctx context.Context, tokenHash string) (*model.TokenAuthInfo, error)
@@ -171,7 +171,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, isAdmin bool, na
 	if record.DailyLimit <= 0 {
 		record.DailyLimit = s.cfg.DefaultTokenDailyLimit
 	}
-	created, err := s.tokens.Create(ctx, record)
+	created, err := s.tokens.Create(ctx, record, s.maxActiveTokensPerUser())
 	if err != nil {
 		return nil, err
 	}
@@ -181,6 +181,13 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, isAdmin bool, na
 func (s *Service) ListMine(ctx context.Context, userID uuid.UUID) ([]model.APIToken, error) {
 	return s.tokens.ListByUser(ctx, userID)
 }
+func (s *Service) maxActiveTokensPerUser() int {
+	if s.cfg.MaxActiveTokensPerUser > 0 {
+		return s.cfg.MaxActiveTokensPerUser
+	}
+	return config.DefaultMaxActiveTokensPerUser
+}
+
 func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error) {
 	if page < 1 {
 		page = 1

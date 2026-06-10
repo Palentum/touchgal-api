@@ -22,7 +22,7 @@
       <div class="tg-card">
         <p class="tg-eyebrow">账户限额</p>
         <h2 class="tg-title-lg">账户限额</h2>
-        <p class="tg-muted mt-3">账号级上限会作为 API token 的有效限流上限。</p>
+        <p class="tg-muted mt-3">账号级上限按账号总请求量计数，不会被多个 API token 放大。</p>
         <div class="tg-actions mt-6">
           <div class="tg-limit-pill">
             <p class="tg-stat-label">每分钟请求</p>

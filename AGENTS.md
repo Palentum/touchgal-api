@@ -22,7 +22,7 @@ TouchGal main PostgreSQL (read-only)
 - Backend layering: handlers (`backend/internal/httpserver/handlers`) -> services (`backend/internal/services`) -> repositories (`backend/internal/repository`) -> PostgreSQL/Redis. Keep validation/business rules in services, SQL in repositories, HTTP concerns in handlers/middleware.
 - Router: `backend/internal/httpserver/server.go` uses `chi`. Route groups are `/auth`, authenticated app/token/dashboard routes, `/admin`, and `/v1` token-authenticated public API routes.
 - Auth flow: email OTP -> server-side HttpOnly session cookie. Frontend must not store session/token secrets in `localStorage`.
-- API token flow: approved application -> token created with `tgal_live` prefix -> SHA-256 hash with `API_TOKEN_PEPPER` stored -> plaintext returned once. `/v1` accepts bearer auth or `X-API-Token` and applies Redis rate limits.
+- API token flow: approved application -> token created with `tgal_live` prefix (active count capped by `MAX_ACTIVE_TOKENS_PER_USER`) -> SHA-256 hash with `API_TOKEN_PEPPER` stored -> plaintext returned once. `/v1` accepts bearer auth or `X-API-Token` and applies independent Redis counters for token, user, and application rate limits.
 - Sync flow: reads source `patch`, aliases, tag/company relations, and rating stats by keyset/page; writes clean tables (`games`, `game_aliases`, `tags`, `companies`, `game_rating_stats`) with short batch transactions. Full sync records seen source patch IDs in `sync_run_seen` and marks unseen rows deleted only after all batches succeed.
 - Frontend flow: Nuxt pages call the backend through `useApi()` with `credentials: 'include'`; Pinia auth state gates dashboard/admin pages via route middleware.
 

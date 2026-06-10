@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	MailDriverSMTP   = "smtp"
-	MailDriverPostal = "postal"
-	MailDriverLog    = "log"
+	MailDriverSMTP                = "smtp"
+	MailDriverPostal              = "postal"
+	MailDriverLog                 = "log"
+	DefaultMaxActiveTokensPerUser = 10
 )
 
 type PostgresConfig struct {
@@ -81,6 +82,7 @@ type Config struct {
 	APIPreAuthIPMinuteLimit       int
 	APIPreAuthIPDailyLimit        int
 	APITokenAuthCacheTTLSeconds   int
+	MaxActiveTokensPerUser        int
 	APILastUsedUpdateIntervalSecs int
 	APIRequestLogQueueSize        int
 	APIRequestLogBatchSize        int
@@ -198,6 +200,7 @@ func Load() (Config, error) {
 		APIPreAuthIPMinuteLimit:       envInt("API_PREAUTH_IP_MINUTE_LIMIT", 600),
 		APIPreAuthIPDailyLimit:        envInt("API_PREAUTH_IP_DAILY_LIMIT", 20000),
 		APITokenAuthCacheTTLSeconds:   envInt("API_TOKEN_AUTH_CACHE_TTL_SECONDS", 60),
+		MaxActiveTokensPerUser:        envInt("MAX_ACTIVE_TOKENS_PER_USER", DefaultMaxActiveTokensPerUser),
 		APILastUsedUpdateIntervalSecs: envInt("API_LAST_USED_UPDATE_INTERVAL_SECONDS", 300),
 		APIRequestLogQueueSize:        envInt("API_REQUEST_LOG_QUEUE_SIZE", 16384),
 		APIRequestLogBatchSize:        envInt("API_REQUEST_LOG_BATCH_SIZE", 500),
@@ -317,6 +320,9 @@ func (c Config) Validate() error {
 	}
 	if c.DefaultTokenMinuteLimit <= 0 || c.DefaultTokenDailyLimit <= 0 {
 		return errors.New("token limits must be positive")
+	}
+	if c.MaxActiveTokensPerUser <= 0 {
+		return errors.New("MAX_ACTIVE_TOKENS_PER_USER must be positive")
 	}
 	if c.APIPreAuthIPMinuteLimit <= 0 || c.APIPreAuthIPDailyLimit <= 0 {
 		return errors.New("pre-auth IP limits must be positive")

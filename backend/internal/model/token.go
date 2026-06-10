@@ -25,24 +25,31 @@ type APIToken struct {
 }
 
 type TokenAuthInfo struct {
-	Token             APIToken
-	ApplicationStatus string
-	UserID            uuid.UUID
-	UserMinuteLimit   int
-	UserDailyLimit    int
-	ApplicationID     uuid.UUID
+	Token                  APIToken
+	ApplicationStatus      string
+	UserID                 uuid.UUID
+	UserMinuteLimit        int
+	UserDailyLimit         int
+	ApplicationID          uuid.UUID
+	ApplicationMinuteLimit int
+	ApplicationDailyLimit  int
 }
 
 func (i TokenAuthInfo) EffectiveMinuteLimit() int {
-	if i.UserMinuteLimit > 0 && i.UserMinuteLimit < i.Token.MinuteLimit {
-		return i.UserMinuteLimit
-	}
-	return i.Token.MinuteLimit
+	return minPositiveLimit(i.Token.MinuteLimit, i.UserMinuteLimit, i.ApplicationMinuteLimit)
 }
 
 func (i TokenAuthInfo) EffectiveDailyLimit() int {
-	if i.UserDailyLimit > 0 && i.UserDailyLimit < i.Token.DailyLimit {
-		return i.UserDailyLimit
+	return minPositiveLimit(i.Token.DailyLimit, i.UserDailyLimit, i.ApplicationDailyLimit)
+}
+
+func minPositiveLimit(base, first, second int) int {
+	limit := base
+	if first > 0 && (limit <= 0 || first < limit) {
+		limit = first
 	}
-	return i.Token.DailyLimit
+	if second > 0 && (limit <= 0 || second < limit) {
+		limit = second
+	}
+	return limit
 }

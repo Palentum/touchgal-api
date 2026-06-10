@@ -51,7 +51,7 @@ cp backend/.env.example backend/.env
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
-- `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS`：`/v1` pre-auth IP 粗限流、token auth 短缓存与 `last_used_at` 写入节流。
+- `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、token auth 短缓存、`last_used_at` 写入节流与单账号 active token 数量上限。
 - `API_REQUEST_LOG_QUEUE_SIZE` / `API_REQUEST_LOG_BATCH_SIZE` / `API_REQUEST_LOG_FLUSH_INTERVAL` / `API_REQUEST_LOG_RETENTION_DAYS`：`/v1` request log 有界队列、批量写入间隔与 raw log 保留天数；dashboard 统计读取聚合表。
 - `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步，默认 `false`；生产建议保持关闭并使用独立 worker。
 - `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS`：仅在 `ENABLE_SYNC_WORKER=true` 时控制 API 进程内 incremental/full 同步周期。
@@ -123,7 +123,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 1. 用户通过邮箱验证码注册或登录。
 2. 登录后访问 `/apply` 提交一次账户级申请：负责人、项目地址、预估请求量、使用场景、同意条款。
 3. 管理员在 `/admin/applications` 审核账户申请。
-4. 申请 `approved` 后，该账户可在 `/dashboard/tokens` 无限创建 token；管理员账户默认视为已通过申请。
+4. 申请 `approved` 后，该账户可在 `/dashboard/tokens` 创建 token；active token 数量受 `MAX_ACTIVE_TOKENS_PER_USER` 限制（默认 10），管理员账户默认视为已通过申请。
 5. token 明文只返回一次；数据库只保存 hash。
 6. 用户可随时删除 token；删除会直接移除数据库中的 token 记录，该 token 不能继续访问 `/v1`。
 
@@ -179,4 +179,5 @@ curl "https://api.example.com/v1/me" \
 - 响应错误不暴露数据库结构。
 - 主机 PostgreSQL/Redis 只监听可信接口，并通过 PostgreSQL 用户权限、Redis 密码或本机防火墙限制访问；容器通过 `host.docker.internal` 连接主机服务时不应暴露无认证 Redis 到公网。
 - `/v1` pre-auth IP 限流只信任来自 loopback/private/link-local peer 的 `X-Forwarded-For` / `X-Real-IP`；生产应让后端只暴露给可信反向代理或内网入口。
+- `/v1` Redis 限流同时按 token、user、application 独立计数，账号级/应用级上限不会被多 token 放大。
 - clean DB 不包含主项目 user/email/password/IP/role/session/token/resource link。

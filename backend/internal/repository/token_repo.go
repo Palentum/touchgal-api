@@ -13,13 +13,64 @@ type TokenRepo struct{ db Queryer }
 
 func NewTokenRepo(db Queryer) *TokenRepo { return &TokenRepo{db: db} }
 
-func (r *TokenRepo) Create(ctx context.Context, token model.APIToken) (*model.APIToken, error) {
-	err := r.db.QueryRow(ctx, `
+type txBeginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+func (r *TokenRepo) Create(ctx context.Context, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error) {
+	if beginner, ok := r.db.(txBeginner); ok {
+		return r.createInTx(ctx, beginner, token, maxActiveTokensPerUser)
+	}
+	return createToken(ctx, r.db, token, maxActiveTokensPerUser)
+}
+
+func (r *TokenRepo) createInTx(ctx context.Context, beginner txBeginner, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error) {
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := lockTokenUser(ctx, tx, token.UserID); err != nil {
+		return nil, err
+	}
+	created, err := createToken(ctx, tx, token, maxActiveTokensPerUser)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+func lockTokenUser(ctx context.Context, db Queryer, userID uuid.UUID) error {
+	var lockedID uuid.UUID
+	err := db.QueryRow(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&lockedID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.ErrNotFound
+	}
+	return err
+}
+
+func createToken(ctx context.Context, db Queryer, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error) {
+	err := db.QueryRow(ctx, `
 		INSERT INTO api_tokens (id, user_id, application_id, name, token_prefix, token_hash, minute_limit, daily_limit, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		SELECT $1, u.id, $3, $4, $5, $6, $7, $8, $9
+		FROM (SELECT id FROM users WHERE id = $2 FOR UPDATE) AS u
+		WHERE (
+			SELECT count(*)
+			FROM api_tokens t
+			WHERE t.user_id = u.id
+			  AND t.status = 'active'
+			  AND (t.expires_at IS NULL OR t.expires_at > now())
+		) < $10
 		RETURNING id, user_id, application_id, name, token_prefix, token_hash, status, minute_limit, daily_limit, last_used_at, expires_at, created_at, updated_at`,
-		token.ID, token.UserID, token.ApplicationID, token.Name, token.TokenPrefix, token.TokenHash, token.MinuteLimit, token.DailyLimit, token.ExpiresAt,
+		token.ID, token.UserID, token.ApplicationID, token.Name, token.TokenPrefix, token.TokenHash, token.MinuteLimit, token.DailyLimit, token.ExpiresAt, maxActiveTokensPerUser,
 	).Scan(&token.ID, &token.UserID, &token.ApplicationID, &token.Name, &token.TokenPrefix, &token.TokenHash, &token.Status, &token.MinuteLimit, &token.DailyLimit, &token.LastUsedAt, &token.ExpiresAt, &token.CreatedAt, &token.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, model.ErrTokenLimitExceeded
+	}
 	return &token, err
 }
 
@@ -70,12 +121,12 @@ func (r *TokenRepo) GetByHashWithApplication(ctx context.Context, tokenHash stri
 	info := &model.TokenAuthInfo{}
 	err := r.db.QueryRow(ctx, `
 		SELECT t.id, t.user_id, t.application_id, t.name, t.token_prefix, t.token_hash, t.status, t.minute_limit, t.daily_limit, t.last_used_at, t.expires_at, t.created_at, t.updated_at,
-		       a.status, a.id, a.user_id, u.minute_limit, u.daily_limit
+		       a.status, a.id, u.id, u.minute_limit, u.daily_limit, a.default_minute_limit, a.default_daily_limit
 		FROM api_tokens t
-		JOIN api_applications a ON a.id = t.application_id
+		JOIN api_applications a ON a.id = t.application_id AND a.user_id = t.user_id
 		JOIN users u ON u.id = t.user_id
 		WHERE t.token_hash = $1`, tokenHash,
-	).Scan(&info.Token.ID, &info.Token.UserID, &info.Token.ApplicationID, &info.Token.Name, &info.Token.TokenPrefix, &info.Token.TokenHash, &info.Token.Status, &info.Token.MinuteLimit, &info.Token.DailyLimit, &info.Token.LastUsedAt, &info.Token.ExpiresAt, &info.Token.CreatedAt, &info.Token.UpdatedAt, &info.ApplicationStatus, &info.ApplicationID, &info.UserID, &info.UserMinuteLimit, &info.UserDailyLimit)
+	).Scan(&info.Token.ID, &info.Token.UserID, &info.Token.ApplicationID, &info.Token.Name, &info.Token.TokenPrefix, &info.Token.TokenHash, &info.Token.Status, &info.Token.MinuteLimit, &info.Token.DailyLimit, &info.Token.LastUsedAt, &info.Token.ExpiresAt, &info.Token.CreatedAt, &info.Token.UpdatedAt, &info.ApplicationStatus, &info.ApplicationID, &info.UserID, &info.UserMinuteLimit, &info.UserDailyLimit, &info.ApplicationMinuteLimit, &info.ApplicationDailyLimit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}

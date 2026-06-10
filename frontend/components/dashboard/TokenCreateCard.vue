@@ -2,7 +2,7 @@
   <div class="tg-card-dark">
     <p class="tg-eyebrow">Create Token</p>
     <h2 class="tg-title-lg">创建 API Token</h2>
-    <p class="tg-muted mt-3">账号申请通过后可创建 API token。明文 token 只显示一次。</p>
+    <p class="tg-muted mt-3">账号申请通过后可创建有限数量的 API token。明文 token 只显示一次。</p>
 
     <div v-if="!hasApprovedApplication" class="tg-card-outline mt-6">
       <p class="tg-title-sm">{{ hasApplication ? '账号申请尚未通过，暂不能创建 token。' : '请先提交账号级 API 申请。' }}</p>
