@@ -14,6 +14,8 @@ type ApplicationRepo struct{ db Queryer }
 
 func NewApplicationRepo(db Queryer) *ApplicationRepo { return &ApplicationRepo{db: db} }
 
+const applicationListByUserCapHint = 4
+
 func (r *ApplicationRepo) Create(ctx context.Context, userID uuid.UUID, input model.CreateApplicationInput, minuteLimit, dailyLimit int) (*model.Application, error) {
 	app := &model.Application{ID: uuid.New(), UserID: userID}
 	err := r.db.QueryRow(ctx, `
@@ -68,7 +70,7 @@ func (r *ApplicationRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]m
 		return nil, err
 	}
 	defer rows.Close()
-	return scanApplications(rows)
+	return scanApplications(rows, applicationListByUserCapHint)
 }
 
 func (r *ApplicationRepo) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error) {
@@ -81,7 +83,7 @@ func (r *ApplicationRepo) ListAdmin(ctx context.Context, status string, page, li
 			return nil, err
 		}
 		defer rows.Close()
-		return scanApplications(rows)
+		return scanApplications(rows, limit)
 	}
 	rows, err := r.db.Query(ctx, `
 		SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, review_note, reviewed_by, reviewed_at, created_at, updated_at
@@ -90,7 +92,7 @@ func (r *ApplicationRepo) ListAdmin(ctx context.Context, status string, page, li
 		return nil, err
 	}
 	defer rows.Close()
-	return scanApplications(rows)
+	return scanApplications(rows, limit)
 }
 
 func (r *ApplicationRepo) UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status, note string, minuteLimit, dailyLimit int) (*model.Application, error) {
@@ -119,12 +121,15 @@ func (r *ApplicationRepo) get(ctx context.Context, where string, args ...any) (*
 	return app, err
 }
 
-func scanApplications(rows pgx.Rows) ([]model.Application, error) {
-	apps := []model.Application{}
+func scanApplications(rows pgx.Rows, capHint int) ([]model.Application, error) {
+	apps := make([]model.Application, 0)
 	for rows.Next() {
 		var app model.Application
 		if err := rows.Scan(&app.ID, &app.UserID, &app.ApplicantName, &app.ProjectName, &app.ProjectURL, &app.ExpectedDailyRequests, &app.UsageScenario, &app.Status, &app.DefaultMinuteLimit, &app.DefaultDailyLimit, &app.ReviewNote, &app.ReviewedBy, &app.ReviewedAt, &app.CreatedAt, &app.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if cap(apps) == 0 {
+			apps = make([]model.Application, 0, positiveCapHint(capHint))
 		}
 		apps = append(apps, app)
 	}

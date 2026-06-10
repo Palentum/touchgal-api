@@ -62,7 +62,7 @@ func (r *UserRepo) ListAdmin(ctx context.Context, status, query string, page, li
 		return nil, err
 	}
 	defer rows.Close()
-	return scanUsers(rows)
+	return scanUsers(rows, limit)
 }
 
 func (r *UserRepo) UpdateAdmin(ctx context.Context, id uuid.UUID, email, displayName, status *string, minuteLimit, dailyLimit *int) (*model.User, error) {
@@ -123,12 +123,15 @@ func (r *UserRepo) TouchLastLogin(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-func scanUsers(rows pgx.Rows) ([]model.User, error) {
-	users := []model.User{}
+func scanUsers(rows pgx.Rows, capHint int) ([]model.User, error) {
+	users := make([]model.User, 0)
 	for rows.Next() {
 		var user model.User
 		if err := rows.Scan(&user.ID, &user.Email, &user.DisplayName, &user.Status, &user.IsAdmin, &user.MinuteLimit, &user.DailyLimit, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if cap(users) == 0 {
+			users = make([]model.User, 0, positiveCapHint(capHint))
 		}
 		users = append(users, user)
 	}

@@ -39,3 +39,10 @@ func NewWithQueryer(db Queryer) *Repositories {
 		Sync:         NewSyncRepo(db),
 	}
 }
+
+func positiveCapHint(limit int) int {
+	if limit > 0 {
+		return limit
+	}
+	return 0
+}

@@ -484,11 +484,14 @@ func (s *Service) querySourceGamePage(ctx context.Context, mode string, since *t
 	}
 	defer cancel()
 	defer rows.Close()
-	items := []SourceGame{}
+	items := make([]SourceGame, 0)
 	for rows.Next() {
 		var g SourceGame
 		if err := rows.Scan(&g.ID, &g.UniqueID, &g.Name, &g.Introduction, &g.Banner, &g.Released, &g.ContentLimit, &g.Types, &g.Languages, &g.Platforms, &g.CreatedAt, &g.UpdatedAt, &g.ResourceUpdatedAt); err != nil {
 			return nil, err
+		}
+		if cap(items) == 0 {
+			items = make([]SourceGame, 0, limit)
 		}
 		items = append(items, g)
 	}
@@ -585,7 +588,7 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 			cancel()
 			return relations, err
 		}
-		r.Histogram = map[string]int{"1": o1, "2": o2, "3": o3, "4": o4, "5": o5, "6": o6, "7": o7, "8": o8, "9": o9, "10": o10}
+		r.Histogram = model.RatingHistogram{Score1: o1, Score2: o2, Score3: o3, Score4: o4, Score5: o5, Score6: o6, Score7: o7, Score8: o8, Score9: o9, Score10: o10}
 		relations.ratings[patchID] = &r
 	}
 	if err := rows.Err(); err != nil {

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,6 +29,20 @@ func (q *recordingSyncQueryer) Query(ctx context.Context, sql string, args ...an
 }
 
 func (q *recordingSyncQueryer) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	panic("unexpected query row")
+}
+
+type discardSyncQueryer struct{}
+
+func (discardSyncQueryer) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+	return pgconn.NewCommandTag("UPDATE 3"), nil
+}
+
+func (discardSyncQueryer) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	panic("unexpected query")
+}
+
+func (discardSyncQueryer) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	panic("unexpected query row")
 }
 
@@ -190,7 +205,7 @@ func TestSyncRepoUpsertRatingsBatchUsesAffectedSetForDeletesAndUpserts(t *testin
 	repo := NewSyncRepo(queryer)
 
 	err := repo.UpsertRatingsBatch(context.Background(), map[string]*model.RatingData{
-		"g0000001": &model.RatingData{AverageOverall: 4.5, Count: 9, Histogram: map[string]int{"5": 3}},
+		"g0000001": &model.RatingData{AverageOverall: 4.5, Count: 9, Histogram: model.RatingHistogram{Score5: 3}},
 	}, []string{"g0000001", "g0000002", "g0000001", " "})
 	if err != nil {
 		t.Fatalf("upsert ratings batch: %v", err)
@@ -207,11 +222,59 @@ func TestSyncRepoUpsertRatingsBatchUsesAffectedSetForDeletesAndUpserts(t *testin
 	if len(rows) != 2 {
 		t.Fatalf("expected deduped affected rows, got %#v", rows)
 	}
-	if !rows[0].HasRating || rows[0].UniqueID != "g0000001" || rows[0].Count != 9 || string(rows[0].Histogram) != `{"5":3}` {
+	if !rows[0].HasRating || rows[0].UniqueID != "g0000001" || rows[0].Count != 9 || rows[0].Histogram == nil || rows[0].Histogram.Score5 != 3 {
 		t.Fatalf("expected rating payload for first game, got %#v", rows[0])
+	}
+	var rawRows []struct {
+		Histogram map[string]int `json:"histogram,omitempty"`
+	}
+	decodeJSONArg(t, queryer.args[0][0], &rawRows)
+	if len(rawRows[0].Histogram) != 10 || rawRows[0].Histogram["5"] != 3 {
+		t.Fatalf("expected fixed ten-bucket histogram JSON, got %#v", rawRows[0].Histogram)
 	}
 	if rows[1].HasRating || rows[1].UniqueID != "g0000002" {
 		t.Fatalf("expected delete payload for missing rating, got %#v", rows[1])
+	}
+}
+
+func BenchmarkSyncRepoUpsertRatingsBatch1000(b *testing.B) {
+	const size = 1000
+	ratings := make(map[string]*model.RatingData, size)
+	affected := make([]string, 0, size)
+	for i := 0; i < size; i++ {
+		uniqueID := "g" + strconv.Itoa(i)
+		affected = append(affected, uniqueID)
+		ratings[uniqueID] = &model.RatingData{
+			AverageOverall: float64(i%50) / 10,
+			Count:          i,
+			RecStrongNo:    i % 7,
+			RecNo:          i % 11,
+			RecNeutral:     i % 13,
+			RecYes:         i % 17,
+			RecStrongYes:   i % 19,
+			Histogram: model.RatingHistogram{
+				Score1:  i,
+				Score2:  i + 1,
+				Score3:  i + 2,
+				Score4:  i + 3,
+				Score5:  i + 4,
+				Score6:  i + 5,
+				Score7:  i + 6,
+				Score8:  i + 7,
+				Score9:  i + 8,
+				Score10: i + 9,
+			},
+		}
+	}
+
+	repo := NewSyncRepo(discardSyncQueryer{})
+	ctx := context.Background()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := repo.UpsertRatingsBatch(ctx, ratings, affected); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

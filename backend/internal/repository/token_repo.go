@@ -13,6 +13,8 @@ type TokenRepo struct{ db Queryer }
 
 func NewTokenRepo(db Queryer) *TokenRepo { return &TokenRepo{db: db} }
 
+const tokenListByUserCapHint = 8
+
 type txBeginner interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
@@ -82,7 +84,7 @@ func (r *TokenRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.A
 		return nil, err
 	}
 	defer rows.Close()
-	return scanTokens(rows)
+	return scanTokens(rows, tokenListByUserCapHint)
 }
 
 func (r *TokenRepo) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error) {
@@ -95,7 +97,7 @@ func (r *TokenRepo) ListAdmin(ctx context.Context, status string, page, limit in
 			return nil, err
 		}
 		defer rows.Close()
-		return scanTokens(rows)
+		return scanTokens(rows, limit)
 	}
 	rows, err := r.db.Query(ctx, `
 		SELECT id, user_id, application_id, name, token_prefix, token_hash, status, minute_limit, daily_limit, last_used_at, expires_at, created_at, updated_at
@@ -104,7 +106,7 @@ func (r *TokenRepo) ListAdmin(ctx context.Context, status string, page, limit in
 		return nil, err
 	}
 	defer rows.Close()
-	return scanTokens(rows)
+	return scanTokens(rows, limit)
 }
 
 func (r *TokenRepo) CountActive(ctx context.Context) (int, error) {
@@ -186,12 +188,15 @@ func (r *TokenRepo) get(ctx context.Context, where string, args ...any) (*model.
 	return token, err
 }
 
-func scanTokens(rows pgx.Rows) ([]model.APIToken, error) {
-	tokens := []model.APIToken{}
+func scanTokens(rows pgx.Rows, capHint int) ([]model.APIToken, error) {
+	tokens := make([]model.APIToken, 0)
 	for rows.Next() {
 		var token model.APIToken
 		if err := rows.Scan(&token.ID, &token.UserID, &token.ApplicationID, &token.Name, &token.TokenPrefix, &token.TokenHash, &token.Status, &token.MinuteLimit, &token.DailyLimit, &token.LastUsedAt, &token.ExpiresAt, &token.CreatedAt, &token.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if cap(tokens) == 0 {
+			tokens = make([]model.APIToken, 0, positiveCapHint(capHint))
 		}
 		tokens = append(tokens, token)
 	}

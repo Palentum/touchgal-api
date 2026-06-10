@@ -59,11 +59,14 @@ func (r *SyncRepo) ListRuns(ctx context.Context, limit int) ([]model.SyncRun, er
 		return nil, err
 	}
 	defer rows.Close()
-	runs := []model.SyncRun{}
+	runs := make([]model.SyncRun, 0)
 	for rows.Next() {
 		var run model.SyncRun
 		if err := rows.Scan(&run.ID, &run.Mode, &run.Status, &run.StartedAt, &run.FinishedAt, &run.SourceMaxUpdatedAt, &run.GamesSeen, &run.GamesUpserted, &run.GamesDeleted, &run.ErrorMessage); err != nil {
 			return nil, err
+		}
+		if cap(runs) == 0 {
+			runs = make([]model.SyncRun, 0, positiveCapHint(limit))
 		}
 		runs = append(runs, run)
 	}
@@ -196,9 +199,15 @@ func (r *SyncRepo) ReplaceTagsBatch(ctx context.Context, tags map[string][]model
 		}
 		cleaned := cleanUniqueTags(values)
 		for _, tag := range cleaned {
+			if cap(payload) == 0 {
+				payload = make([]tagBatchRow, 0, len(tags))
+			}
 			payload = append(payload, tagBatchRow{UniqueID: uniqueID, Name: tag.Name, Aliases: tag.Aliases, Source: tag.Source})
 		}
 		if len(cleaned) == 0 {
+			if cap(payload) == 0 {
+				payload = make([]tagBatchRow, 0, len(tags))
+			}
 			payload = append(payload, tagBatchRow{UniqueID: uniqueID})
 		}
 	}
@@ -279,6 +288,9 @@ func (r *SyncRepo) ReplaceCompaniesBatch(ctx context.Context, companies map[stri
 		}
 		cleaned := cleanUniqueCompanies(values)
 		for _, company := range cleaned {
+			if cap(payload) == 0 {
+				payload = make([]companyBatchRow, 0, len(companies))
+			}
 			payload = append(payload, companyBatchRow{
 				UniqueID:         uniqueID,
 				Name:             company.Name,
@@ -289,6 +301,9 @@ func (r *SyncRepo) ReplaceCompaniesBatch(ctx context.Context, companies map[stri
 			})
 		}
 		if len(cleaned) == 0 {
+			if cap(payload) == 0 {
+				payload = make([]companyBatchRow, 0, len(companies))
+			}
 			payload = append(payload, companyBatchRow{UniqueID: uniqueID})
 		}
 	}
@@ -373,14 +388,6 @@ func (r *SyncRepo) UpsertRatingsBatch(ctx context.Context, ratings map[string]*m
 	for _, uniqueID := range uniqueIDs {
 		row := ratingBatchRow{UniqueID: uniqueID}
 		if rating := ratings[uniqueID]; rating != nil {
-			histogramData := rating.Histogram
-			if histogramData == nil {
-				histogramData = map[string]int{}
-			}
-			histogram, err := json.Marshal(histogramData)
-			if err != nil {
-				return err
-			}
 			row.HasRating = true
 			row.AverageOverall = rating.AverageOverall
 			row.Count = rating.Count
@@ -389,7 +396,7 @@ func (r *SyncRepo) UpsertRatingsBatch(ctx context.Context, ratings map[string]*m
 			row.RecNeutral = rating.RecNeutral
 			row.RecYes = rating.RecYes
 			row.RecStrongYes = rating.RecStrongYes
-			row.Histogram = json.RawMessage(histogram)
+			row.Histogram = &rating.Histogram
 		}
 		payload = append(payload, row)
 	}
@@ -435,16 +442,16 @@ func (r *SyncRepo) UpsertRatingsBatch(ctx context.Context, ratings map[string]*m
 }
 
 type ratingBatchRow struct {
-	UniqueID       string          `json:"unique_id"`
-	HasRating      bool            `json:"has_rating"`
-	AverageOverall float64         `json:"average_overall"`
-	Count          int             `json:"count"`
-	RecStrongNo    int             `json:"rec_strong_no"`
-	RecNo          int             `json:"rec_no"`
-	RecNeutral     int             `json:"rec_neutral"`
-	RecYes         int             `json:"rec_yes"`
-	RecStrongYes   int             `json:"rec_strong_yes"`
-	Histogram      json.RawMessage `json:"histogram,omitempty"`
+	UniqueID       string                 `json:"unique_id"`
+	HasRating      bool                   `json:"has_rating"`
+	AverageOverall float64                `json:"average_overall"`
+	Count          int                    `json:"count"`
+	RecStrongNo    int                    `json:"rec_strong_no"`
+	RecNo          int                    `json:"rec_no"`
+	RecNeutral     int                    `json:"rec_neutral"`
+	RecYes         int                    `json:"rec_yes"`
+	RecStrongYes   int                    `json:"rec_strong_yes"`
+	Histogram      *model.RatingHistogram `json:"histogram,omitempty"`
 }
 
 func (r *SyncRepo) RefreshSearchTextBatch(ctx context.Context, uniqueIDs []string) error {

@@ -13,6 +13,11 @@ type GameRepo struct{ db Queryer }
 
 func NewGameRepo(db Queryer) *GameRepo { return &GameRepo{db: db} }
 
+const (
+	stringListCapHint  = 8
+	companyListCapHint = 4
+)
+
 func likeContainsPattern(value string) string {
 	for i := 0; i < len(value); i++ {
 		switch value[i] {
@@ -117,11 +122,14 @@ func (r *GameRepo) stringList(ctx context.Context, query string, args ...any) ([
 		return nil, err
 	}
 	defer rows.Close()
-	values := []string{}
+	values := make([]string, 0)
 	for rows.Next() {
 		var value string
 		if err := rows.Scan(&value); err != nil {
 			return nil, err
+		}
+		if cap(values) == 0 {
+			values = make([]string, 0, stringListCapHint)
 		}
 		values = append(values, value)
 	}
@@ -137,11 +145,14 @@ func (r *GameRepo) companies(ctx context.Context, uniqueID string) ([]model.Comp
 		return nil, err
 	}
 	defer rows.Close()
-	companies := []model.CompanyView{}
+	companies := make([]model.CompanyView, 0)
 	for rows.Next() {
 		var c model.CompanyView
 		if err := rows.Scan(&c.Name, &c.Aliases); err != nil {
 			return nil, err
+		}
+		if cap(companies) == 0 {
+			companies = make([]model.CompanyView, 0, companyListCapHint)
 		}
 		companies = append(companies, c)
 	}

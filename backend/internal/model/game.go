@@ -87,6 +87,19 @@ type CompanyData struct {
 	ParentBrands     []string
 }
 
+type RatingHistogram struct {
+	Score1  int `json:"1"`
+	Score2  int `json:"2"`
+	Score3  int `json:"3"`
+	Score4  int `json:"4"`
+	Score5  int `json:"5"`
+	Score6  int `json:"6"`
+	Score7  int `json:"7"`
+	Score8  int `json:"8"`
+	Score9  int `json:"9"`
+	Score10 int `json:"10"`
+}
+
 type RatingData struct {
 	AverageOverall float64
 	Count          int
@@ -95,5 +108,5 @@ type RatingData struct {
 	RecNeutral     int
 	RecYes         int
 	RecStrongYes   int
-	Histogram      map[string]int
+	Histogram      RatingHistogram
 }
