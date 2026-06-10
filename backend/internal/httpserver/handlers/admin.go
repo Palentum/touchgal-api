@@ -73,6 +73,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	h.tokens.InvalidateUser(id)
 	Success(w, http.StatusOK, user)
 }
 
@@ -87,6 +88,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
+	h.tokens.InvalidateUser(id)
 	Success(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
@@ -131,6 +133,7 @@ func (h *AdminHandler) reviewApplication(w http.ResponseWriter, r *http.Request,
 		Error(w, err)
 		return
 	}
+	h.tokens.InvalidateApplication(app.ID)
 	Success(w, http.StatusOK, app)
 }
 

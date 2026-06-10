@@ -54,13 +54,17 @@ func TestValidateRejectsUnknownLogLevel(t *testing.T) {
 
 func validConfig() Config {
 	return Config{
-		DatabaseDSN:             "postgres://example",
-		LogLevel:                "info",
-		SessionSecret:           "secret",
-		APITokenPepper:          "pepper",
-		EmailCodeMaxAttempts:    1,
-		DefaultTokenMinuteLimit: 1,
-		DefaultTokenDailyLimit:  1,
-		MailDriver:              MailDriverSMTP,
+		DatabaseDSN:                   "postgres://example",
+		LogLevel:                      "info",
+		SessionSecret:                 "secret",
+		APITokenPepper:                "pepper",
+		EmailCodeMaxAttempts:          1,
+		DefaultTokenMinuteLimit:       1,
+		DefaultTokenDailyLimit:        1,
+		APIPreAuthIPMinuteLimit:       1,
+		APIPreAuthIPDailyLimit:        1,
+		APITokenAuthCacheTTLSeconds:   1,
+		APILastUsedUpdateIntervalSecs: 1,
+		MailDriver:                    MailDriverSMTP,
 	}
 }

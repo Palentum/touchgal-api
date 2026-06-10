@@ -50,6 +50,7 @@ cp backend/.env.example backend/.env
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
+- `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS`：`/v1` pre-auth IP 粗限流、token auth 短缓存与 `last_used_at` 写入节流。
 - `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步。
 - `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS`：incremental/full 同步周期。
 
@@ -175,4 +176,5 @@ curl "https://api.example.com/v1/me" \
 - 公开 API 默认只返回 SFW 条目。
 - 响应错误不暴露数据库结构。
 - 主机 PostgreSQL/Redis 只监听可信接口，并通过 PostgreSQL 用户权限、Redis 密码或本机防火墙限制访问；容器通过 `host.docker.internal` 连接主机服务时不应暴露无认证 Redis 到公网。
+- `/v1` pre-auth IP 限流只信任来自 loopback/private/link-local peer 的 `X-Forwarded-For` / `X-Real-IP`；生产应让后端只暴露给可信反向代理或内网入口。
 - clean DB 不包含主项目 user/email/password/IP/role/session/token/resource link。

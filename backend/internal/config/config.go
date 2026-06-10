@@ -50,21 +50,25 @@ type Config struct {
 	PostalAPIURL string
 	PostalAPIKey string
 
-	EmailCodeTTLMinutes          int
-	EmailCodeResendCooldownSecs  int
-	EmailCodeMaxAttempts         int
-	APITokenPepper               string
-	APITokenPrefix               string
-	DefaultTokenMinuteLimit      int
-	DefaultTokenDailyLimit       int
-	EnableSyncWorker             bool
-	SyncIntervalMinutes          int
-	SyncFullIntervalHours        int
-	SyncIncrementalSafetyMinutes int
-	SyncDefaultContentPolicy     string
-	TouchGalSiteURL              string
-	TouchGalTechDocsURL          string
-	APIDocsURL                   string
+	EmailCodeTTLMinutes           int
+	EmailCodeResendCooldownSecs   int
+	EmailCodeMaxAttempts          int
+	APITokenPepper                string
+	APITokenPrefix                string
+	DefaultTokenMinuteLimit       int
+	DefaultTokenDailyLimit        int
+	APIPreAuthIPMinuteLimit       int
+	APIPreAuthIPDailyLimit        int
+	APITokenAuthCacheTTLSeconds   int
+	APILastUsedUpdateIntervalSecs int
+	EnableSyncWorker              bool
+	SyncIntervalMinutes           int
+	SyncFullIntervalHours         int
+	SyncIncrementalSafetyMinutes  int
+	SyncDefaultContentPolicy      string
+	TouchGalSiteURL               string
+	TouchGalTechDocsURL           string
+	APIDocsURL                    string
 }
 
 func Load() (Config, error) {
@@ -103,21 +107,25 @@ func Load() (Config, error) {
 		PostalAPIURL: env("POSTAL_API_URL", ""),
 		PostalAPIKey: env("POSTAL_API_KEY", ""),
 
-		EmailCodeTTLMinutes:          envInt("EMAIL_CODE_TTL_MINUTES", 10),
-		EmailCodeResendCooldownSecs:  envInt("EMAIL_CODE_RESEND_COOLDOWN_SECONDS", 60),
-		EmailCodeMaxAttempts:         envInt("EMAIL_CODE_MAX_ATTEMPTS", 5),
-		APITokenPepper:               env("API_TOKEN_PEPPER", "please-change-this-long-random-secret"),
-		APITokenPrefix:               env("API_TOKEN_PREFIX", "tgal_live"),
-		DefaultTokenMinuteLimit:      envInt("DEFAULT_TOKEN_MINUTE_LIMIT", 60),
-		DefaultTokenDailyLimit:       envInt("DEFAULT_TOKEN_DAILY_LIMIT", 5000),
-		EnableSyncWorker:             envBool("ENABLE_SYNC_WORKER", true),
-		SyncIntervalMinutes:          envInt("SYNC_INTERVAL_MINUTES", 30),
-		SyncFullIntervalHours:        envInt("SYNC_FULL_INTERVAL_HOURS", 24),
-		SyncIncrementalSafetyMinutes: envInt("SYNC_INCREMENTAL_SAFETY_MINUTES", 10),
-		SyncDefaultContentPolicy:     env("SYNC_DEFAULT_CONTENT_POLICY", "all"),
-		TouchGalSiteURL:              env("TOUCHGAL_SITE_URL", "https://www.touchgal.ink"),
-		TouchGalTechDocsURL:          env("TOUCHGAL_TECH_DOCS_URL", "https://github.com/KUN1007/kun-touchgal-next"),
-		APIDocsURL:                   env("API_DOCS_URL", "/docs/api"),
+		EmailCodeTTLMinutes:           envInt("EMAIL_CODE_TTL_MINUTES", 10),
+		EmailCodeResendCooldownSecs:   envInt("EMAIL_CODE_RESEND_COOLDOWN_SECONDS", 60),
+		EmailCodeMaxAttempts:          envInt("EMAIL_CODE_MAX_ATTEMPTS", 5),
+		APITokenPepper:                env("API_TOKEN_PEPPER", "please-change-this-long-random-secret"),
+		APITokenPrefix:                env("API_TOKEN_PREFIX", "tgal_live"),
+		DefaultTokenMinuteLimit:       envInt("DEFAULT_TOKEN_MINUTE_LIMIT", 60),
+		DefaultTokenDailyLimit:        envInt("DEFAULT_TOKEN_DAILY_LIMIT", 5000),
+		APIPreAuthIPMinuteLimit:       envInt("API_PREAUTH_IP_MINUTE_LIMIT", 600),
+		APIPreAuthIPDailyLimit:        envInt("API_PREAUTH_IP_DAILY_LIMIT", 20000),
+		APITokenAuthCacheTTLSeconds:   envInt("API_TOKEN_AUTH_CACHE_TTL_SECONDS", 60),
+		APILastUsedUpdateIntervalSecs: envInt("API_LAST_USED_UPDATE_INTERVAL_SECONDS", 300),
+		EnableSyncWorker:              envBool("ENABLE_SYNC_WORKER", true),
+		SyncIntervalMinutes:           envInt("SYNC_INTERVAL_MINUTES", 30),
+		SyncFullIntervalHours:         envInt("SYNC_FULL_INTERVAL_HOURS", 24),
+		SyncIncrementalSafetyMinutes:  envInt("SYNC_INCREMENTAL_SAFETY_MINUTES", 10),
+		SyncDefaultContentPolicy:      env("SYNC_DEFAULT_CONTENT_POLICY", "all"),
+		TouchGalSiteURL:               env("TOUCHGAL_SITE_URL", "https://www.touchgal.ink"),
+		TouchGalTechDocsURL:           env("TOUCHGAL_TECH_DOCS_URL", "https://github.com/KUN1007/kun-touchgal-next"),
+		APIDocsURL:                    env("API_DOCS_URL", "/docs/api"),
 	}
 	return cfg, cfg.Validate()
 }
@@ -161,6 +169,15 @@ func (c Config) Validate() error {
 	if c.DefaultTokenMinuteLimit <= 0 || c.DefaultTokenDailyLimit <= 0 {
 		return errors.New("token limits must be positive")
 	}
+	if c.APIPreAuthIPMinuteLimit <= 0 || c.APIPreAuthIPDailyLimit <= 0 {
+		return errors.New("pre-auth IP limits must be positive")
+	}
+	if c.APITokenAuthCacheTTLSeconds <= 0 {
+		return errors.New("API_TOKEN_AUTH_CACHE_TTL_SECONDS must be positive")
+	}
+	if c.APILastUsedUpdateIntervalSecs <= 0 {
+		return errors.New("API_LAST_USED_UPDATE_INTERVAL_SECONDS must be positive")
+	}
 	return nil
 }
 
@@ -174,6 +191,14 @@ func (c Config) EmailCodeTTL() time.Duration {
 
 func (c Config) EmailCooldown() time.Duration {
 	return time.Duration(c.EmailCodeResendCooldownSecs) * time.Second
+}
+
+func (c Config) APITokenAuthCacheTTL() time.Duration {
+	return time.Duration(c.APITokenAuthCacheTTLSeconds) * time.Second
+}
+
+func (c Config) APILastUsedUpdateInterval() time.Duration {
+	return time.Duration(c.APILastUsedUpdateIntervalSecs) * time.Second
 }
 
 func (c Config) IsProduction() bool {

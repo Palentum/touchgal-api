@@ -50,3 +50,17 @@ func TestRequireAdminRejectsDisabledAccountBeforeAdminCheck(t *testing.T) {
 		t.Fatalf("expected ACCOUNT_DISABLED response, got %s", res.Body.String())
 	}
 }
+
+func TestClientIPTrustsForwardedHeadersOnlyFromTrustedPeer(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	req.RemoteAddr = "203.0.113.10:12345"
+	req.Header.Set("X-Forwarded-For", "198.51.100.20")
+	if got := ClientIP(req); got != "203.0.113.10" {
+		t.Fatalf("public peer must not override client IP with forwarded header, got %q", got)
+	}
+
+	req.RemoteAddr = "172.18.0.2:12345"
+	if got := ClientIP(req); got != "198.51.100.20" {
+		t.Fatalf("trusted proxy peer should use forwarded client IP, got %q", got)
+	}
+}

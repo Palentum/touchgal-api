@@ -40,17 +40,29 @@ func RequestID(ctx context.Context) string {
 }
 
 func ClientIP(r *http.Request) string {
-	if value := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); value != "" {
-		if first := strings.TrimSpace(strings.Split(value, ",")[0]); first != "" {
-			return first
+	if trustedProxyPeer(r.RemoteAddr) {
+		if value := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); value != "" {
+			if first := strings.TrimSpace(strings.Split(value, ",")[0]); first != "" {
+				return first
+			}
+		}
+		if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
+			return value
 		}
 	}
-	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
-		return value
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return remoteIP(r.RemoteAddr)
+}
+
+func trustedProxyPeer(remoteAddr string) bool {
+	host := remoteIP(remoteAddr)
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+}
+
+func remoteIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return remoteAddr
 	}
 	return host
 }

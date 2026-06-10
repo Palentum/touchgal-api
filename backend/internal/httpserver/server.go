@@ -90,9 +90,11 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
+			r.Use(middleware.APIPreAuthRateLimit(redisClient, cfg.APIPreAuthIPMinuteLimit, cfg.APIPreAuthIPDailyLimit))
 			r.Use(middleware.APITokenAuth(services.Tokens))
-			r.Use(middleware.APIRequestLog(repos.Stats, logger))
 			r.Use(middleware.APIRateLimit(redisClient))
+			r.Use(middleware.APILastUsed(services.Tokens, redisClient, logger, cfg.APILastUsedUpdateInterval()))
+			r.Use(middleware.APIRequestLog(repos.Stats, logger))
 			r.Get("/me", publicHandler.Me)
 			r.Get("/games/search", publicHandler.Search)
 			r.Get("/games/{uniqueId}", publicHandler.Detail)

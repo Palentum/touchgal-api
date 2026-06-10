@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,12 +13,14 @@ import (
 type fakeTokenStore struct {
 	created          *model.APIToken
 	auth             *model.TokenAuthInfo
+	authLookups      int
 	deletedForUserID uuid.UUID
 	deletedUserID    uuid.UUID
 	deletedID        uuid.UUID
 	updatedName      string
 	updatedForUserID uuid.UUID
 	updatedUserID    uuid.UUID
+	lastUsedUpdates  int
 }
 
 func (f *fakeTokenStore) Create(ctx context.Context, token model.APIToken) (*model.APIToken, error) {
@@ -32,6 +35,7 @@ func (f *fakeTokenStore) ListAdmin(ctx context.Context, status string, page, lim
 	return nil, nil
 }
 func (f *fakeTokenStore) GetByHashWithApplication(ctx context.Context, tokenHash string) (*model.TokenAuthInfo, error) {
+	f.authLookups++
 	if f.auth == nil {
 		return nil, model.ErrNotFound
 	}
@@ -52,8 +56,11 @@ func (f *fakeTokenStore) DeleteByID(ctx context.Context, id uuid.UUID) error {
 	f.deletedID = id
 	return nil
 }
-func (f *fakeTokenStore) UpdateLastUsed(ctx context.Context, id uuid.UUID) error { return nil }
-func (f *fakeTokenStore) CountActive(ctx context.Context) (int, error)           { return 0, nil }
+func (f *fakeTokenStore) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
+	f.lastUsedUpdates++
+	return nil
+}
+func (f *fakeTokenStore) CountActive(ctx context.Context) (int, error) { return 0, nil }
 
 type fakeTokenAppStore struct {
 	app          *model.Application
@@ -162,9 +169,17 @@ func TestDeleteMineRemovesTokenRecord(t *testing.T) {
 	}
 }
 
+func validRawToken() string {
+	return "tgal_live_" + strings.Repeat("A", generatedTokenSecretLength)
+}
+
+func authConfig() config.Config {
+	return config.Config{APITokenPrefix: "tgal_live", APITokenPepper: "pepper", APITokenAuthCacheTTLSeconds: 60}
+}
+
 func TestAuthenticateRejectsDeletedToken(t *testing.T) {
-	cfg := config.Config{APITokenPepper: "pepper"}
-	raw := "tgal_live_test"
+	cfg := authConfig()
+	raw := validRawToken()
 	store := &fakeTokenStore{}
 	svc := NewService(cfg, store, fakeTokenAppStore{})
 	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
@@ -173,8 +188,8 @@ func TestAuthenticateRejectsDeletedToken(t *testing.T) {
 }
 
 func TestAuthenticateDeletesInactiveTokenRecord(t *testing.T) {
-	cfg := config.Config{APITokenPepper: "pepper"}
-	raw := "tgal_live_test"
+	cfg := authConfig()
+	raw := validRawToken()
 	tokenID := uuid.New()
 	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: "disabled", TokenHash: HashAPIToken(raw, "pepper")}, ApplicationStatus: model.ApplicationApproved}}
 	svc := NewService(cfg, store, fakeTokenAppStore{})
@@ -187,8 +202,8 @@ func TestAuthenticateDeletesInactiveTokenRecord(t *testing.T) {
 }
 
 func TestAuthenticateDeletesExpiredTokenRecord(t *testing.T) {
-	cfg := config.Config{APITokenPepper: "pepper"}
-	raw := "tgal_live_test"
+	cfg := authConfig()
+	raw := validRawToken()
 	tokenID := uuid.New()
 	expiredAt := time.Now().Add(-time.Second)
 	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), ExpiresAt: &expiredAt}, ApplicationStatus: model.ApplicationApproved}}
@@ -198,5 +213,88 @@ func TestAuthenticateDeletesExpiredTokenRecord(t *testing.T) {
 	}
 	if store.deletedID != tokenID {
 		t.Fatal("expired token record must be deleted instead of kept in the database")
+	}
+}
+
+func TestAuthenticateRejectsMalformedTokenWithoutStoreLookup(t *testing.T) {
+	store := &fakeTokenStore{}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	if _, err := svc.Authenticate(context.Background(), "not-a-generated-token"); err != model.ErrUnauthorized {
+		t.Fatalf("expected malformed token unauthorized, got %v", err)
+	}
+	if store.authLookups != 0 {
+		t.Fatal("malformed token must not hit the token store")
+	}
+}
+
+func TestAuthenticateCachesValidTokenAndDoesNotUpdateLastUsed(t *testing.T) {
+	raw := validRawToken()
+	tokenID := uuid.New()
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
+		Token:             model.APIToken{ID: tokenID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), MinuteLimit: 10, DailyLimit: 100},
+		ApplicationStatus: model.ApplicationApproved,
+	}}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+		t.Fatalf("first authenticate: %v", err)
+	}
+	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+		t.Fatalf("second authenticate: %v", err)
+	}
+	if store.authLookups != 1 {
+		t.Fatalf("expected one store lookup, got %d", store.authLookups)
+	}
+	if store.lastUsedUpdates != 0 {
+		t.Fatal("authenticate must not update last_used_at")
+	}
+}
+
+func TestDeleteMineInvalidatesCachedToken(t *testing.T) {
+	raw := validRawToken()
+	tokenID := uuid.New()
+	userID := uuid.New()
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
+		Token:             model.APIToken{ID: tokenID, UserID: userID, ApplicationID: uuid.New(), Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), MinuteLimit: 10, DailyLimit: 100},
+		ApplicationStatus: model.ApplicationApproved,
+	}}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if err := svc.DeleteMine(context.Background(), tokenID, userID); err != nil {
+		t.Fatalf("delete mine: %v", err)
+	}
+	store.auth = nil
+	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected deleted token cache invalidation, got %v", err)
+	}
+	if store.authLookups != 2 {
+		t.Fatalf("expected cache miss after delete, got %d lookups", store.authLookups)
+	}
+}
+
+func TestInvalidateUserAndApplicationEvictCachedTokens(t *testing.T) {
+	raw := validRawToken()
+	tokenID := uuid.New()
+	userID := uuid.New()
+	applicationID := uuid.New()
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
+		Token:             model.APIToken{ID: tokenID, UserID: userID, ApplicationID: applicationID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), MinuteLimit: 10, DailyLimit: 100},
+		ApplicationStatus: model.ApplicationApproved,
+	}}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	svc.InvalidateUser(userID)
+	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+		t.Fatalf("authenticate after user invalidation: %v", err)
+	}
+	svc.InvalidateApplication(applicationID)
+	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+		t.Fatalf("authenticate after application invalidation: %v", err)
+	}
+	if store.authLookups != 3 {
+		t.Fatalf("expected one lookup per invalidation, got %d", store.authLookups)
 	}
 }

@@ -61,7 +61,9 @@ Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter �
 - Cookie 登录路由：`/auth`。
 - 已登录 portal API：`r.Group(... RequireUser ...)`。
 - 管理 API：`/admin` + `RequireUser` + `RequireAdmin`。
-- Public API：`/v1` + `APITokenAuth` + `APIRequestLog` + `APIRateLimit`。
+- Public API：`/v1` + `APIPreAuthRateLimit` + `APITokenAuth` + `APIRateLimit` + `APILastUsed` + `APIRequestLog`。
+
+- `ClientIP` 只在直接 peer 是 loopback/private/link-local 时信任 `X-Forwarded-For` / `X-Real-IP`，避免公网直连伪造 pre-auth IP 限流 key。
 
 改路由时优先把新 endpoint 放入现有职责 group；不要创建并行认证路径。
 
