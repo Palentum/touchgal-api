@@ -3,6 +3,7 @@ package requestlog
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,15 +32,16 @@ type Config struct {
 }
 
 type Writer struct {
-	store   Store
-	logger  zerolog.Logger
-	cfg     Config
-	input   chan model.RequestLog
-	stop    chan struct{}
-	done    chan struct{}
-	started atomic.Bool
-	stopped atomic.Bool
-	dropped atomic.Uint64
+	store     Store
+	logger    zerolog.Logger
+	cfg       Config
+	input     chan model.RequestLog
+	stop      chan struct{}
+	done      chan struct{}
+	enqueueMu sync.Mutex
+	started   atomic.Bool
+	stopped   atomic.Bool
+	dropped   atomic.Uint64
 }
 
 func NewWriter(store Store, cfg Config, logger zerolog.Logger) *Writer {
@@ -76,7 +78,12 @@ func (w *Writer) Start() {
 }
 
 func (w *Writer) EnqueueRequestLog(log model.RequestLog) bool {
-	if w == nil || w.stopped.Load() {
+	if w == nil {
+		return false
+	}
+	w.enqueueMu.Lock()
+	defer w.enqueueMu.Unlock()
+	if w.stopped.Load() {
 		return false
 	}
 	select {
@@ -92,9 +99,11 @@ func (w *Writer) Stop(ctx context.Context) error {
 	if w == nil || !w.started.Load() {
 		return nil
 	}
+	w.enqueueMu.Lock()
 	if w.stopped.CompareAndSwap(false, true) {
 		close(w.stop)
 	}
+	w.enqueueMu.Unlock()
 	select {
 	case <-w.done:
 		return nil

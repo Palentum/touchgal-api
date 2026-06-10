@@ -74,6 +74,16 @@ func TestWriterStopDrainsPendingLogs(t *testing.T) {
 		t.Fatalf("drained logs got %d", len(logs))
 	}
 }
+func TestWriterStopRejectsLaterEnqueue(t *testing.T) {
+	store := &fakeRequestLogStore{inserted: make(chan []model.RequestLog, 1)}
+	writer := NewWriter(store, Config{QueueSize: 4, BatchSize: 10, FlushInterval: time.Hour}, zerolog.Nop())
+	writer.Start()
+	stopWriter(t, writer)
+
+	if writer.EnqueueRequestLog(model.RequestLog{Path: "/v1/me"}) {
+		t.Fatal("enqueue after stop must be rejected")
+	}
+}
 
 func TestWriterCleansRollups(t *testing.T) {
 	store := &fakeRequestLogStore{
