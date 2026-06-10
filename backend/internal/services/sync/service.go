@@ -17,6 +17,8 @@ import (
 const (
 	ModeIncremental = "incremental"
 	ModeFull        = "full"
+
+	sourceRelationBatchSize = 1000
 )
 
 type Service struct {
@@ -25,6 +27,18 @@ type Service struct {
 	target *pgxpool.Pool
 	repo   *repository.SyncRepo
 	log    zerolog.Logger
+}
+
+type syncSource struct {
+	source SourceGame
+	clean  model.CleanGame
+}
+
+type sourceRelations struct {
+	aliases   map[int][]string
+	tags      map[int][]model.TagData
+	companies map[int][]model.CompanyData
+	ratings   map[int]*model.RatingData
 }
 
 func NewService(cfg config.Config, source, target *pgxpool.Pool, repo *repository.SyncRepo, log zerolog.Logger) *Service {
@@ -91,62 +105,70 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 	}
 	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Int("source_games", len(sources)).Msg("sync source games loaded")
 
+	items := make([]syncSource, 0, len(sources))
+	for _, src := range sources {
+		clean := MapSourceGame(src, s.cfg.SyncDefaultContentPolicy)
+		if clean.UniqueID == "" || clean.Name == "" {
+			continue
+		}
+		items = append(items, syncSource{source: src, clean: clean})
+	}
+
+	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Int("syncable_games", len(items)).Msg("sync source games mapped")
+
 	tx, err := s.target.Begin(ctx)
 	if err != nil {
 		return finish("failed", err)
 	}
 	defer tx.Rollback(ctx)
 	txRepo := repository.NewSyncRepo(tx)
-	seenIDs := make([]int, 0, len(sources))
-	for _, src := range sources {
-		clean := MapSourceGame(src, s.cfg.SyncDefaultContentPolicy)
-		if clean.UniqueID == "" || clean.Name == "" {
-			continue
+	seenIDs := make([]int, 0, len(items))
+	for start := 0; start < len(items); start += sourceRelationBatchSize {
+		end := start + sourceRelationBatchSize
+		if end > len(items) {
+			end = len(items)
 		}
-		if err := txRepo.UpsertGame(ctx, clean); err != nil {
-			return finish("failed", err)
+		batch := items[start:end]
+		patchIDs := make([]int, 0, len(batch))
+		for _, item := range batch {
+			patchIDs = append(patchIDs, item.source.ID)
 		}
-		aliases, err := s.queryAliases(ctx, src.ID)
+		relations, err := s.querySourceRelations(ctx, patchIDs)
 		if err != nil {
 			return finish("failed", err)
 		}
-		if err := txRepo.ReplaceAliases(ctx, clean.UniqueID, aliases); err != nil {
-			return finish("failed", err)
-		}
-		tags, err := s.queryTags(ctx, src.ID)
-		if err != nil {
-			return finish("failed", err)
-		}
-		if err := txRepo.ReplaceTags(ctx, clean.UniqueID, tags); err != nil {
-			return finish("failed", err)
-		}
-		companies, err := s.queryCompanies(ctx, src.ID)
-		if err != nil {
-			return finish("failed", err)
-		}
-		if err := txRepo.ReplaceCompanies(ctx, clean.UniqueID, companies); err != nil {
-			return finish("failed", err)
-		}
-		rating, err := s.queryRating(ctx, src.ID)
-		if err != nil {
-			return finish("failed", err)
-		}
-		if err := txRepo.UpsertRating(ctx, clean.UniqueID, rating); err != nil {
-			return finish("failed", err)
-		}
-		if err := txRepo.RefreshSearchText(ctx, clean.UniqueID); err != nil {
-			return finish("failed", err)
-		}
-		seen++
-		upserted++
-		seenIDs = append(seenIDs, src.ID)
-		maxUpdated := src.UpdatedAt
-		if src.ResourceUpdatedAt.After(maxUpdated) {
-			maxUpdated = src.ResourceUpdatedAt
-		}
-		if sourceMax == nil || maxUpdated.After(*sourceMax) {
-			tmp := maxUpdated
-			sourceMax = &tmp
+		for _, item := range batch {
+			src := item.source
+			clean := item.clean
+			if err := txRepo.UpsertGame(ctx, clean); err != nil {
+				return finish("failed", err)
+			}
+			if err := txRepo.ReplaceAliases(ctx, clean.UniqueID, relations.aliases[src.ID]); err != nil {
+				return finish("failed", err)
+			}
+			if err := txRepo.ReplaceTags(ctx, clean.UniqueID, relations.tags[src.ID]); err != nil {
+				return finish("failed", err)
+			}
+			if err := txRepo.ReplaceCompanies(ctx, clean.UniqueID, relations.companies[src.ID]); err != nil {
+				return finish("failed", err)
+			}
+			if err := txRepo.UpsertRating(ctx, clean.UniqueID, relations.ratings[src.ID]); err != nil {
+				return finish("failed", err)
+			}
+			if err := txRepo.RefreshSearchText(ctx, clean.UniqueID); err != nil {
+				return finish("failed", err)
+			}
+			seen++
+			upserted++
+			seenIDs = append(seenIDs, src.ID)
+			maxUpdated := src.UpdatedAt
+			if src.ResourceUpdatedAt.After(maxUpdated) {
+				maxUpdated = src.ResourceUpdatedAt
+			}
+			if sourceMax == nil || maxUpdated.After(*sourceMax) {
+				tmp := maxUpdated
+				sourceMax = &tmp
+			}
 		}
 	}
 	if mode == ModeFull {
@@ -196,69 +218,96 @@ func (s *Service) querySourceGames(ctx context.Context, mode string, since *time
 	return items, rows.Err()
 }
 
-func (s *Service) queryAliases(ctx context.Context, patchID int) ([]string, error) {
-	rows, err := s.source.Query(ctx, sourceAliasesSQL, patchID)
-	if err != nil {
-		return nil, err
+func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sourceRelations, error) {
+	relations := sourceRelations{
+		aliases:   make(map[int][]string, len(patchIDs)),
+		tags:      make(map[int][]model.TagData, len(patchIDs)),
+		companies: make(map[int][]model.CompanyData, len(patchIDs)),
+		ratings:   make(map[int]*model.RatingData, len(patchIDs)),
 	}
-	defer rows.Close()
-	items := []string{}
+	if len(patchIDs) == 0 {
+		return relations, nil
+	}
+
+	rows, err := s.source.Query(ctx, sourceAliasesByPatchIDsSQL, patchIDs)
+	if err != nil {
+		return relations, err
+	}
 	for rows.Next() {
+		var patchID int
 		var value string
-		if err := rows.Scan(&value); err != nil {
-			return nil, err
+		if err := rows.Scan(&patchID, &value); err != nil {
+			rows.Close()
+			return relations, err
 		}
-		items = append(items, value)
+		relations.aliases[patchID] = append(relations.aliases[patchID], value)
 	}
-	return items, rows.Err()
-}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return relations, err
+	}
+	rows.Close()
 
-func (s *Service) queryTags(ctx context.Context, patchID int) ([]model.TagData, error) {
-	rows, err := s.source.Query(ctx, sourceTagsSQL, patchID)
+	rows, err = s.source.Query(ctx, sourceTagsByPatchIDsSQL, patchIDs)
 	if err != nil {
-		return nil, err
+		return relations, err
 	}
-	defer rows.Close()
-	items := []model.TagData{}
 	for rows.Next() {
+		var patchID int
 		var item model.TagData
-		if err := rows.Scan(&item.Name, &item.Aliases, &item.Source); err != nil {
-			return nil, err
+		if err := rows.Scan(&patchID, &item.Name, &item.Aliases, &item.Source); err != nil {
+			rows.Close()
+			return relations, err
 		}
-		items = append(items, item)
+		relations.tags[patchID] = append(relations.tags[patchID], item)
 	}
-	return items, rows.Err()
-}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return relations, err
+	}
+	rows.Close()
 
-func (s *Service) queryCompanies(ctx context.Context, patchID int) ([]model.CompanyData, error) {
-	rows, err := s.source.Query(ctx, sourceCompaniesSQL, patchID)
+	rows, err = s.source.Query(ctx, sourceCompaniesByPatchIDsSQL, patchIDs)
 	if err != nil {
-		return nil, err
+		return relations, err
 	}
-	defer rows.Close()
-	items := []model.CompanyData{}
 	for rows.Next() {
+		var patchID int
 		var item model.CompanyData
-		if err := rows.Scan(&item.Name, &item.Aliases, &item.OfficialWebsites, &item.PrimaryLanguages, &item.ParentBrands); err != nil {
-			return nil, err
+		if err := rows.Scan(&patchID, &item.Name, &item.Aliases, &item.OfficialWebsites, &item.PrimaryLanguages, &item.ParentBrands); err != nil {
+			rows.Close()
+			return relations, err
 		}
-		items = append(items, item)
+		relations.companies[patchID] = append(relations.companies[patchID], item)
 	}
-	return items, rows.Err()
-}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return relations, err
+	}
+	rows.Close()
 
-func (s *Service) queryRating(ctx context.Context, patchID int) (*model.RatingData, error) {
-	var r model.RatingData
-	var o1, o2, o3, o4, o5, o6, o7, o8, o9, o10 int
-	err := s.source.QueryRow(ctx, sourceRatingSQL, patchID).Scan(&r.AverageOverall, &r.Count, &r.RecStrongNo, &r.RecNo, &r.RecNeutral, &r.RecYes, &r.RecStrongYes, &o1, &o2, &o3, &o4, &o5, &o6, &o7, &o8, &o9, &o10)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
+	rows, err = s.source.Query(ctx, sourceRatingsByPatchIDsSQL, patchIDs)
 	if err != nil {
-		return nil, err
+		return relations, err
 	}
-	r.Histogram = map[string]int{"1": o1, "2": o2, "3": o3, "4": o4, "5": o5, "6": o6, "7": o7, "8": o8, "9": o9, "10": o10}
-	return &r, nil
+	for rows.Next() {
+		var patchID int
+		var r model.RatingData
+		var o1, o2, o3, o4, o5, o6, o7, o8, o9, o10 int
+		if err := rows.Scan(&patchID, &r.AverageOverall, &r.Count, &r.RecStrongNo, &r.RecNo, &r.RecNeutral, &r.RecYes, &r.RecStrongYes, &o1, &o2, &o3, &o4, &o5, &o6, &o7, &o8, &o9, &o10); err != nil {
+			rows.Close()
+			return relations, err
+		}
+		r.Histogram = map[string]int{"1": o1, "2": o2, "3": o3, "4": o4, "5": o5, "6": o6, "7": o7, "8": o8, "9": o9, "10": o10}
+		relations.ratings[patchID] = &r
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return relations, err
+	}
+	rows.Close()
+
+	return relations, nil
 }
 
 func (s *Service) EnsureSourceReadOnly(ctx context.Context) error {

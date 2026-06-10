@@ -97,32 +97,49 @@ func (r *SyncRepo) ReplaceAliases(ctx context.Context, uniqueID string, aliases 
 	if _, err := r.db.Exec(ctx, `DELETE FROM game_aliases WHERE game_unique_id = $1`, uniqueID); err != nil {
 		return err
 	}
-	seen := map[string]struct{}{}
-	for _, alias := range aliases {
-		alias = strings.TrimSpace(alias)
-		if alias == "" {
-			continue
-		}
-		if _, ok := seen[alias]; ok {
-			continue
-		}
-		seen[alias] = struct{}{}
-		if _, err := r.db.Exec(ctx, `INSERT INTO game_aliases (game_unique_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`, uniqueID, alias); err != nil {
-			return err
-		}
+	cleaned := cleanUniqueStrings(aliases)
+	if len(cleaned) == 0 {
+		return nil
 	}
-	return nil
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO game_aliases (game_unique_id, name)
+		SELECT $1, alias_name.name
+		FROM unnest($2::text[]) AS alias_name(name)
+		ON CONFLICT DO NOTHING`, uniqueID, cleaned)
+	return err
+}
+
+func cleanUniqueStrings(values []string) []string {
+	cleaned := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		cleaned = append(cleaned, value)
+	}
+	return cleaned
 }
 
 func (r *SyncRepo) ReplaceTags(ctx context.Context, uniqueID string, tags []model.TagData) error {
 	if _, err := r.db.Exec(ctx, `DELETE FROM game_tags WHERE game_unique_id = $1`, uniqueID); err != nil {
 		return err
 	}
+	seen := make(map[string]struct{}, len(tags))
 	for _, tag := range tags {
 		name := strings.TrimSpace(tag.Name)
 		if name == "" {
 			continue
 		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
 		var id int64
 		err := r.db.QueryRow(ctx, `
 			INSERT INTO tags (name, aliases, source) VALUES ($1, $2, $3)
@@ -142,11 +159,16 @@ func (r *SyncRepo) ReplaceCompanies(ctx context.Context, uniqueID string, compan
 	if _, err := r.db.Exec(ctx, `DELETE FROM game_companies WHERE game_unique_id = $1`, uniqueID); err != nil {
 		return err
 	}
+	seen := make(map[string]struct{}, len(companies))
 	for _, company := range companies {
 		name := strings.TrimSpace(company.Name)
 		if name == "" {
 			continue
 		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
 		var id int64
 		err := r.db.QueryRow(ctx, `
 			INSERT INTO companies (name, aliases, official_websites, primary_languages, parent_brands) VALUES ($1, $2, $3, $4, $5)
