@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM alpine:3.22
 WORKDIR /app
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates wget
 COPY --from=build /out/touchgal-api /usr/local/bin/touchgal-api
 COPY --from=build /out/touchgal-sync /usr/local/bin/touchgal-sync
 EXPOSE 8080
