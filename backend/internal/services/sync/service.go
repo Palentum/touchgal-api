@@ -200,8 +200,7 @@ func (s *Service) releaseSyncRunLockError(ctx context.Context, lock *repository.
 	}
 	releaseCtx, cancel := s.finishContext(ctx)
 	defer cancel()
-	lock.Release(releaseCtx)
-	return nil
+	return lock.Release(releaseCtx)
 }
 
 func (s *Service) finishContext(ctx context.Context) (context.Context, context.CancelFunc) {

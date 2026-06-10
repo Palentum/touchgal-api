@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -49,16 +50,23 @@ func (l *SyncRunLock) Repo() *SyncRepo {
 	return NewSyncRepo(WithQueryTimeout(l.conn, l.timeout))
 }
 
-func (l *SyncRunLock) Release(ctx context.Context) {
+func (l *SyncRunLock) Release(ctx context.Context) error {
 	if l == nil || l.conn == nil {
-		return
+		return nil
 	}
 	conn := l.conn
 	l.conn = nil
 	defer conn.Release()
 	unlockCtx, cancel := timeoutContext(ctx, l.timeout)
 	defer cancel()
-	_, _ = conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, syncRunAdvisoryLockKey)
+	var unlocked bool
+	if err := conn.QueryRow(unlockCtx, `SELECT pg_advisory_unlock($1)`, syncRunAdvisoryLockKey).Scan(&unlocked); err != nil {
+		return err
+	}
+	if !unlocked {
+		return errors.New("sync advisory lock was not held")
+	}
+	return nil
 }
 
 func timeoutContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
