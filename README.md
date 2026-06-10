@@ -45,6 +45,7 @@ cp backend/.env.example backend/.env
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
 - `SESSION_SECRET`：登录 session hash secret。
+- `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
 - `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`。
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
@@ -71,6 +72,12 @@ make dev
 ```bash
 make backend-dev
 make frontend-dev
+```
+
+需要输出 debug 日志时：
+
+```bash
+LOG_LEVEL=debug make backend-dev
 ```
 
 macOS 的默认临时目录路径可能过长，Nuxt dev 的 Vite Node IPC socket 会因此触发 `connect EINVAL`。`make frontend-dev` 会把 `TMPDIR` 固定到 `/tmp`；若直接进入 `frontend` 运行，请使用 `TMPDIR=/tmp pnpm dev`。

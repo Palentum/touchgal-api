@@ -9,11 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/db"
 	"github.com/touchgal/developer/backend/internal/httpserver"
+	"github.com/touchgal/developer/backend/internal/logging"
 	"github.com/touchgal/developer/backend/internal/repository"
 	"github.com/touchgal/developer/backend/internal/services/application"
 	"github.com/touchgal/developer/backend/internal/services/auth"
@@ -36,10 +36,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-	if !cfg.IsProduction() {
-		logger = logger.Output(zerolog.ConsoleWriter{Out: os.Stdout})
+	logger, err := logging.New(cfg.LogLevel, os.Stdout, !cfg.IsProduction())
+	if err != nil {
+		return err
 	}
+	logger.Debug().Str("app_env", cfg.AppEnv).Str("log_level", cfg.LogLevel).Msg("logger configured")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

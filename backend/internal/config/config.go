@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/touchgal/developer/backend/internal/logging"
 )
 
 const (
@@ -18,6 +20,7 @@ const (
 
 type Config struct {
 	AppEnv     string
+	LogLevel   string
 	HTTPAddr   string
 	PublicURL  string
 	APIBaseURL string
@@ -70,6 +73,7 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		AppEnv:     env("APP_ENV", "development"),
+		LogLevel:   strings.ToLower(strings.TrimSpace(env("LOG_LEVEL", "info"))),
 		HTTPAddr:   env("HTTP_ADDR", ":8080"),
 		PublicURL:  env("PUBLIC_BASE_URL", "http://localhost:3000"),
 		APIBaseURL: env("API_BASE_URL", "http://localhost:8080"),
@@ -127,6 +131,9 @@ func (c Config) Validate() error {
 	}
 	if c.APITokenPepper == "" {
 		return errors.New("API_TOKEN_PEPPER is required")
+	}
+	if _, err := logging.ParseLevel(c.LogLevel); err != nil {
+		return err
 	}
 	switch c.MailDriver {
 	case MailDriverSMTP, MailDriverPostal, MailDriverLog:

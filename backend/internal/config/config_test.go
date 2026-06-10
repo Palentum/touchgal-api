@@ -44,9 +44,18 @@ func TestValidateMailDriverRejectsUnknownDriver(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnknownLogLevel(t *testing.T) {
+	cfg := validConfig()
+	cfg.LogLevel = "verbose"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid LOG_LEVEL error")
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		DatabaseDSN:             "postgres://example",
+		LogLevel:                "info",
 		SessionSecret:           "secret",
 		APITokenPepper:          "pepper",
 		EmailCodeMaxAttempts:    1,

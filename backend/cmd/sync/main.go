@@ -5,10 +5,10 @@ import (
 	"flag"
 	"os"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/db"
+	"github.com/touchgal/developer/backend/internal/logging"
 	"github.com/touchgal/developer/backend/internal/repository"
 	syncsvc "github.com/touchgal/developer/backend/internal/services/sync"
 )
@@ -26,7 +26,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+	logger, err := logging.New(cfg.LogLevel, os.Stdout, false)
+	if err != nil {
+		return err
+	}
+	logger.Debug().Str("mode", *mode).Str("log_level", cfg.LogLevel).Msg("logger configured")
 	ctx := context.Background()
 	target, err := db.OpenPostgres(ctx, cfg.DatabaseDSN)
 	if err != nil {
