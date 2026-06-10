@@ -20,6 +20,7 @@ const (
 	MailDriverLog                 = "log"
 	DefaultMaxActiveTokensPerUser = 10
 )
+const DefaultSyncRunFinishTimeout = 15 * time.Second
 
 type PostgresConfig struct {
 	PoolMaxConns                    int
@@ -106,6 +107,7 @@ type Config struct {
 	SyncFullIntervalHours         int
 	SyncIncrementalSafetyMinutes  int
 	SyncDefaultContentPolicy      string
+	SyncRunFinishTimeout          time.Duration
 	TouchGalSiteURL               string
 	TouchGalTechDocsURL           string
 	APIDocsURL                    string
@@ -231,6 +233,7 @@ func Load() (Config, error) {
 		APIRequestLogBatchSize:        envInt("API_REQUEST_LOG_BATCH_SIZE", 500),
 		APIRequestLogFlushInterval:    envDuration("API_REQUEST_LOG_FLUSH_INTERVAL", time.Second),
 		APIRequestLogRetentionDays:    envInt("API_REQUEST_LOG_RETENTION_DAYS", 14),
+		SyncRunFinishTimeout:          envDuration("SYNC_RUN_FINISH_TIMEOUT", DefaultSyncRunFinishTimeout),
 		EnableSyncWorker:              envBool("ENABLE_SYNC_WORKER", false),
 		SyncIntervalMinutes:           envInt("SYNC_INTERVAL_MINUTES", 30),
 		SyncFullIntervalHours:         envInt("SYNC_FULL_INTERVAL_HOURS", 24),
@@ -435,6 +438,9 @@ func (c Config) Validate() error {
 	if c.APIRequestLogRetentionDays <= 0 {
 		return errors.New("API_REQUEST_LOG_RETENTION_DAYS must be positive")
 	}
+	if c.SyncRunFinishTimeout <= 0 {
+		return errors.New("SYNC_RUN_FINISH_TIMEOUT must be positive")
+	}
 	return nil
 }
 
@@ -471,6 +477,13 @@ func (c Config) APITokenAuthCacheTTL() time.Duration {
 
 func (c Config) APILastUsedUpdateInterval() time.Duration {
 	return time.Duration(c.APILastUsedUpdateIntervalSecs) * time.Second
+}
+
+func (c Config) EffectiveSyncRunFinishTimeout() time.Duration {
+	if c.SyncRunFinishTimeout <= 0 {
+		return DefaultSyncRunFinishTimeout
+	}
+	return c.SyncRunFinishTimeout
 }
 
 func (c Config) IsProduction() bool {

@@ -308,6 +308,28 @@ func TestLoadTokenLimitDefaultsAndEnv(t *testing.T) {
 	}
 }
 
+func TestLoadSyncRunFinishTimeout(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("SYNC_RUN_FINISH_TIMEOUT", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.SyncRunFinishTimeout != DefaultSyncRunFinishTimeout {
+		t.Fatalf("unexpected sync finish timeout default: %s", cfg.SyncRunFinishTimeout)
+	}
+
+	t.Setenv("SYNC_RUN_FINISH_TIMEOUT", "20s")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("expected env config to load: %v", err)
+	}
+	if cfg.SyncRunFinishTimeout != 20*time.Second {
+		t.Fatalf("unexpected sync finish timeout env: %s", cfg.SyncRunFinishTimeout)
+	}
+}
+
 func TestValidateTokenLimitSettings(t *testing.T) {
 	cfg := validConfig()
 	cfg.MaxActiveTokensPerUser = 0
@@ -339,6 +361,14 @@ func TestValidateAPIRequestLogSettings(t *testing.T) {
 	cfg.APIRequestLogRetentionDays = 0
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected invalid API_REQUEST_LOG_RETENTION_DAYS error")
+	}
+}
+
+func TestValidateSyncSettings(t *testing.T) {
+	cfg := validConfig()
+	cfg.SyncRunFinishTimeout = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid SYNC_RUN_FINISH_TIMEOUT error")
 	}
 }
 
@@ -426,6 +456,7 @@ func validConfig() Config {
 		APIRequestLogBatchSize:            1,
 		APIRequestLogFlushInterval:        time.Second,
 		APIRequestLogRetentionDays:        1,
+		SyncRunFinishTimeout:              DefaultSyncRunFinishTimeout,
 		MailDriver:                        MailDriverSMTP,
 		MailSendTimeoutSeconds:            10,
 	}

@@ -20,8 +20,7 @@ const (
 	ModeIncremental = "incremental"
 	ModeFull        = "full"
 
-	sourceGamePageSize   = 1000
-	syncRunFinishTimeout = 15 * time.Second
+	sourceGamePageSize = 1000
 )
 
 type runStore interface {
@@ -119,7 +118,7 @@ func (s *Service) Start(_ context.Context, mode string) (*model.SyncRun, error) 
 	}
 	run, err := s.startRun(runCtx, mode, runRepo)
 	if err != nil {
-		releaseSyncRunLock(runCtx, lock)
+		s.releaseSyncRunLock(runCtx, lock)
 		s.wg.Done()
 		s.releaseRun()
 		return nil, err
@@ -150,7 +149,7 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 	}
 	run, err := s.startRun(ctx, mode, runRepo)
 	if err != nil {
-		releaseSyncRunLock(ctx, lock)
+		s.releaseSyncRunLock(ctx, lock)
 		return nil, err
 	}
 	return s.runStarted(ctx, run, lock, runRepo)
@@ -189,17 +188,24 @@ func (s *Service) acquireDistributedRunLock(ctx context.Context) (*repository.Sy
 	return lock, lock.Repo(), nil
 }
 
-func releaseSyncRunLock(ctx context.Context, lock *repository.SyncRunLock) {
-	if lock == nil {
-		return
+func (s *Service) releaseSyncRunLock(ctx context.Context, lock *repository.SyncRunLock) {
+	if err := s.releaseSyncRunLockError(ctx, lock); err != nil {
+		s.log.Warn().Err(err).Msg("sync run lock release failed")
 	}
-	releaseCtx, cancel := finishContext(ctx)
-	defer cancel()
-	lock.Release(releaseCtx)
 }
 
-func finishContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), syncRunFinishTimeout)
+func (s *Service) releaseSyncRunLockError(ctx context.Context, lock *repository.SyncRunLock) error {
+	if lock == nil {
+		return nil
+	}
+	releaseCtx, cancel := s.finishContext(ctx)
+	defer cancel()
+	lock.Release(releaseCtx)
+	return nil
+}
+
+func (s *Service) finishContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), s.cfg.EffectiveSyncRunFinishTimeout())
 }
 
 func optionalTimeoutContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -222,7 +228,7 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun, lock *repo
 		if err != nil {
 			message = err.Error()
 		}
-		finishCtx, cancel := finishContext(ctx)
+		finishCtx, cancel := s.finishContext(ctx)
 		defer cancel()
 		updated, finishErr := finishRepo.FinishRun(finishCtx, run.ID, status, sourceMax, seen, upserted, deleted, message)
 		if finishErr != nil && err == nil {
@@ -245,7 +251,7 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun, lock *repo
 		}
 		return updated, err
 	}
-	defer releaseSyncRunLock(ctx, lock)
+	defer s.releaseSyncRunLock(ctx, lock)
 
 	if s.source == nil {
 		return finish("failed", errors.New("SOURCE_DATABASE_DSN is not configured"))
@@ -376,9 +382,11 @@ func (s *Service) writeTargetBatch(ctx context.Context, lock *repository.SyncRun
 		return 0, 0, nil, err
 	}
 	defer func() {
-		rollbackCtx, cancel := finishContext(ctx)
+		rollbackCtx, cancel := s.finishContext(ctx)
 		defer cancel()
-		_ = tx.Rollback(rollbackCtx)
+		if err := tx.Rollback(rollbackCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			s.log.Warn().Err(err).Stringer("run_id", runID).Msg("sync target batch rollback failed")
+		}
 	}()
 	txRepo := repository.NewSyncRepo(repository.WithQueryTimeout(tx, s.cfg.SyncDatabasePool.QueryTimeout))
 	if err := txRepo.UpsertGames(ctx, games); err != nil {
@@ -421,9 +429,11 @@ func (s *Service) markDeletedNotSeen(ctx context.Context, lock *repository.SyncR
 		return 0, err
 	}
 	defer func() {
-		rollbackCtx, cancel := finishContext(ctx)
+		rollbackCtx, cancel := s.finishContext(ctx)
 		defer cancel()
-		_ = tx.Rollback(rollbackCtx)
+		if err := tx.Rollback(rollbackCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			s.log.Warn().Err(err).Stringer("run_id", runID).Msg("sync mark-deleted rollback failed")
+		}
 	}()
 	txRepo := repository.NewSyncRepo(repository.WithQueryTimeout(tx, s.cfg.SyncDatabasePool.QueryTimeout))
 	deleted, err := txRepo.MarkDeletedNotSeenByRun(ctx, runID)
@@ -440,7 +450,7 @@ func (s *Service) markDeletedNotSeen(ctx context.Context, lock *repository.SyncR
 }
 
 func (s *Service) cleanupSeenSourcePatchIDs(ctx context.Context, lock *repository.SyncRunLock, runID uuid.UUID) {
-	cleanupCtx, cancel := finishContext(ctx)
+	cleanupCtx, cancel := s.finishContext(ctx)
 	defer cancel()
 	repo := lock.Repo()
 	if err := repo.CleanupSeenSourcePatchIDs(cleanupCtx, runID); err != nil {
