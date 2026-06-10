@@ -54,3 +54,24 @@ func TestAdminRunSyncRejectsWhenSyncServiceMissing(t *testing.T) {
 		t.Fatalf("expected SYNC_DISABLED response, got %s", rec.Body.String())
 	}
 }
+
+func TestAdminRunSyncRejectsLargeBody(t *testing.T) {
+	starter := &fakeSyncStarter{}
+	handler := NewAdminHandler(nil, nil, nil, starter, nil, true)
+	body := `{"mode":"` + strings.Repeat("x", smallJSONBodyLimit) + `"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/sync/runs", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.RunSync(rec, req)
+
+	if starter.called {
+		t.Fatal("expected sync service not to be called")
+	}
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected status %d, got %d", http.StatusRequestEntityTooLarge, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"REQUEST_BODY_TOO_LARGE"`) {
+		t.Fatalf("expected REQUEST_BODY_TOO_LARGE response, got %s", rec.Body.String())
+	}
+}

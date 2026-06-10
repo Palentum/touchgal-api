@@ -32,11 +32,16 @@ type PostgresConfig struct {
 }
 
 type Config struct {
-	AppEnv     string
-	LogLevel   string
-	HTTPAddr   string
-	PublicURL  string
-	APIBaseURL string
+	AppEnv                string
+	LogLevel              string
+	HTTPAddr              string
+	HTTPReadHeaderTimeout time.Duration
+	HTTPReadTimeout       time.Duration
+	HTTPWriteTimeout      time.Duration
+	HTTPIdleTimeout       time.Duration
+	HTTPMaxHeaderBytes    int
+	PublicURL             string
+	APIBaseURL            string
 
 	DatabaseDSN        string
 	SourceDatabaseDSN  string
@@ -144,11 +149,16 @@ func Load() (Config, error) {
 	loadEnvFile("backend/.env")
 
 	cfg := Config{
-		AppEnv:     env("APP_ENV", "development"),
-		LogLevel:   strings.ToLower(strings.TrimSpace(env("LOG_LEVEL", "info"))),
-		HTTPAddr:   env("HTTP_ADDR", ":8080"),
-		PublicURL:  env("PUBLIC_BASE_URL", "http://localhost:3000"),
-		APIBaseURL: env("API_BASE_URL", "http://localhost:8080"),
+		AppEnv:                env("APP_ENV", "development"),
+		LogLevel:              strings.ToLower(strings.TrimSpace(env("LOG_LEVEL", "info"))),
+		HTTPAddr:              env("HTTP_ADDR", ":8080"),
+		HTTPReadHeaderTimeout: envDuration("HTTP_READ_HEADER_TIMEOUT", 10*time.Second),
+		HTTPReadTimeout:       envDuration("HTTP_READ_TIMEOUT", 15*time.Second),
+		HTTPWriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
+		HTTPIdleTimeout:       envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
+		HTTPMaxHeaderBytes:    envInt("HTTP_MAX_HEADER_BYTES", 1<<20),
+		PublicURL:             env("PUBLIC_BASE_URL", "http://localhost:3000"),
+		APIBaseURL:            env("API_BASE_URL", "http://localhost:8080"),
 
 		DatabaseDSN:        env("DATABASE_DSN", "postgres://touchgal_api:touchgal_api@localhost:5432/touchgal_api?sslmode=disable"),
 		SourceDatabaseDSN:  env("SOURCE_DATABASE_DSN", ""),
@@ -246,8 +256,26 @@ func (c Config) Validate() error {
 	if c.DatabaseDSN == "" {
 		return errors.New("DATABASE_DSN is required")
 	}
+	if c.HTTPReadHeaderTimeout <= 0 {
+		return errors.New("HTTP_READ_HEADER_TIMEOUT must be positive")
+	}
+	if c.HTTPReadTimeout <= 0 {
+		return errors.New("HTTP_READ_TIMEOUT must be positive")
+	}
+	if c.HTTPWriteTimeout <= 0 {
+		return errors.New("HTTP_WRITE_TIMEOUT must be positive")
+	}
+	if c.HTTPIdleTimeout <= 0 {
+		return errors.New("HTTP_IDLE_TIMEOUT must be positive")
+	}
+	if c.HTTPMaxHeaderBytes <= 0 {
+		return errors.New("HTTP_MAX_HEADER_BYTES must be positive")
+	}
 	if err := validatePostgresConfig("DB", c.DatabasePool); err != nil {
 		return err
+	}
+	if c.DatabasePool.QueryTimeout > 0 && c.HTTPWriteTimeout <= c.HTTPReadTimeout+c.DatabasePool.QueryTimeout {
+		return errors.New("HTTP_WRITE_TIMEOUT must be greater than HTTP_READ_TIMEOUT plus DB_QUERY_TIMEOUT when DB_QUERY_TIMEOUT is positive")
 	}
 	if err := validatePostgresConfig("SYNC_DB", c.SyncDatabasePool); err != nil {
 		return err

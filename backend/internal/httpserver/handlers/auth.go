@@ -32,8 +32,8 @@ type verifyRequest struct {
 
 func (h *AuthHandler) RegisterStart(w http.ResponseWriter, r *http.Request) {
 	var req registerStartRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	if err := h.svc.RequestRegisterCode(r.Context(), req.Email, req.DisplayName, middleware.ClientIP(r)); err != nil {
@@ -45,8 +45,8 @@ func (h *AuthHandler) RegisterStart(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) RegisterVerify(w http.ResponseWriter, r *http.Request) {
 	var req verifyRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	result, err := h.svc.VerifyRegister(r.Context(), req.Email, req.Code, r.UserAgent(), middleware.ClientIP(r))
@@ -60,8 +60,8 @@ func (h *AuthHandler) RegisterVerify(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) LoginStart(w http.ResponseWriter, r *http.Request) {
 	var req emailRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	if err := h.svc.RequestLoginCode(r.Context(), req.Email, middleware.ClientIP(r)); err != nil {
@@ -73,8 +73,8 @@ func (h *AuthHandler) LoginStart(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) LoginVerify(w http.ResponseWriter, r *http.Request) {
 	var req verifyRequest
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	result, err := h.svc.VerifyLogin(r.Context(), req.Email, req.Code, r.UserAgent(), middleware.ClientIP(r))

@@ -33,8 +33,8 @@ func (h *ApplicationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ExpectedDailyRequests int    `json:"expectedDailyRequests"`
 		UsageScenario         string `json:"usageScenario"`
 	}
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, applicationJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	app, err := h.svc.Create(r.Context(), user.ID, model.CreateApplicationInput{ApplicantName: req.ApplicantName, ProjectName: req.ProjectName, ProjectURL: req.ProjectURL, ExpectedDailyRequests: req.ExpectedDailyRequests, UsageScenario: req.UsageScenario})

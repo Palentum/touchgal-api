@@ -83,6 +83,7 @@ Context7 查询的 `pgx/v5` 文档要点：
 
 - 服务层返回 `model` sentinel errors；HTTP status/code 映射集中在 `handlers/respond.go`。
 - `DecodeJSON` 使用 `DisallowUnknownFields()`；新增 handler 必须保持未知字段拒绝行为。
+- `DecodeJSON` 会用 `http.MaxBytesReader` 限制请求体并拒绝额外 JSON/trailing bytes；新增 JSON handler 必须按 endpoint 选择 `smallJSONBodyLimit` 或 `applicationJSONBodyLimit`，不要直接读取无界 `r.Body`。
 - 成功响应固定为 `{ "success": true, "data": ... }`。
 - 失败响应固定为 `{ "success": false, "error": { "code", "message" } }`。
 - 不把 DB 结构、SQL 错误、token、OTP、DSN、pepper 输出给客户端或日志。

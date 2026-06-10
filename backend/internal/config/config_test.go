@@ -18,6 +18,89 @@ func TestLoadDefaultsSyncWorkerDisabled(t *testing.T) {
 	}
 }
 
+func TestLoadHTTPServerDefaults(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HTTP_READ_HEADER_TIMEOUT", "")
+	t.Setenv("HTTP_READ_TIMEOUT", "")
+	t.Setenv("HTTP_WRITE_TIMEOUT", "")
+	t.Setenv("HTTP_IDLE_TIMEOUT", "")
+	t.Setenv("HTTP_MAX_HEADER_BYTES", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.HTTPReadHeaderTimeout != 10*time.Second {
+		t.Fatalf("unexpected read header timeout: %s", cfg.HTTPReadHeaderTimeout)
+	}
+	if cfg.HTTPReadTimeout != 15*time.Second {
+		t.Fatalf("unexpected read timeout: %s", cfg.HTTPReadTimeout)
+	}
+	if cfg.HTTPWriteTimeout != 60*time.Second {
+		t.Fatalf("unexpected write timeout: %s", cfg.HTTPWriteTimeout)
+	}
+	if cfg.HTTPIdleTimeout != 120*time.Second {
+		t.Fatalf("unexpected idle timeout: %s", cfg.HTTPIdleTimeout)
+	}
+	if cfg.HTTPMaxHeaderBytes != 1<<20 {
+		t.Fatalf("unexpected max header bytes: %d", cfg.HTTPMaxHeaderBytes)
+	}
+}
+
+func TestLoadHTTPServerEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HTTP_READ_HEADER_TIMEOUT", "2s")
+	t.Setenv("HTTP_READ_TIMEOUT", "3s")
+	t.Setenv("HTTP_WRITE_TIMEOUT", "40s")
+	t.Setenv("HTTP_IDLE_TIMEOUT", "5s")
+	t.Setenv("HTTP_MAX_HEADER_BYTES", "4096")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected config to load: %v", err)
+	}
+	if cfg.HTTPReadHeaderTimeout != 2*time.Second || cfg.HTTPReadTimeout != 3*time.Second || cfg.HTTPWriteTimeout != 40*time.Second || cfg.HTTPIdleTimeout != 5*time.Second || cfg.HTTPMaxHeaderBytes != 4096 {
+		t.Fatalf("unexpected HTTP server config: %+v", cfg)
+	}
+}
+
+func TestValidateHTTPServerSettings(t *testing.T) {
+	cfg := validConfig()
+	cfg.HTTPReadHeaderTimeout = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid HTTP_READ_HEADER_TIMEOUT error")
+	}
+
+	cfg = validConfig()
+	cfg.HTTPReadTimeout = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid HTTP_READ_TIMEOUT error")
+	}
+
+	cfg = validConfig()
+	cfg.HTTPWriteTimeout = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid HTTP_WRITE_TIMEOUT error")
+	}
+
+	cfg = validConfig()
+	cfg.HTTPIdleTimeout = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid HTTP_IDLE_TIMEOUT error")
+	}
+
+	cfg = validConfig()
+	cfg.HTTPMaxHeaderBytes = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid HTTP_MAX_HEADER_BYTES error")
+	}
+	cfg = validConfig()
+	cfg.HTTPWriteTimeout = cfg.HTTPReadTimeout + cfg.DatabasePool.QueryTimeout
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected HTTP_WRITE_TIMEOUT not greater than HTTP_READ_TIMEOUT plus DB_QUERY_TIMEOUT error")
+	}
+}
+
 func TestValidateMailDriverPostalRequiresAPISettings(t *testing.T) {
 	cfg := validConfig()
 	cfg.MailDriver = MailDriverPostal
@@ -124,6 +207,11 @@ func TestValidatePostgresSettings(t *testing.T) {
 func validConfig() Config {
 	return Config{
 		DatabaseDSN:                   "postgres://example",
+		HTTPReadHeaderTimeout:         time.Second,
+		HTTPReadTimeout:               time.Second,
+		HTTPWriteTimeout:              40 * time.Second,
+		HTTPIdleTimeout:               time.Second,
+		HTTPMaxHeaderBytes:            1,
 		DatabasePool:                  defaultDatabasePostgresConfig(),
 		SyncDatabasePool:              defaultSyncPostgresConfig(),
 		SourceDatabasePool:            defaultSourcePostgresConfig(),

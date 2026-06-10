@@ -59,8 +59,8 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		MinuteLimit *int    `json:"minuteLimit"`
 		DailyLimit  *int    `json:"dailyLimit"`
 	}
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	user, err := h.users.UpdateAdmin(r.Context(), admin.ID, id, usersvc.AdminUpdate{
@@ -125,8 +125,8 @@ func (h *AdminHandler) reviewApplication(w http.ResponseWriter, r *http.Request,
 		DailyLimit  int    `json:"dailyLimit"`
 		ReviewNote  string `json:"reviewNote"`
 	}
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, applicationJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	app, err := h.applications.Review(r.Context(), id, admin.ID, status, req.ReviewNote, req.MinuteLimit, req.DailyLimit)
@@ -174,8 +174,8 @@ func (h *AdminHandler) RunSync(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Mode string `json:"mode"`
 	}
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	if !h.syncEnabled || h.syncService == nil {

@@ -28,8 +28,8 @@ func (h *TokenHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	result, err := h.svc.Create(r.Context(), user.ID, user.IsAdmin, req.Name)
@@ -57,8 +57,8 @@ func (h *TokenHandler) UpdateMine(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := DecodeJSON(r, &req); err != nil {
-		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+	if err := DecodeJSON(w, r, &req, smallJSONBodyLimit); err != nil {
+		respondDecodeJSONError(w, err)
 		return
 	}
 	updated, err := h.svc.UpdateNameMine(r.Context(), id, user.ID, req.Name)

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/touchgal/developer/backend/internal/model"
@@ -40,10 +41,44 @@ func ErrorCode(w http.ResponseWriter, status int, code, message string) {
 	_ = json.NewEncoder(w).Encode(errorResponse{Success: false, Error: apiErrorShape{Code: code, Message: message}})
 }
 
-func DecodeJSON(r *http.Request, dst any) error {
+const (
+	smallJSONBodyLimit       = 8 << 10
+	applicationJSONBodyLimit = 64 << 10
+)
+
+var errExtraJSONValue = errors.New("request body must contain a single JSON value")
+
+func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64) error {
+	if r.ContentLength > maxBytes {
+		return &http.MaxBytesError{Limit: maxBytes}
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(dst)
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var extra struct{}
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errExtraJSONValue
+		}
+		return err
+	}
+	return nil
+}
+
+func respondDecodeJSONError(w http.ResponseWriter, err error) {
+	if isRequestBodyTooLarge(err) {
+		ErrorCode(w, http.StatusRequestEntityTooLarge, "REQUEST_BODY_TOO_LARGE", "Request body too large")
+		return
+	}
+	ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+}
+
+func isRequestBodyTooLarge(err error) bool {
+	var maxBytesErr *http.MaxBytesError
+	return errors.As(err, &maxBytesErr)
 }
 
 func classify(err error) (int, string, string) {
