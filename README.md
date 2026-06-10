@@ -42,8 +42,8 @@ cp backend/.env.example backend/.env
 关键变量：
 
 - `DATABASE_DSN`：本项目 clean DB，指向主机上的 PostgreSQL。
-- `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`。
-- `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；`SYNC_DB_*` 使用独立 pool，避免 full sync/长事务耗尽 API pool。
+- `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`；默认只配置给独立 sync worker，API 进程在 `ENABLE_SYNC_WORKER=false` 时不需要该凭据。
+- `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；sync 使用独立 target/source pool、分页读取和短事务 batch commit，避免 full sync 占用 API pool 或形成单个长事务。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
 - `SESSION_SECRET`：登录 session hash secret。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
@@ -53,8 +53,8 @@ cp backend/.env.example backend/.env
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
 - `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS`：`/v1` pre-auth IP 粗限流、token auth 短缓存与 `last_used_at` 写入节流。
 - `API_REQUEST_LOG_QUEUE_SIZE` / `API_REQUEST_LOG_BATCH_SIZE` / `API_REQUEST_LOG_FLUSH_INTERVAL` / `API_REQUEST_LOG_RETENTION_DAYS`：`/v1` request log 有界队列、批量写入间隔与 raw log 保留天数；dashboard 统计读取聚合表。
-- `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步。
-- `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS`：incremental/full 同步周期。
+- `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步，默认 `false`；生产建议保持关闭并使用独立 worker。
+- `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS`：仅在 `ENABLE_SYNC_WORKER=true` 时控制 API 进程内 incremental/full 同步周期。
 
 前端复制：
 
@@ -102,7 +102,7 @@ make sync       # go run ./cmd/sync --mode=incremental
 make sync-full  # go run ./cmd/sync --mode=full
 ```
 
-`SOURCE_DATABASE_DSN` 必须使用主库只读账号。本项目禁止修改主项目数据库。
+`SOURCE_DATABASE_DSN` 必须使用主库只读账号，且生产环境默认只放在独立 sync worker 的 env 中。本项目禁止修改主项目数据库。同步任务按 source `patch.id` keyset 分页读取，incremental 查询拆分 `updated` 与 `resource_update_time` 条件，clean DB 写入按批提交；full sync 通过 `sync_run_seen` staging 表标记本次见过的 source patch，再在所有批次成功后统一标记未见条目为 deleted。
 
 ## 创建管理员方式
 
@@ -165,8 +165,8 @@ curl "https://api.example.com/v1/me" \
 ## 部署建议
 
 - `deploy/docker-compose.yml` 只编排 backend/frontend；PostgreSQL、Redis 使用主机服务。
-- 生产同样使用外部 PostgreSQL、Redis、只读 SOURCE DB 账号。
-- 可将 API HTTP 与 sync worker 分离：API 设置 `ENABLE_SYNC_WORKER=false`，使用 k8s CronJob 或系统 cron 执行 `touchgal-sync --mode=incremental`。
+- 生产同样使用外部 PostgreSQL、Redis；主库只读 SOURCE DB 账号只配置给独立 sync worker。
+- 生产默认将 API HTTP 与 sync worker 分离：API 保持 `ENABLE_SYNC_WORKER=false`，使用 k8s CronJob、systemd timer 或系统 cron 执行 `touchgal-sync --mode=incremental`；只有小数据量或本地调试才建议启用 API 进程内 scheduler。
 - 推荐 nginx/Ingress 终止 TLS，并将 `SESSION_COOKIE_SECURE=true`。
 
 ## 安全注意事项

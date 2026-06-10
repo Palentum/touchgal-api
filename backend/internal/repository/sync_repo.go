@@ -70,10 +70,43 @@ func (r *SyncRepo) ListRuns(ctx context.Context, limit int) ([]model.SyncRun, er
 	return runs, rows.Err()
 }
 
-func (r *SyncRepo) UpsertGame(ctx context.Context, game model.CleanGame) error {
-	_, err := r.db.Exec(ctx, `
+func (r *SyncRepo) UpsertGames(ctx context.Context, games []model.CleanGame) error {
+	if len(games) == 0 {
+		return nil
+	}
+	normalized := make([]model.CleanGame, 0, len(games))
+	for _, game := range games {
+		game.Types = cleanUniqueStrings(game.Types)
+		game.Languages = cleanUniqueStrings(game.Languages)
+		game.Platforms = cleanUniqueStrings(game.Platforms)
+		normalized = append(normalized, game)
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT *
+			FROM jsonb_to_recordset($1::jsonb) AS game(
+				"UniqueID" text,
+				"SourcePatchID" int,
+				"Name" text,
+				"Introduction" text,
+				"BannerURL" text,
+				"Released" text,
+				"ContentLimit" text,
+				"Types" text[],
+				"Languages" text[],
+				"Platforms" text[],
+				"SourceCreatedAt" timestamptz,
+				"SourceUpdatedAt" timestamptz,
+				"ResourceUpdatedAt" timestamptz
+			)
+		)
 		INSERT INTO games (unique_id, source_patch_id, name, introduction, banner_url, released, content_limit, types, languages, platforms, source_created_at, source_updated_at, resource_updated_at, deleted_at, synced_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, now())
+		SELECT "UniqueID", "SourcePatchID", "Name", "Introduction", "BannerURL", "Released", "ContentLimit", "Types", "Languages", "Platforms", "SourceCreatedAt", "SourceUpdatedAt", "ResourceUpdatedAt", NULL, now()
+		FROM payload
 		ON CONFLICT (unique_id) DO UPDATE SET
 		  source_patch_id = excluded.source_patch_id,
 		  name = excluded.name,
@@ -88,25 +121,53 @@ func (r *SyncRepo) UpsertGame(ctx context.Context, game model.CleanGame) error {
 		  source_updated_at = excluded.source_updated_at,
 		  resource_updated_at = excluded.resource_updated_at,
 		  deleted_at = NULL,
-		  synced_at = now()`,
-		game.UniqueID, game.SourcePatchID, game.Name, game.Introduction, game.BannerURL, game.Released, game.ContentLimit, game.Types, game.Languages, game.Platforms, game.SourceCreatedAt, game.SourceUpdatedAt, game.ResourceUpdatedAt)
+		  synced_at = now()`, string(payload))
 	return err
 }
 
-func (r *SyncRepo) ReplaceAliases(ctx context.Context, uniqueID string, aliases []string) error {
-	if _, err := r.db.Exec(ctx, `DELETE FROM game_aliases WHERE game_unique_id = $1`, uniqueID); err != nil {
-		return err
+func (r *SyncRepo) ReplaceAliasesBatch(ctx context.Context, aliases map[string][]string) error {
+	payload := make([]aliasBatchRow, 0, len(aliases))
+	for uniqueID, values := range aliases {
+		uniqueID = strings.TrimSpace(uniqueID)
+		if uniqueID == "" {
+			continue
+		}
+		payload = append(payload, aliasBatchRow{UniqueID: uniqueID, Aliases: cleanUniqueStrings(values)})
 	}
-	cleaned := cleanUniqueStrings(aliases)
-	if len(cleaned) == 0 {
+	if len(payload) == 0 {
 		return nil
 	}
-	_, err := r.db.Exec(ctx, `
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT *
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, aliases text[])
+		)
+		DELETE FROM game_aliases ga
+		USING payload p
+		WHERE ga.game_unique_id = p.unique_id`, string(data))
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT *
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, aliases text[])
+		)
 		INSERT INTO game_aliases (game_unique_id, name)
-		SELECT $1, alias_name.name
-		FROM unnest($2::text[]) AS alias_name(name)
-		ON CONFLICT DO NOTHING`, uniqueID, cleaned)
+		SELECT p.unique_id, alias_name.name
+		FROM payload p
+		CROSS JOIN LATERAL unnest(p.aliases) AS alias_name(name)
+		ON CONFLICT DO NOTHING`, string(data))
 	return err
+}
+
+type aliasBatchRow struct {
+	UniqueID string   `json:"unique_id"`
+	Aliases  []string `json:"aliases"`
 }
 
 func cleanUniqueStrings(values []string) []string {
@@ -126,76 +187,240 @@ func cleanUniqueStrings(values []string) []string {
 	return cleaned
 }
 
-func (r *SyncRepo) ReplaceTags(ctx context.Context, uniqueID string, tags []model.TagData) error {
-	if _, err := r.db.Exec(ctx, `DELETE FROM game_tags WHERE game_unique_id = $1`, uniqueID); err != nil {
-		return err
-	}
-	seen := make(map[string]struct{}, len(tags))
-	for _, tag := range tags {
-		name := strings.TrimSpace(tag.Name)
-		if name == "" {
+func (r *SyncRepo) ReplaceTagsBatch(ctx context.Context, tags map[string][]model.TagData) error {
+	payload := make([]tagBatchRow, 0)
+	for uniqueID, values := range tags {
+		uniqueID = strings.TrimSpace(uniqueID)
+		if uniqueID == "" {
 			continue
 		}
-		if _, ok := seen[name]; ok {
-			continue
+		cleaned := cleanUniqueTags(values)
+		for _, tag := range cleaned {
+			payload = append(payload, tagBatchRow{UniqueID: uniqueID, Name: tag.Name, Aliases: tag.Aliases, Source: tag.Source})
 		}
-		seen[name] = struct{}{}
-		var id int64
-		err := r.db.QueryRow(ctx, `
-			INSERT INTO tags (name, aliases, source) VALUES ($1, $2, $3)
-			ON CONFLICT (name) DO UPDATE SET aliases = excluded.aliases, source = excluded.source
-			RETURNING id`, name, tag.Aliases, tag.Source).Scan(&id)
-		if err != nil {
-			return err
-		}
-		if _, err := r.db.Exec(ctx, `INSERT INTO game_tags (game_unique_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, uniqueID, id); err != nil {
-			return err
+		if len(cleaned) == 0 {
+			payload = append(payload, tagBatchRow{UniqueID: uniqueID})
 		}
 	}
-	return nil
-}
-
-func (r *SyncRepo) ReplaceCompanies(ctx context.Context, uniqueID string, companies []model.CompanyData) error {
-	if _, err := r.db.Exec(ctx, `DELETE FROM game_companies WHERE game_unique_id = $1`, uniqueID); err != nil {
-		return err
+	if len(payload) == 0 {
+		return nil
 	}
-	seen := make(map[string]struct{}, len(companies))
-	for _, company := range companies {
-		name := strings.TrimSpace(company.Name)
-		if name == "" {
-			continue
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		var id int64
-		err := r.db.QueryRow(ctx, `
-			INSERT INTO companies (name, aliases, official_websites, primary_languages, parent_brands) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (name) DO UPDATE SET aliases = excluded.aliases, official_websites = excluded.official_websites, primary_languages = excluded.primary_languages, parent_brands = excluded.parent_brands
-			RETURNING id`, name, company.Aliases, company.OfficialWebsites, company.PrimaryLanguages, company.ParentBrands).Scan(&id)
-		if err != nil {
-			return err
-		}
-		if _, err := r.db.Exec(ctx, `INSERT INTO game_companies (game_unique_id, company_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, uniqueID, id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *SyncRepo) UpsertRating(ctx context.Context, uniqueID string, rating *model.RatingData) error {
-	if rating == nil {
-		_, err := r.db.Exec(ctx, `DELETE FROM game_rating_stats WHERE game_unique_id = $1`, uniqueID)
-		return err
-	}
-	histogram, err := json.Marshal(rating.Histogram)
+	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT DISTINCT unique_id
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, name text, aliases text[], source text)
+		)
+		DELETE FROM game_tags gt
+		USING payload p
+		WHERE gt.game_unique_id = p.unique_id`, string(data))
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT *
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, name text, aliases text[], source text)
+		), tag_values AS (
+			SELECT DISTINCT ON (name) name, aliases, source
+			FROM payload
+			WHERE name <> ''
+			ORDER BY name
+		), upserted AS (
+			INSERT INTO tags (name, aliases, source)
+			SELECT name, aliases, source
+			FROM tag_values
+			ON CONFLICT (name) DO UPDATE SET aliases = excluded.aliases, source = excluded.source
+			RETURNING id, name
+		)
+		INSERT INTO game_tags (game_unique_id, tag_id)
+		SELECT DISTINCT p.unique_id, u.id
+		FROM payload p
+		JOIN upserted u ON u.name = p.name
+		ON CONFLICT DO NOTHING`, string(data))
+	return err
+}
+
+type tagBatchRow struct {
+	UniqueID string   `json:"unique_id"`
+	Name     string   `json:"name"`
+	Aliases  []string `json:"aliases"`
+	Source   string   `json:"source"`
+}
+
+func cleanUniqueTags(tags []model.TagData) []model.TagData {
+	cleaned := make([]model.TagData, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		tag.Name = strings.TrimSpace(tag.Name)
+		if tag.Name == "" {
+			continue
+		}
+		if _, ok := seen[tag.Name]; ok {
+			continue
+		}
+		tag.Aliases = cleanUniqueStrings(tag.Aliases)
+		tag.Source = strings.TrimSpace(tag.Source)
+		seen[tag.Name] = struct{}{}
+		cleaned = append(cleaned, tag)
+	}
+	return cleaned
+}
+
+func (r *SyncRepo) ReplaceCompaniesBatch(ctx context.Context, companies map[string][]model.CompanyData) error {
+	payload := make([]companyBatchRow, 0)
+	for uniqueID, values := range companies {
+		uniqueID = strings.TrimSpace(uniqueID)
+		if uniqueID == "" {
+			continue
+		}
+		cleaned := cleanUniqueCompanies(values)
+		for _, company := range cleaned {
+			payload = append(payload, companyBatchRow{
+				UniqueID:         uniqueID,
+				Name:             company.Name,
+				Aliases:          company.Aliases,
+				OfficialWebsites: company.OfficialWebsites,
+				PrimaryLanguages: company.PrimaryLanguages,
+				ParentBrands:     company.ParentBrands,
+			})
+		}
+		if len(cleaned) == 0 {
+			payload = append(payload, companyBatchRow{UniqueID: uniqueID})
+		}
+	}
+	if len(payload) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT DISTINCT unique_id
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, name text, aliases text[], official_websites text[], primary_languages text[], parent_brands text[])
+		)
+		DELETE FROM game_companies gc
+		USING payload p
+		WHERE gc.game_unique_id = p.unique_id`, string(data))
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT *
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, name text, aliases text[], official_websites text[], primary_languages text[], parent_brands text[])
+		), company_values AS (
+			SELECT DISTINCT ON (name) name, aliases, official_websites, primary_languages, parent_brands
+			FROM payload
+			WHERE name <> ''
+			ORDER BY name
+		), upserted AS (
+			INSERT INTO companies (name, aliases, official_websites, primary_languages, parent_brands)
+			SELECT name, aliases, official_websites, primary_languages, parent_brands
+			FROM company_values
+			ON CONFLICT (name) DO UPDATE SET aliases = excluded.aliases, official_websites = excluded.official_websites, primary_languages = excluded.primary_languages, parent_brands = excluded.parent_brands
+			RETURNING id, name
+		)
+		INSERT INTO game_companies (game_unique_id, company_id)
+		SELECT DISTINCT p.unique_id, u.id
+		FROM payload p
+		JOIN upserted u ON u.name = p.name
+		ON CONFLICT DO NOTHING`, string(data))
+	return err
+}
+
+type companyBatchRow struct {
+	UniqueID         string   `json:"unique_id"`
+	Name             string   `json:"name"`
+	Aliases          []string `json:"aliases"`
+	OfficialWebsites []string `json:"official_websites"`
+	PrimaryLanguages []string `json:"primary_languages"`
+	ParentBrands     []string `json:"parent_brands"`
+}
+
+func cleanUniqueCompanies(companies []model.CompanyData) []model.CompanyData {
+	cleaned := make([]model.CompanyData, 0, len(companies))
+	seen := make(map[string]struct{}, len(companies))
+	for _, company := range companies {
+		company.Name = strings.TrimSpace(company.Name)
+		if company.Name == "" {
+			continue
+		}
+		if _, ok := seen[company.Name]; ok {
+			continue
+		}
+		company.Aliases = cleanUniqueStrings(company.Aliases)
+		company.OfficialWebsites = cleanUniqueStrings(company.OfficialWebsites)
+		company.PrimaryLanguages = cleanUniqueStrings(company.PrimaryLanguages)
+		company.ParentBrands = cleanUniqueStrings(company.ParentBrands)
+		seen[company.Name] = struct{}{}
+		cleaned = append(cleaned, company)
+	}
+	return cleaned
+}
+
+func (r *SyncRepo) UpsertRatingsBatch(ctx context.Context, ratings map[string]*model.RatingData, affected []string) error {
+	uniqueIDs := cleanUniqueStrings(affected)
+	if len(uniqueIDs) == 0 {
+		return nil
+	}
+	payload := make([]ratingBatchRow, 0, len(uniqueIDs))
+	for _, uniqueID := range uniqueIDs {
+		row := ratingBatchRow{UniqueID: uniqueID}
+		if rating := ratings[uniqueID]; rating != nil {
+			histogramData := rating.Histogram
+			if histogramData == nil {
+				histogramData = map[string]int{}
+			}
+			histogram, err := json.Marshal(histogramData)
+			if err != nil {
+				return err
+			}
+			row.HasRating = true
+			row.AverageOverall = rating.AverageOverall
+			row.Count = rating.Count
+			row.RecStrongNo = rating.RecStrongNo
+			row.RecNo = rating.RecNo
+			row.RecNeutral = rating.RecNeutral
+			row.RecYes = rating.RecYes
+			row.RecStrongYes = rating.RecStrongYes
+			row.Histogram = json.RawMessage(histogram)
+		}
+		payload = append(payload, row)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT *
+			FROM jsonb_to_recordset($1::jsonb) AS row(
+				unique_id text,
+				has_rating bool,
+				average_overall double precision,
+				count int,
+				rec_strong_no int,
+				rec_no int,
+				rec_neutral int,
+				rec_yes int,
+				rec_strong_yes int,
+				histogram jsonb
+			)
+		), deleted AS (
+			DELETE FROM game_rating_stats grs
+			USING payload p
+			WHERE grs.game_unique_id = p.unique_id AND NOT p.has_rating
+		)
 		INSERT INTO game_rating_stats (game_unique_id, average_overall, count, rec_strong_no, rec_no, rec_neutral, rec_yes, rec_strong_yes, histogram, synced_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, now())
+		SELECT unique_id, average_overall, count, rec_strong_no, rec_no, rec_neutral, rec_yes, rec_strong_yes, histogram, now()
+		FROM payload
+		WHERE has_rating
 		ON CONFLICT (game_unique_id) DO UPDATE SET
 		  average_overall = excluded.average_overall,
 		  count = excluded.count,
@@ -205,34 +430,100 @@ func (r *SyncRepo) UpsertRating(ctx context.Context, uniqueID string, rating *mo
 		  rec_yes = excluded.rec_yes,
 		  rec_strong_yes = excluded.rec_strong_yes,
 		  histogram = excluded.histogram,
-		  synced_at = now()`,
-		uniqueID, rating.AverageOverall, rating.Count, rating.RecStrongNo, rating.RecNo, rating.RecNeutral, rating.RecYes, rating.RecStrongYes, string(histogram))
+		  synced_at = now()`, string(data))
 	return err
 }
 
-func (r *SyncRepo) RefreshSearchText(ctx context.Context, uniqueID string) error {
-	_, err := r.db.Exec(ctx, `
-		UPDATE games g SET search_text = concat_ws(' ',
-		  g.name,
-		  (SELECT string_agg(a.name, ' ') FROM game_aliases a WHERE a.game_unique_id = g.unique_id),
-		  (SELECT string_agg(t.name, ' ') FROM tags t JOIN game_tags gt ON gt.tag_id = t.id WHERE gt.game_unique_id = g.unique_id),
-		  (SELECT string_agg(c.name, ' ') FROM companies c JOIN game_companies gc ON gc.company_id = c.id WHERE gc.game_unique_id = g.unique_id)
-		)
-		WHERE g.unique_id = $1`, uniqueID)
-	return err
+type ratingBatchRow struct {
+	UniqueID       string          `json:"unique_id"`
+	HasRating      bool            `json:"has_rating"`
+	AverageOverall float64         `json:"average_overall"`
+	Count          int             `json:"count"`
+	RecStrongNo    int             `json:"rec_strong_no"`
+	RecNo          int             `json:"rec_no"`
+	RecNeutral     int             `json:"rec_neutral"`
+	RecYes         int             `json:"rec_yes"`
+	RecStrongYes   int             `json:"rec_strong_yes"`
+	Histogram      json.RawMessage `json:"histogram,omitempty"`
 }
 
-func (r *SyncRepo) MarkDeletedNotSeen(ctx context.Context, seenSourcePatchIDs []int) (int, error) {
-	if len(seenSourcePatchIDs) == 0 {
-		cmd, err := r.db.Exec(ctx, `UPDATE games SET deleted_at = now() WHERE deleted_at IS NULL`)
-		if err != nil {
-			return 0, err
-		}
-		return int(cmd.RowsAffected()), nil
+func (r *SyncRepo) RefreshSearchTextBatch(ctx context.Context, uniqueIDs []string) error {
+	uniqueIDs = cleanUniqueStrings(uniqueIDs)
+	if len(uniqueIDs) == 0 {
+		return nil
 	}
-	cmd, err := r.db.Exec(ctx, `UPDATE games SET deleted_at = now() WHERE deleted_at IS NULL AND NOT (source_patch_id = ANY($1::int[]))`, seenSourcePatchIDs)
+	_, err := r.db.Exec(ctx, `
+		WITH affected AS (
+			SELECT unnest($1::text[]) AS unique_id
+		), aliases AS (
+			SELECT a.game_unique_id, string_agg(a.name, ' ' ORDER BY a.name) AS text
+			FROM game_aliases a
+			JOIN affected af ON af.unique_id = a.game_unique_id
+			GROUP BY a.game_unique_id
+		), tag_text AS (
+			SELECT gt.game_unique_id, string_agg(t.name, ' ' ORDER BY t.name) AS text
+			FROM game_tags gt
+			JOIN affected af ON af.unique_id = gt.game_unique_id
+			JOIN tags t ON t.id = gt.tag_id
+			GROUP BY gt.game_unique_id
+		), company_text AS (
+			SELECT gc.game_unique_id, string_agg(c.name, ' ' ORDER BY c.name) AS text
+			FROM game_companies gc
+			JOIN affected af ON af.unique_id = gc.game_unique_id
+			JOIN companies c ON c.id = gc.company_id
+			GROUP BY gc.game_unique_id
+		)
+		UPDATE games g SET search_text = concat_ws(' ', g.name, aliases.text, tag_text.text, company_text.text)
+		FROM affected af
+		LEFT JOIN aliases ON aliases.game_unique_id = af.unique_id
+		LEFT JOIN tag_text ON tag_text.game_unique_id = af.unique_id
+		LEFT JOIN company_text ON company_text.game_unique_id = af.unique_id
+		WHERE g.unique_id = af.unique_id`, uniqueIDs)
+	return err
+}
+
+func (r *SyncRepo) AddSeenSourcePatchIDs(ctx context.Context, runID uuid.UUID, ids []int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO sync_run_seen (run_id, source_patch_id)
+		SELECT $1, source_patch_id
+		FROM unnest($2::int[]) AS seen(source_patch_id)
+		ON CONFLICT DO NOTHING`, runID, cleanUniqueInts(ids))
+	return err
+}
+
+func cleanUniqueInts(values []int) []int {
+	cleaned := make([]int, 0, len(values))
+	seen := make(map[int]struct{}, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		cleaned = append(cleaned, value)
+	}
+	return cleaned
+}
+
+func (r *SyncRepo) MarkDeletedNotSeenByRun(ctx context.Context, runID uuid.UUID) (int, error) {
+	cmd, err := r.db.Exec(ctx, `
+		UPDATE games g
+		SET deleted_at = now()
+		WHERE g.deleted_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM sync_run_seen s
+			WHERE s.run_id = $1 AND s.source_patch_id = g.source_patch_id
+		  )`, runID)
 	if err != nil {
 		return 0, err
 	}
 	return int(cmd.RowsAffected()), nil
+}
+
+func (r *SyncRepo) CleanupSeenSourcePatchIDs(ctx context.Context, runID uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM sync_run_seen WHERE run_id = $1`, runID)
+	return err
 }

@@ -45,7 +45,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	tokenHandler := handlers.NewTokenHandler(services.Tokens)
 	publicHandler := handlers.NewPublicAPIHandler(services.PublicAPI)
 	statsHandler := handlers.NewStatsHandler(services.Stats)
-	adminHandler := handlers.NewAdminHandler(services.Applications, services.Tokens, services.Users, services.Sync, repos.Sync)
+	adminHandler := handlers.NewAdminHandler(services.Applications, services.Tokens, services.Users, services.Sync, repos.Sync, cfg.EnableSyncWorker)
 
 	r.Get("/openapi.yaml", docs.OpenAPI)
 	r.Get("/docs", docs.Swagger)

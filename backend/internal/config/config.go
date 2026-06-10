@@ -193,7 +193,7 @@ func Load() (Config, error) {
 		APIRequestLogBatchSize:        envInt("API_REQUEST_LOG_BATCH_SIZE", 500),
 		APIRequestLogFlushInterval:    envDuration("API_REQUEST_LOG_FLUSH_INTERVAL", time.Second),
 		APIRequestLogRetentionDays:    envInt("API_REQUEST_LOG_RETENTION_DAYS", 14),
-		EnableSyncWorker:              envBool("ENABLE_SYNC_WORKER", true),
+		EnableSyncWorker:              envBool("ENABLE_SYNC_WORKER", false),
 		SyncIntervalMinutes:           envInt("SYNC_INTERVAL_MINUTES", 30),
 		SyncFullIntervalHours:         envInt("SYNC_FULL_INTERVAL_HOURS", 24),
 		SyncIncrementalSafetyMinutes:  envInt("SYNC_INCREMENTAL_SAFETY_MINUTES", 10),

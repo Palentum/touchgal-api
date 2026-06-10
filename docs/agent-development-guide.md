@@ -77,7 +77,7 @@ Context7 查询的 `pgx/v5` 文档要点：
 - `Query` 返回的 `Rows` 必须 `defer rows.Close()`，循环后检查 `rows.Err()`。
 - 从 pool `Begin(ctx)` 后，必须 `Commit` 或 `Rollback`；`defer tx.Rollback(ctx)` 在成功 `Commit` 后是安全模式。
 - `Exec` 返回 command tag；只有业务确实需要确认行数时才检查 `RowsAffected()`。
-- PostgreSQL pool/timeout 配置来自 `DB_*`、`SYNC_DB_*`、`SOURCE_DB_*`；API 运行时使用 `DB_*` pool，sync 使用独立 `SYNC_DB_*` target pool 与 `SOURCE_DB_*` source pool。新增 DB 入口或后台任务时不要绕过 `repository.WithQueryTimeout`，也不要重新让 API 与 full sync 共用同一个 target pool。
+- PostgreSQL pool/timeout 配置来自 `DB_*`、`SYNC_DB_*`、`SOURCE_DB_*`；API 运行时使用 `DB_*` pool，sync 使用独立 `SYNC_DB_*` target pool 与 `SOURCE_DB_*` source pool。新增 DB 入口或后台任务时不要绕过 `repository.WithQueryTimeout`，不要重新让 API 与 full sync 共用同一个 target pool，也不要把大批量 sync 合并回单个长事务。
 
 ### 错误与响应
 
@@ -92,10 +92,10 @@ Context7 查询的 `pgx/v5` 文档要点：
 同步边界比 API 更严格：
 
 - `SOURCE_DATABASE_DSN` 必须只读；本项目禁止修改主站数据库。
-- 来源读取集中在 `backend/internal/services/sync/source_queries.go`。
+- 来源读取集中在 `backend/internal/services/sync/source_queries.go`，必须按 keyset/page 或游标分批读取；incremental 条件避免重新引入 `updated >= ... OR resource_update_time >= ...` 这类可能退化的大扫描。
 - 字段清洗与默认值在 `mapper.go`。
-- clean DB upsert 与 full-sync unseen deletion 在 repository/service 层。
-- full sync 可以标记未见行 deleted；公开 API 默认只查 `deleted_at IS NULL` 且 SFW。
+- clean DB upsert、关系替换、search_text 刷新与 full-sync unseen deletion 在 repository/service 层；批量写入使用短事务 batch commit。
+- full sync 通过 `sync_run_seen` staging 表记录当前 run 见过的 source patch，只有所有批次成功后才标记未见行 deleted；公开 API 默认只查 `deleted_at IS NULL` 且 SFW。
 
 修改同步字段时需要同时检查：
 

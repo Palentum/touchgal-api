@@ -159,3 +159,25 @@ func TestStartRejectsConcurrentRun(t *testing.T) {
 	close(store.finishRelease)
 	service.Stop()
 }
+
+func TestSourceGamesPageSQLUsesKeysetAndSplitIncrementalPredicates(t *testing.T) {
+	if !strings.Contains(fullSourceGamesPageSQL, "WHERE id > $1") ||
+		!strings.Contains(fullSourceGamesPageSQL, "ORDER BY id") ||
+		!strings.Contains(fullSourceGamesPageSQL, "LIMIT $2") {
+		t.Fatalf("full source page SQL must use keyset pagination, got %s", fullSourceGamesPageSQL)
+	}
+	if strings.Contains(incrementalSourceGamesPageSQL, " OR ") {
+		t.Fatalf("incremental source page SQL must not use an OR predicate, got %s", incrementalSourceGamesPageSQL)
+	}
+	for _, want := range []string{
+		"UNION",
+		"updated >= $1 AND id > $2",
+		"resource_update_time >= $1 AND id > $2",
+		"ORDER BY p.id",
+		"LIMIT $3",
+	} {
+		if !strings.Contains(incrementalSourceGamesPageSQL, want) {
+			t.Fatalf("incremental source page SQL missing %q in %s", want, incrementalSourceGamesPageSQL)
+		}
+	}
+}

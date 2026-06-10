@@ -20,8 +20,8 @@ const (
 	ModeIncremental = "incremental"
 	ModeFull        = "full"
 
-	sourceRelationBatchSize = 1000
-	syncRunFinishTimeout    = 15 * time.Second
+	sourceGamePageSize   = 1000
+	syncRunFinishTimeout = 15 * time.Second
 )
 
 type runStore interface {
@@ -165,6 +165,7 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 	mode := run.Mode
 	seen, upserted, deleted := 0, 0, 0
 	var sourceMax *time.Time
+	finishRepo := s.repo
 	finish := func(status string, err error) (*model.SyncRun, error) {
 		message := ""
 		if err != nil {
@@ -172,7 +173,7 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 		}
 		finishCtx, cancel := finishContext(ctx)
 		defer cancel()
-		updated, finishErr := s.repo.FinishRun(finishCtx, run.ID, status, sourceMax, seen, upserted, deleted, message)
+		updated, finishErr := finishRepo.FinishRun(finishCtx, run.ID, status, sourceMax, seen, upserted, deleted, message)
 		if finishErr != nil && err == nil {
 			err = finishErr
 		}
@@ -201,7 +202,25 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 		return finish("failed", errors.New("DATABASE_DSN is not configured"))
 	}
 
-	since, err := s.incrementalSince(ctx, mode)
+	lock, locked, err := repository.TryAcquireSyncRunLock(ctx, s.target, s.cfg.SyncDatabasePool.QueryTimeout)
+	if err != nil {
+		return finish("failed", err)
+	}
+	if !locked {
+		return finish("failed", model.ErrSyncRunning)
+	}
+	lockRepo := lock.Repo()
+	finishRepo = lockRepo
+	defer func() {
+		releaseCtx, cancel := finishContext(ctx)
+		defer cancel()
+		lock.Release(releaseCtx)
+	}()
+	if mode == ModeFull {
+		defer s.cleanupSeenSourcePatchIDs(ctx, lock, run.ID)
+	}
+
+	since, err := s.incrementalSince(ctx, mode, lockRepo)
 	if err != nil {
 		return finish("failed", err)
 	}
@@ -210,28 +229,110 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 		window = window.Time("since", *since)
 	}
 	window.Msg("sync source query window resolved")
-	sources, err := s.querySourceGames(ctx, mode, since)
-	if err != nil {
-		return finish("failed", err)
-	}
-	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Int("source_games", len(sources)).Msg("sync source games loaded")
 
-	items := make([]syncSource, 0, len(sources))
-	for _, src := range sources {
-		clean := MapSourceGame(src, s.cfg.SyncDefaultContentPolicy)
-		if clean.UniqueID == "" || clean.Name == "" {
+	afterID := 0
+	page := 0
+	for {
+		sources, err := s.querySourceGamePage(ctx, mode, since, afterID, sourceGamePageSize)
+		if err != nil {
+			return finish("failed", err)
+		}
+		if len(sources) == 0 {
+			break
+		}
+		afterID = sources[len(sources)-1].ID
+		page++
+		items := make([]syncSource, 0, len(sources))
+		patchIDs := make([]int, 0, len(sources))
+		for _, src := range sources {
+			clean := MapSourceGame(src, s.cfg.SyncDefaultContentPolicy)
+			if clean.UniqueID == "" || clean.Name == "" {
+				continue
+			}
+			items = append(items, syncSource{source: src, clean: clean})
+			patchIDs = append(patchIDs, src.ID)
+		}
+		if len(items) == 0 {
+			s.log.Debug().
+				Str("mode", mode).
+				Stringer("run_id", run.ID).
+				Int("page", page).
+				Int("source_games", len(sources)).
+				Msg("sync source page contained no syncable games")
 			continue
 		}
-		items = append(items, syncSource{source: src, clean: clean})
+
+		relations, err := s.querySourceRelations(ctx, patchIDs)
+		if err != nil {
+			return finish("failed", err)
+		}
+		batchSeen, batchUpserted, batchSourceMax, err := s.writeTargetBatch(ctx, lock, run.ID, mode, items, relations)
+		if err != nil {
+			return finish("failed", err)
+		}
+		seen += batchSeen
+		upserted += batchUpserted
+		if batchSourceMax != nil && (sourceMax == nil || batchSourceMax.After(*sourceMax)) {
+			tmp := *batchSourceMax
+			sourceMax = &tmp
+		}
+		s.log.Debug().
+			Str("mode", mode).
+			Stringer("run_id", run.ID).
+			Int("page", page).
+			Int("source_games", len(sources)).
+			Int("syncable_games", len(items)).
+			Msg("sync source page committed")
 	}
 
-	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Int("syncable_games", len(items)).Msg("sync source games mapped")
+	if mode == ModeFull {
+		deleted, err = s.markDeletedNotSeen(ctx, lock, run.ID)
+		if err != nil {
+			return finish("failed", err)
+		}
+	}
+
+	return finish("success", nil)
+}
+
+func (s *Service) writeTargetBatch(ctx context.Context, lock *repository.SyncRunLock, runID uuid.UUID, mode string, items []syncSource, relations sourceRelations) (int, int, *time.Time, error) {
+	if len(items) == 0 {
+		return 0, 0, nil, nil
+	}
+	games := make([]model.CleanGame, 0, len(items))
+	uniqueIDs := make([]string, 0, len(items))
+	patchIDs := make([]int, 0, len(items))
+	aliases := make(map[string][]string, len(items))
+	tags := make(map[string][]model.TagData, len(items))
+	companies := make(map[string][]model.CompanyData, len(items))
+	ratings := make(map[string]*model.RatingData, len(items))
+	var sourceMax *time.Time
+	for _, item := range items {
+		src := item.source
+		clean := item.clean
+		uniqueID := clean.UniqueID
+		games = append(games, clean)
+		uniqueIDs = append(uniqueIDs, uniqueID)
+		patchIDs = append(patchIDs, src.ID)
+		aliases[uniqueID] = relations.aliases[src.ID]
+		tags[uniqueID] = relations.tags[src.ID]
+		companies[uniqueID] = relations.companies[src.ID]
+		ratings[uniqueID] = relations.ratings[src.ID]
+		maxUpdated := src.UpdatedAt
+		if src.ResourceUpdatedAt.After(maxUpdated) {
+			maxUpdated = src.ResourceUpdatedAt
+		}
+		if sourceMax == nil || maxUpdated.After(*sourceMax) {
+			tmp := maxUpdated
+			sourceMax = &tmp
+		}
+	}
 
 	beginCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SyncDatabasePool.QueryTimeout)
-	tx, err := s.target.Begin(beginCtx)
+	tx, err := lock.Begin(beginCtx)
 	cancel()
 	if err != nil {
-		return finish("failed", err)
+		return 0, 0, nil, err
 	}
 	defer func() {
 		rollbackCtx, cancel := finishContext(ctx)
@@ -239,75 +340,78 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 		_ = tx.Rollback(rollbackCtx)
 	}()
 	txRepo := repository.NewSyncRepo(repository.WithQueryTimeout(tx, s.cfg.SyncDatabasePool.QueryTimeout))
-	seenIDs := make([]int, 0, len(items))
-	for start := 0; start < len(items); start += sourceRelationBatchSize {
-		end := start + sourceRelationBatchSize
-		if end > len(items) {
-			end = len(items)
-		}
-		batch := items[start:end]
-		patchIDs := make([]int, 0, len(batch))
-		for _, item := range batch {
-			patchIDs = append(patchIDs, item.source.ID)
-		}
-		relations, err := s.querySourceRelations(ctx, patchIDs)
-		if err != nil {
-			return finish("failed", err)
-		}
-		for _, item := range batch {
-			src := item.source
-			clean := item.clean
-			if err := txRepo.UpsertGame(ctx, clean); err != nil {
-				return finish("failed", err)
-			}
-			if err := txRepo.ReplaceAliases(ctx, clean.UniqueID, relations.aliases[src.ID]); err != nil {
-				return finish("failed", err)
-			}
-			if err := txRepo.ReplaceTags(ctx, clean.UniqueID, relations.tags[src.ID]); err != nil {
-				return finish("failed", err)
-			}
-			if err := txRepo.ReplaceCompanies(ctx, clean.UniqueID, relations.companies[src.ID]); err != nil {
-				return finish("failed", err)
-			}
-			if err := txRepo.UpsertRating(ctx, clean.UniqueID, relations.ratings[src.ID]); err != nil {
-				return finish("failed", err)
-			}
-			if err := txRepo.RefreshSearchText(ctx, clean.UniqueID); err != nil {
-				return finish("failed", err)
-			}
-			seen++
-			upserted++
-			seenIDs = append(seenIDs, src.ID)
-			maxUpdated := src.UpdatedAt
-			if src.ResourceUpdatedAt.After(maxUpdated) {
-				maxUpdated = src.ResourceUpdatedAt
-			}
-			if sourceMax == nil || maxUpdated.After(*sourceMax) {
-				tmp := maxUpdated
-				sourceMax = &tmp
-			}
-		}
+	if err := txRepo.UpsertGames(ctx, games); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := txRepo.ReplaceAliasesBatch(ctx, aliases); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := txRepo.ReplaceTagsBatch(ctx, tags); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := txRepo.ReplaceCompaniesBatch(ctx, companies); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := txRepo.UpsertRatingsBatch(ctx, ratings, uniqueIDs); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := txRepo.RefreshSearchTextBatch(ctx, uniqueIDs); err != nil {
+		return 0, 0, nil, err
 	}
 	if mode == ModeFull {
-		deleted, err = txRepo.MarkDeletedNotSeen(ctx, seenIDs)
-		if err != nil {
-			return finish("failed", err)
+		if err := txRepo.AddSeenSourcePatchIDs(ctx, runID, patchIDs); err != nil {
+			return 0, 0, nil, err
 		}
 	}
 	commitCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SyncDatabasePool.QueryTimeout)
 	err = tx.Commit(commitCtx)
 	cancel()
 	if err != nil {
-		return finish("failed", err)
+		return 0, 0, nil, err
 	}
-	return finish("success", nil)
+	return len(items), len(items), sourceMax, nil
 }
 
-func (s *Service) incrementalSince(ctx context.Context, mode string) (*time.Time, error) {
+func (s *Service) markDeletedNotSeen(ctx context.Context, lock *repository.SyncRunLock, runID uuid.UUID) (int, error) {
+	beginCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SyncDatabasePool.QueryTimeout)
+	tx, err := lock.Begin(beginCtx)
+	cancel()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		rollbackCtx, cancel := finishContext(ctx)
+		defer cancel()
+		_ = tx.Rollback(rollbackCtx)
+	}()
+	txRepo := repository.NewSyncRepo(repository.WithQueryTimeout(tx, s.cfg.SyncDatabasePool.QueryTimeout))
+	deleted, err := txRepo.MarkDeletedNotSeenByRun(ctx, runID)
+	if err != nil {
+		return 0, err
+	}
+	commitCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SyncDatabasePool.QueryTimeout)
+	err = tx.Commit(commitCtx)
+	cancel()
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
+func (s *Service) cleanupSeenSourcePatchIDs(ctx context.Context, lock *repository.SyncRunLock, runID uuid.UUID) {
+	cleanupCtx, cancel := finishContext(ctx)
+	defer cancel()
+	repo := lock.Repo()
+	if err := repo.CleanupSeenSourcePatchIDs(cleanupCtx, runID); err != nil {
+		s.log.Warn().Err(err).Stringer("run_id", runID).Msg("sync seen staging cleanup failed")
+	}
+}
+
+func (s *Service) incrementalSince(ctx context.Context, mode string, repo runStore) (*time.Time, error) {
 	if mode == ModeFull {
 		return nil, nil
 	}
-	last, err := s.repo.LastSuccessMaxUpdatedAt(ctx)
+	last, err := repo.LastSuccessMaxUpdatedAt(ctx)
 	if err != nil || last == nil {
 		return last, err
 	}
@@ -325,14 +429,14 @@ func (s *Service) querySource(ctx context.Context, sql string, args ...any) (pgx
 	return rows, cancel, nil
 }
 
-func (s *Service) querySourceGames(ctx context.Context, mode string, since *time.Time) ([]SourceGame, error) {
+func (s *Service) querySourceGamePage(ctx context.Context, mode string, since *time.Time, afterID, limit int) ([]SourceGame, error) {
 	var rows pgx.Rows
 	var cancel context.CancelFunc
 	var err error
 	if mode == ModeIncremental && since != nil {
-		rows, cancel, err = s.querySource(ctx, incrementalSourceGamesSQL, *since)
+		rows, cancel, err = s.querySource(ctx, incrementalSourceGamesPageSQL, *since, afterID, limit)
 	} else {
-		rows, cancel, err = s.querySource(ctx, fullSourceGamesSQL)
+		rows, cancel, err = s.querySource(ctx, fullSourceGamesPageSQL, afterID, limit)
 	}
 	if err != nil {
 		return nil, err

@@ -19,6 +19,7 @@ type AdminHandler struct {
 	tokens       *token.Service
 	users        *usersvc.Service
 	syncService  syncRunStarter
+	syncEnabled  bool
 	syncStore    syncRunStore
 }
 
@@ -30,8 +31,8 @@ type syncRunStore interface {
 	ListRuns(ctx context.Context, limit int) ([]model.SyncRun, error)
 }
 
-func NewAdminHandler(apps *application.Service, tokens *token.Service, users *usersvc.Service, syncService syncRunStarter, syncStore syncRunStore) *AdminHandler {
-	return &AdminHandler{applications: apps, tokens: tokens, users: users, syncService: syncService, syncStore: syncStore}
+func NewAdminHandler(apps *application.Service, tokens *token.Service, users *usersvc.Service, syncService syncRunStarter, syncStore syncRunStore, syncEnabled bool) *AdminHandler {
+	return &AdminHandler{applications: apps, tokens: tokens, users: users, syncService: syncService, syncStore: syncStore, syncEnabled: syncEnabled}
 }
 
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +176,10 @@ func (h *AdminHandler) RunSync(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := DecodeJSON(r, &req); err != nil {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
+		return
+	}
+	if !h.syncEnabled || h.syncService == nil {
+		Error(w, model.ErrSyncDisabled)
 		return
 	}
 	run, err := h.syncService.Start(r.Context(), req.Mode)

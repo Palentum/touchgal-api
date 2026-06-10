@@ -5,6 +5,19 @@ import (
 	"time"
 )
 
+func TestLoadDefaultsSyncWorkerDisabled(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("ENABLE_SYNC_WORKER", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.EnableSyncWorker {
+		t.Fatal("expected sync worker to be disabled by default")
+	}
+}
+
 func TestValidateMailDriverPostalRequiresAPISettings(t *testing.T) {
 	cfg := validConfig()
 	cfg.MailDriver = MailDriverPostal
