@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -18,6 +19,18 @@ const (
 	MailDriverLog    = "log"
 )
 
+type PostgresConfig struct {
+	PoolMaxConns                    int
+	PoolMinConns                    int
+	PoolMinIdleConns                int
+	PoolMaxConnLifetime             time.Duration
+	PoolMaxConnIdleTime             time.Duration
+	PoolHealthCheckPeriod           time.Duration
+	StatementTimeout                time.Duration
+	IdleInTransactionSessionTimeout time.Duration
+	QueryTimeout                    time.Duration
+}
+
 type Config struct {
 	AppEnv     string
 	LogLevel   string
@@ -25,8 +38,11 @@ type Config struct {
 	PublicURL  string
 	APIBaseURL string
 
-	DatabaseDSN       string
-	SourceDatabaseDSN string
+	DatabaseDSN        string
+	SourceDatabaseDSN  string
+	DatabasePool       PostgresConfig
+	SyncDatabasePool   PostgresConfig
+	SourceDatabasePool PostgresConfig
 
 	RedisAddr     string
 	RedisPassword string
@@ -75,6 +91,54 @@ type Config struct {
 	APIDocsURL                    string
 }
 
+func defaultDatabasePostgresConfig() PostgresConfig {
+	return PostgresConfig{
+		PoolMaxConns:                    16,
+		PoolMinConns:                    1,
+		PoolMinIdleConns:                0,
+		PoolMaxConnLifetime:             time.Hour,
+		PoolMaxConnIdleTime:             15 * time.Minute,
+		PoolHealthCheckPeriod:           time.Minute,
+		StatementTimeout:                30 * time.Second,
+		IdleInTransactionSessionTimeout: time.Minute,
+		QueryTimeout:                    35 * time.Second,
+	}
+}
+
+func defaultSyncPostgresConfig() PostgresConfig {
+	return PostgresConfig{
+		PoolMaxConns:                    4,
+		PoolMinConns:                    0,
+		PoolMinIdleConns:                0,
+		PoolMaxConnLifetime:             time.Hour,
+		PoolMaxConnIdleTime:             15 * time.Minute,
+		PoolHealthCheckPeriod:           time.Minute,
+		StatementTimeout:                15 * time.Minute,
+		IdleInTransactionSessionTimeout: 5 * time.Minute,
+		QueryTimeout:                    16 * time.Minute,
+	}
+}
+
+func defaultSourcePostgresConfig() PostgresConfig {
+	cfg := defaultSyncPostgresConfig()
+	cfg.IdleInTransactionSessionTimeout = time.Minute
+	return cfg
+}
+
+func postgresConfigFromEnv(prefix string, fallback PostgresConfig) PostgresConfig {
+	return PostgresConfig{
+		PoolMaxConns:                    envInt(prefix+"_POOL_MAX_CONNS", fallback.PoolMaxConns),
+		PoolMinConns:                    envInt(prefix+"_POOL_MIN_CONNS", fallback.PoolMinConns),
+		PoolMinIdleConns:                envInt(prefix+"_POOL_MIN_IDLE_CONNS", fallback.PoolMinIdleConns),
+		PoolMaxConnLifetime:             envDuration(prefix+"_POOL_MAX_CONN_LIFETIME", fallback.PoolMaxConnLifetime),
+		PoolMaxConnIdleTime:             envDuration(prefix+"_POOL_MAX_CONN_IDLE_TIME", fallback.PoolMaxConnIdleTime),
+		PoolHealthCheckPeriod:           envDuration(prefix+"_POOL_HEALTH_CHECK_PERIOD", fallback.PoolHealthCheckPeriod),
+		StatementTimeout:                envDuration(prefix+"_STATEMENT_TIMEOUT", fallback.StatementTimeout),
+		IdleInTransactionSessionTimeout: envDuration(prefix+"_IDLE_IN_TRANSACTION_SESSION_TIMEOUT", fallback.IdleInTransactionSessionTimeout),
+		QueryTimeout:                    envDuration(prefix+"_QUERY_TIMEOUT", fallback.QueryTimeout),
+	}
+}
+
 func Load() (Config, error) {
 	loadEnvFile(".env")
 	loadEnvFile("backend/.env")
@@ -86,8 +150,11 @@ func Load() (Config, error) {
 		PublicURL:  env("PUBLIC_BASE_URL", "http://localhost:3000"),
 		APIBaseURL: env("API_BASE_URL", "http://localhost:8080"),
 
-		DatabaseDSN:       env("DATABASE_DSN", "postgres://touchgal_api:touchgal_api@localhost:5432/touchgal_api?sslmode=disable"),
-		SourceDatabaseDSN: env("SOURCE_DATABASE_DSN", ""),
+		DatabaseDSN:        env("DATABASE_DSN", "postgres://touchgal_api:touchgal_api@localhost:5432/touchgal_api?sslmode=disable"),
+		SourceDatabaseDSN:  env("SOURCE_DATABASE_DSN", ""),
+		DatabasePool:       postgresConfigFromEnv("DB", defaultDatabasePostgresConfig()),
+		SyncDatabasePool:   postgresConfigFromEnv("SYNC_DB", defaultSyncPostgresConfig()),
+		SourceDatabasePool: postgresConfigFromEnv("SOURCE_DB", defaultSourcePostgresConfig()),
 
 		RedisAddr:     env("REDIS_ADDR", "localhost:6379"),
 		RedisPassword: env("REDIS_PASSWORD", ""),
@@ -138,9 +205,55 @@ func Load() (Config, error) {
 	return cfg, cfg.Validate()
 }
 
+func validatePostgresConfig(prefix string, cfg PostgresConfig) error {
+	if cfg.PoolMaxConns <= 0 {
+		return fmt.Errorf("%s_POOL_MAX_CONNS must be positive", prefix)
+	}
+	if cfg.PoolMinConns < 0 {
+		return fmt.Errorf("%s_POOL_MIN_CONNS must be zero or positive", prefix)
+	}
+	if cfg.PoolMinIdleConns < 0 {
+		return fmt.Errorf("%s_POOL_MIN_IDLE_CONNS must be zero or positive", prefix)
+	}
+	if cfg.PoolMinConns > cfg.PoolMaxConns {
+		return fmt.Errorf("%s_POOL_MIN_CONNS must be less than or equal to %s_POOL_MAX_CONNS", prefix, prefix)
+	}
+	if cfg.PoolMinIdleConns > cfg.PoolMaxConns {
+		return fmt.Errorf("%s_POOL_MIN_IDLE_CONNS must be less than or equal to %s_POOL_MAX_CONNS", prefix, prefix)
+	}
+	if cfg.PoolMaxConnLifetime <= 0 {
+		return fmt.Errorf("%s_POOL_MAX_CONN_LIFETIME must be positive", prefix)
+	}
+	if cfg.PoolMaxConnIdleTime <= 0 {
+		return fmt.Errorf("%s_POOL_MAX_CONN_IDLE_TIME must be positive", prefix)
+	}
+	if cfg.PoolHealthCheckPeriod <= 0 {
+		return fmt.Errorf("%s_POOL_HEALTH_CHECK_PERIOD must be positive", prefix)
+	}
+	if cfg.StatementTimeout < 0 {
+		return fmt.Errorf("%s_STATEMENT_TIMEOUT must be zero or positive", prefix)
+	}
+	if cfg.IdleInTransactionSessionTimeout < 0 {
+		return fmt.Errorf("%s_IDLE_IN_TRANSACTION_SESSION_TIMEOUT must be zero or positive", prefix)
+	}
+	if cfg.QueryTimeout < 0 {
+		return fmt.Errorf("%s_QUERY_TIMEOUT must be zero or positive", prefix)
+	}
+	return nil
+}
+
 func (c Config) Validate() error {
 	if c.DatabaseDSN == "" {
 		return errors.New("DATABASE_DSN is required")
+	}
+	if err := validatePostgresConfig("DB", c.DatabasePool); err != nil {
+		return err
+	}
+	if err := validatePostgresConfig("SYNC_DB", c.SyncDatabasePool); err != nil {
+		return err
+	}
+	if err := validatePostgresConfig("SOURCE_DB", c.SourceDatabasePool); err != nil {
+		return err
 	}
 	if c.SessionSecret == "" {
 		return errors.New("SESSION_SECRET is required")

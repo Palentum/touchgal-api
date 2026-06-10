@@ -154,6 +154,13 @@ func finishContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), syncRunFinishTimeout)
 }
 
+func optionalTimeoutContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
 func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.SyncRun, error) {
 	mode := run.Mode
 	seen, upserted, deleted := 0, 0, 0
@@ -220,7 +227,9 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 
 	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Int("syncable_games", len(items)).Msg("sync source games mapped")
 
-	tx, err := s.target.Begin(ctx)
+	beginCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SyncDatabasePool.QueryTimeout)
+	tx, err := s.target.Begin(beginCtx)
+	cancel()
 	if err != nil {
 		return finish("failed", err)
 	}
@@ -229,7 +238,7 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 		defer cancel()
 		_ = tx.Rollback(rollbackCtx)
 	}()
-	txRepo := repository.NewSyncRepo(tx)
+	txRepo := repository.NewSyncRepo(repository.WithQueryTimeout(tx, s.cfg.SyncDatabasePool.QueryTimeout))
 	seenIDs := make([]int, 0, len(items))
 	for start := 0; start < len(items); start += sourceRelationBatchSize {
 		end := start + sourceRelationBatchSize
@@ -285,7 +294,10 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 			return finish("failed", err)
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
+	commitCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SyncDatabasePool.QueryTimeout)
+	err = tx.Commit(commitCtx)
+	cancel()
+	if err != nil {
 		return finish("failed", err)
 	}
 	return finish("success", nil)
@@ -303,17 +315,29 @@ func (s *Service) incrementalSince(ctx context.Context, mode string) (*time.Time
 	return &since, nil
 }
 
+func (s *Service) querySource(ctx context.Context, sql string, args ...any) (pgx.Rows, context.CancelFunc, error) {
+	queryCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SourceDatabasePool.QueryTimeout)
+	rows, err := s.source.Query(queryCtx, sql, args...)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	return rows, cancel, nil
+}
+
 func (s *Service) querySourceGames(ctx context.Context, mode string, since *time.Time) ([]SourceGame, error) {
 	var rows pgx.Rows
+	var cancel context.CancelFunc
 	var err error
 	if mode == ModeIncremental && since != nil {
-		rows, err = s.source.Query(ctx, incrementalSourceGamesSQL, *since)
+		rows, cancel, err = s.querySource(ctx, incrementalSourceGamesSQL, *since)
 	} else {
-		rows, err = s.source.Query(ctx, fullSourceGamesSQL)
+		rows, cancel, err = s.querySource(ctx, fullSourceGamesSQL)
 	}
 	if err != nil {
 		return nil, err
 	}
+	defer cancel()
 	defer rows.Close()
 	items := []SourceGame{}
 	for rows.Next() {
@@ -337,7 +361,7 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 		return relations, nil
 	}
 
-	rows, err := s.source.Query(ctx, sourceAliasesByPatchIDsSQL, patchIDs)
+	rows, cancel, err := s.querySource(ctx, sourceAliasesByPatchIDsSQL, patchIDs)
 	if err != nil {
 		return relations, err
 	}
@@ -346,17 +370,20 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 		var value string
 		if err := rows.Scan(&patchID, &value); err != nil {
 			rows.Close()
+			cancel()
 			return relations, err
 		}
 		relations.aliases[patchID] = append(relations.aliases[patchID], value)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
+		cancel()
 		return relations, err
 	}
 	rows.Close()
+	cancel()
 
-	rows, err = s.source.Query(ctx, sourceTagsByPatchIDsSQL, patchIDs)
+	rows, cancel, err = s.querySource(ctx, sourceTagsByPatchIDsSQL, patchIDs)
 	if err != nil {
 		return relations, err
 	}
@@ -365,17 +392,20 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 		var item model.TagData
 		if err := rows.Scan(&patchID, &item.Name, &item.Aliases, &item.Source); err != nil {
 			rows.Close()
+			cancel()
 			return relations, err
 		}
 		relations.tags[patchID] = append(relations.tags[patchID], item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
+		cancel()
 		return relations, err
 	}
 	rows.Close()
+	cancel()
 
-	rows, err = s.source.Query(ctx, sourceCompaniesByPatchIDsSQL, patchIDs)
+	rows, cancel, err = s.querySource(ctx, sourceCompaniesByPatchIDsSQL, patchIDs)
 	if err != nil {
 		return relations, err
 	}
@@ -384,17 +414,20 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 		var item model.CompanyData
 		if err := rows.Scan(&patchID, &item.Name, &item.Aliases, &item.OfficialWebsites, &item.PrimaryLanguages, &item.ParentBrands); err != nil {
 			rows.Close()
+			cancel()
 			return relations, err
 		}
 		relations.companies[patchID] = append(relations.companies[patchID], item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
+		cancel()
 		return relations, err
 	}
 	rows.Close()
+	cancel()
 
-	rows, err = s.source.Query(ctx, sourceRatingsByPatchIDsSQL, patchIDs)
+	rows, cancel, err = s.querySource(ctx, sourceRatingsByPatchIDsSQL, patchIDs)
 	if err != nil {
 		return relations, err
 	}
@@ -404,6 +437,7 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 		var o1, o2, o3, o4, o5, o6, o7, o8, o9, o10 int
 		if err := rows.Scan(&patchID, &r.AverageOverall, &r.Count, &r.RecStrongNo, &r.RecNo, &r.RecNeutral, &r.RecYes, &r.RecStrongYes, &o1, &o2, &o3, &o4, &o5, &o6, &o7, &o8, &o9, &o10); err != nil {
 			rows.Close()
+			cancel()
 			return relations, err
 		}
 		r.Histogram = map[string]int{"1": o1, "2": o2, "3": o3, "4": o4, "5": o5, "6": o6, "7": o7, "8": o8, "9": o9, "10": o10}
@@ -411,9 +445,11 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
+		cancel()
 		return relations, err
 	}
 	rows.Close()
+	cancel()
 
 	return relations, nil
 }
@@ -422,7 +458,9 @@ func (s *Service) EnsureSourceReadOnly(ctx context.Context) error {
 	if s.source == nil {
 		return errors.New("source database is not configured")
 	}
-	_, err := s.source.Exec(ctx, `SET TRANSACTION READ ONLY`)
+	queryCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SourceDatabasePool.QueryTimeout)
+	defer cancel()
+	_, err := s.source.Exec(queryCtx, `SET TRANSACTION READ ONLY`)
 	if err != nil {
 		s.log.Warn().Err(err).Msg("source read-only transaction check failed")
 	}

@@ -81,9 +81,39 @@ func TestValidateAPIRequestLogSettings(t *testing.T) {
 	}
 }
 
+func TestValidatePostgresSettings(t *testing.T) {
+	cfg := validConfig()
+	cfg.DatabasePool.PoolMaxConns = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid DB_POOL_MAX_CONNS error")
+	}
+
+	cfg = validConfig()
+	cfg.DatabasePool.PoolMinConns = 2
+	cfg.DatabasePool.PoolMaxConns = 1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected DB pool min greater than max error")
+	}
+
+	cfg = validConfig()
+	cfg.SyncDatabasePool.PoolHealthCheckPeriod = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid SYNC_DB_POOL_HEALTH_CHECK_PERIOD error")
+	}
+
+	cfg = validConfig()
+	cfg.SourceDatabasePool.QueryTimeout = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid SOURCE_DB_QUERY_TIMEOUT error")
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		DatabaseDSN:                   "postgres://example",
+		DatabasePool:                  defaultDatabasePostgresConfig(),
+		SyncDatabasePool:              defaultSyncPostgresConfig(),
+		SourceDatabasePool:            defaultSourcePostgresConfig(),
 		LogLevel:                      "info",
 		SessionSecret:                 "secret",
 		APITokenPepper:                "pepper",

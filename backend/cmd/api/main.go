@@ -46,7 +46,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	target, err := db.OpenPostgres(ctx, cfg.DatabaseDSN)
+	target, err := db.OpenPostgres(ctx, cfg.DatabaseDSN, cfg.DatabasePool)
 	if err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func run() error {
 	if err := db.ApplyMigrations(ctx, target, logger); err != nil {
 		return err
 	}
-	source, err := db.OpenOptionalPostgres(ctx, cfg.SourceDatabaseDSN)
+	source, err := db.OpenOptionalPostgres(ctx, cfg.SourceDatabaseDSN, cfg.SourceDatabasePool)
 	if err != nil {
 		logger.Warn().Err(err).Msg("source database unavailable; API will continue and sync runs will fail until SOURCE_DATABASE_DSN is fixed")
 		source = nil
@@ -68,7 +68,17 @@ func run() error {
 	}
 	defer redisClient.Close()
 
-	repos := repository.New(target)
+	repos := repository.NewWithQueryer(repository.WithQueryTimeout(target, cfg.DatabasePool.QueryTimeout))
+	syncTarget := target
+	syncRepo := repos.Sync
+	if source != nil {
+		syncTarget, err = db.OpenPostgres(ctx, cfg.DatabaseDSN, cfg.SyncDatabasePool)
+		if err != nil {
+			return err
+		}
+		defer syncTarget.Close()
+		syncRepo = repository.NewSyncRepo(repository.WithQueryTimeout(syncTarget, cfg.SyncDatabasePool.QueryTimeout))
+	}
 	mailer := email.NewMailer(cfg, logger)
 
 	authService := auth.NewService(cfg, repos.Users, repos.Auth, redisClient, mailer)
@@ -93,7 +103,7 @@ func run() error {
 			logger.Warn().Err(err).Msg("api request log writer stopped with pending logs")
 		}
 	}()
-	syncService := syncsvc.NewService(cfg, source, target, repos.Sync, logger)
+	syncService := syncsvc.NewService(cfg, source, syncTarget, syncRepo, logger)
 	defer syncService.Stop()
 
 	scheduler, err := syncsvc.StartScheduler(ctx, cfg, syncService, logger)

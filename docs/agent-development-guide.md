@@ -77,6 +77,7 @@ Context7 查询的 `pgx/v5` 文档要点：
 - `Query` 返回的 `Rows` 必须 `defer rows.Close()`，循环后检查 `rows.Err()`。
 - 从 pool `Begin(ctx)` 后，必须 `Commit` 或 `Rollback`；`defer tx.Rollback(ctx)` 在成功 `Commit` 后是安全模式。
 - `Exec` 返回 command tag；只有业务确实需要确认行数时才检查 `RowsAffected()`。
+- PostgreSQL pool/timeout 配置来自 `DB_*`、`SYNC_DB_*`、`SOURCE_DB_*`；API 运行时使用 `DB_*` pool，sync 使用独立 `SYNC_DB_*` target pool 与 `SOURCE_DB_*` source pool。新增 DB 入口或后台任务时不要绕过 `repository.WithQueryTimeout`，也不要重新让 API 与 full sync 共用同一个 target pool。
 
 ### 错误与响应
 

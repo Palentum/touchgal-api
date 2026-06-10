@@ -59,6 +59,10 @@ func ApplyMigrations(ctx context.Context, pool *pgxpool.Pool, logger zerolog.Log
 		if err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("prepare migration %s: %w", name, err)
+		}
 		if _, err := tx.Exec(ctx, upSQL); err != nil {
 			_ = tx.Rollback(ctx)
 			return fmt.Errorf("apply migration %s: %w", name, err)

@@ -43,6 +43,7 @@ cp backend/.env.example backend/.env
 
 - `DATABASE_DSN`：本项目 clean DB，指向主机上的 PostgreSQL。
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`。
+- `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；`SYNC_DB_*` 使用独立 pool，避免 full sync/长事务耗尽 API pool。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
 - `SESSION_SECRET`：登录 session hash secret。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。

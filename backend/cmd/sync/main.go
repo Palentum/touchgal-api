@@ -32,7 +32,7 @@ func run() error {
 	}
 	logger.Debug().Str("mode", *mode).Str("log_level", cfg.LogLevel).Msg("logger configured")
 	ctx := context.Background()
-	target, err := db.OpenPostgres(ctx, cfg.DatabaseDSN)
+	target, err := db.OpenPostgres(ctx, cfg.DatabaseDSN, cfg.SyncDatabasePool)
 	if err != nil {
 		return err
 	}
@@ -40,12 +40,12 @@ func run() error {
 	if err := db.ApplyMigrations(ctx, target, logger); err != nil {
 		return err
 	}
-	source, err := db.OpenPostgres(ctx, cfg.SourceDatabaseDSN)
+	source, err := db.OpenPostgres(ctx, cfg.SourceDatabaseDSN, cfg.SourceDatabasePool)
 	if err != nil {
 		return err
 	}
 	defer source.Close()
-	repos := repository.New(target)
+	repos := repository.NewWithQueryer(repository.WithQueryTimeout(target, cfg.SyncDatabasePool.QueryTimeout))
 	service := syncsvc.NewService(cfg, source, target, repos.Sync, logger)
 	run, err := service.Run(ctx, *mode)
 	if err != nil {

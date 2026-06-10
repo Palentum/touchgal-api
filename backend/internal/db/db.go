@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -9,32 +10,65 @@ import (
 	"github.com/touchgal/developer/backend/internal/config"
 )
 
-func OpenPostgres(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	poolConfig, err := pgxpool.ParseConfig(dsn)
+func OpenPostgres(ctx context.Context, dsn string, cfg config.PostgresConfig) (*pgxpool.Pool, error) {
+	poolConfig, err := postgresPoolConfig(dsn, cfg)
 	if err != nil {
 		return nil, err
 	}
-	poolConfig.MaxConns = 16
-	poolConfig.MinConns = 1
-	poolConfig.MaxConnLifetime = time.Hour
-	poolConfig.MaxConnIdleTime = 15 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, err
 	}
-	if err := pool.Ping(ctx); err != nil {
+	pingCtx, cancel := contextWithOptionalTimeout(ctx, cfg.QueryTimeout)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
 		return nil, err
 	}
 	return pool, nil
 }
 
-func OpenOptionalPostgres(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+func postgresPoolConfig(dsn string, cfg config.PostgresConfig) (*pgxpool.Config, error) {
+	poolConfig, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	poolConfig.MaxConns = int32(cfg.PoolMaxConns)
+	poolConfig.MinConns = int32(cfg.PoolMinConns)
+	poolConfig.MinIdleConns = int32(cfg.PoolMinIdleConns)
+	poolConfig.MaxConnLifetime = cfg.PoolMaxConnLifetime
+	poolConfig.MaxConnIdleTime = cfg.PoolMaxConnIdleTime
+	poolConfig.HealthCheckPeriod = cfg.PoolHealthCheckPeriod
+	setRuntimeDuration(poolConfig.ConnConfig.Config.RuntimeParams, "statement_timeout", cfg.StatementTimeout)
+	setRuntimeDuration(poolConfig.ConnConfig.Config.RuntimeParams, "idle_in_transaction_session_timeout", cfg.IdleInTransactionSessionTimeout)
+	return poolConfig, nil
+}
+
+func contextWithOptionalTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func setRuntimeDuration(params map[string]string, key string, d time.Duration) {
+	if d <= 0 {
+		delete(params, key)
+		return
+	}
+	milliseconds := d.Milliseconds()
+	if milliseconds == 0 {
+		milliseconds = 1
+	}
+	params[key] = strconv.FormatInt(milliseconds, 10)
+}
+
+func OpenOptionalPostgres(ctx context.Context, dsn string, cfg config.PostgresConfig) (*pgxpool.Pool, error) {
 	if dsn == "" {
 		return nil, nil
 	}
-	return OpenPostgres(ctx, dsn)
+	return OpenPostgres(ctx, dsn, cfg)
 }
 
 func OpenRedis(ctx context.Context, cfg config.Config) (*redis.Client, error) {
