@@ -151,7 +151,7 @@ API schema 或路由变更时，必须同时更新：
 - clean DB EXPLAIN：`make perf-explain DATABASE_DSN=...`，脚本在只读事务中覆盖 search、detail、dashboard 聚合查询。
 - source DB EXPLAIN：`make perf-explain-source SOURCE_DATABASE_DSN=...`，必须使用主库只读账号，覆盖 full/incremental sync page query。
 - Nuxt bundle：`make frontend-analyze`，底层运行 `nuxt analyze --no-serve`；不要提交 `.nuxt` 产物。
-- Runtime 诊断：`ENABLE_PPROF` / `ENABLE_METRICS` 默认关闭；启用时 `OBSERVABILITY_ADDR` 只能绑定 localhost、loopback 或 private 管理地址，暴露 `/debug/pprof/*`、`/debug/pprof/trace`、`/debug/vars`。
+- Runtime 诊断：`ENABLE_PPROF` / `ENABLE_METRICS` 默认关闭；`ENABLE_PPROF=true` 时 `OBSERVABILITY_ADDR` 只能绑定 localhost/loopback；仅启用 metrics 时可绑定 private 管理地址；这些端点暴露 `/debug/pprof/*`、`/debug/pprof/trace`、`/debug/vars`，不要放到公网入口。
 
 ## 安全检查清单
 

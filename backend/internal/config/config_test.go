@@ -136,6 +136,13 @@ func TestValidateObservabilitySettings(t *testing.T) {
 	}
 
 	cfg = validConfig()
+	cfg.EnablePprof = true
+	cfg.ObservabilityAddr = "10.0.0.10:6060"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected private pprof observability address error")
+	}
+
+	cfg = validConfig()
 	cfg.EnableMetrics = true
 	cfg.ObservabilityAddr = "10.0.0.10:6060"
 	if err := cfg.Validate(); err != nil {

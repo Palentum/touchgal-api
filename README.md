@@ -48,7 +48,7 @@ cp backend/.env.example backend/.env
 - `REDIS_POOL_SIZE` / `REDIS_MIN_IDLE_CONNS` / `REDIS_*_TIMEOUT`：go-redis 连接池与 dial/read/write/pool wait timeout；timeout 默认 `0` 会由本项目转换为固定安全值（5s/3s/3s/4s），避免依赖 go-redis 版本默认语义，高 QPS 部署按实例容量和 `/v1` 峰值并发调优。
 - `SESSION_SECRET` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
-- `ENABLE_PPROF` / `ENABLE_METRICS` / `OBSERVABILITY_ADDR`：可选只读诊断端点；默认关闭并绑定 `127.0.0.1:6060`，启用后提供 `/debug/pprof/*`、`/debug/pprof/trace` 与 `/debug/vars`，不要绑定公网地址。
+- `ENABLE_PPROF` / `ENABLE_METRICS` / `OBSERVABILITY_ADDR`：可选只读诊断端点；默认关闭并绑定 `127.0.0.1:6060`。`ENABLE_PPROF=true` 时只能绑定 localhost/loopback；仅启用 metrics 时可绑定 private 管理地址；不要绑定公网地址。
 - `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`。
 - `MAIL_SEND_TIMEOUT_SECONDS`：SMTP/Postal 单次发信超时，默认 10 秒，避免邮件服务卡顿长期阻塞发码请求。
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。

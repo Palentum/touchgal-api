@@ -330,7 +330,13 @@ func validateObservabilityConfig(cfg Config) error {
 		return nil
 	}
 	ip := net.ParseIP(host)
-	if ip == nil || (!ip.IsLoopback() && !ip.IsPrivate()) {
+	if ip == nil {
+		return errors.New("OBSERVABILITY_ADDR must bind to localhost, loopback, or a private management address")
+	}
+	if cfg.EnablePprof && !ip.IsLoopback() {
+		return errors.New("OBSERVABILITY_ADDR must bind to localhost or loopback when ENABLE_PPROF=true")
+	}
+	if !ip.IsLoopback() && !ip.IsPrivate() {
 		return errors.New("OBSERVABILITY_ADDR must bind to localhost, loopback, or a private management address")
 	}
 	return nil
