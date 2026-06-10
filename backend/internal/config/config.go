@@ -54,11 +54,13 @@ type Config struct {
 	RedisPassword string
 	RedisDB       int
 
-	SessionSecret       string
-	SessionCookieName   string
-	SessionCookieDomain string
-	SessionCookieSecure bool
-	SessionTTLHours     int
+	SessionSecret                     string
+	SessionCookieName                 string
+	SessionCookieDomain               string
+	SessionCookieSecure               bool
+	SessionTTLHours                   int
+	SessionAuthCacheTTLSeconds        int
+	SessionLastSeenUpdateIntervalSecs int
 
 	MailDriver string
 
@@ -172,11 +174,13 @@ func Load() (Config, error) {
 		RedisPassword: env("REDIS_PASSWORD", ""),
 		RedisDB:       envInt("REDIS_DB", 0),
 
-		SessionSecret:       env("SESSION_SECRET", "please-change-this-64-byte-secret"),
-		SessionCookieName:   env("SESSION_COOKIE_NAME", "tgal_dev_session"),
-		SessionCookieDomain: env("SESSION_COOKIE_DOMAIN", ""),
-		SessionCookieSecure: envBool("SESSION_COOKIE_SECURE", false),
-		SessionTTLHours:     envInt("SESSION_TTL_HOURS", 720),
+		SessionSecret:                     env("SESSION_SECRET", "please-change-this-64-byte-secret"),
+		SessionCookieName:                 env("SESSION_COOKIE_NAME", "tgal_dev_session"),
+		SessionCookieDomain:               env("SESSION_COOKIE_DOMAIN", ""),
+		SessionCookieSecure:               envBool("SESSION_COOKIE_SECURE", false),
+		SessionTTLHours:                   envInt("SESSION_TTL_HOURS", 720),
+		SessionAuthCacheTTLSeconds:        envInt("SESSION_AUTH_CACHE_TTL_SECONDS", 60),
+		SessionLastSeenUpdateIntervalSecs: envInt("SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS", 300),
 
 		MailDriver: strings.ToLower(strings.TrimSpace(env("MAIL_DRIVER", MailDriverSMTP))),
 
@@ -327,6 +331,12 @@ func (c Config) Validate() error {
 	if c.APIPreAuthIPMinuteLimit <= 0 || c.APIPreAuthIPDailyLimit <= 0 {
 		return errors.New("pre-auth IP limits must be positive")
 	}
+	if c.SessionAuthCacheTTLSeconds <= 0 {
+		return errors.New("SESSION_AUTH_CACHE_TTL_SECONDS must be positive")
+	}
+	if c.SessionLastSeenUpdateIntervalSecs <= 0 {
+		return errors.New("SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS must be positive")
+	}
 	if c.APITokenAuthCacheTTLSeconds <= 0 {
 		return errors.New("API_TOKEN_AUTH_CACHE_TTL_SECONDS must be positive")
 	}
@@ -350,6 +360,14 @@ func (c Config) Validate() error {
 
 func (c Config) SessionTTL() time.Duration {
 	return time.Duration(c.SessionTTLHours) * time.Hour
+}
+
+func (c Config) SessionAuthCacheTTL() time.Duration {
+	return time.Duration(c.SessionAuthCacheTTLSeconds) * time.Second
+}
+
+func (c Config) SessionLastSeenUpdateInterval() time.Duration {
+	return time.Duration(c.SessionLastSeenUpdateIntervalSecs) * time.Second
 }
 
 func (c Config) EmailCodeTTL() time.Duration {

@@ -133,6 +133,10 @@ func (s *disabledCodeSessionStore) GetSessionUser(ctx context.Context, sessionHa
 	return nil, nil, model.ErrNotFound
 }
 
+func (s *disabledCodeSessionStore) TouchSessionLastSeen(ctx context.Context, id uuid.UUID, now, cutoff time.Time) error {
+	return nil
+}
+
 func (s *disabledCodeSessionStore) RevokeSession(ctx context.Context, sessionHash string) error {
 	return nil
 }

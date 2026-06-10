@@ -45,7 +45,7 @@ cp backend/.env.example backend/.env
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`；默认只配置给独立 sync worker，API 进程在 `ENABLE_SYNC_WORKER=false` 时不需要该凭据。
 - `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；sync 使用独立 target/source pool、分页读取和短事务 batch commit，避免 full sync 占用 API pool 或形成单个长事务。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
-- `SESSION_SECRET`：登录 session hash secret。
+- `SESSION_SECRET` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
 - `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`。
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。

@@ -36,7 +36,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.Recover(logger))
 	r.Use(middleware.CORS(cfg))
-	r.Use(middleware.SessionAuth(cfg, services.Auth))
+	sessionAuth := middleware.SessionAuth(cfg, services.Auth)
 
 	health := handlers.HealthHandler{}
 	docs := handlers.DocsHandler{}
@@ -45,7 +45,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	tokenHandler := handlers.NewTokenHandler(services.Tokens)
 	publicHandler := handlers.NewPublicAPIHandler(services.PublicAPI)
 	statsHandler := handlers.NewStatsHandler(services.Stats)
-	adminHandler := handlers.NewAdminHandler(services.Applications, services.Tokens, services.Users, services.Sync, repos.Sync, cfg.EnableSyncWorker)
+	adminHandler := handlers.NewAdminHandler(services.Applications, services.Tokens, services.Users, services.Auth, services.Sync, repos.Sync, cfg.EnableSyncWorker)
 
 	r.Get("/openapi.yaml", docs.OpenAPI)
 	r.Get("/docs", docs.Swagger)
@@ -57,10 +57,11 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 		r.Post("/login/start", authHandler.LoginStart)
 		r.Post("/login/verify", authHandler.LoginVerify)
 		r.Post("/logout", authHandler.Logout)
-		r.Get("/me", authHandler.Me)
+		r.With(sessionAuth).Get("/me", authHandler.Me)
 	})
 
 	r.Group(func(r chi.Router) {
+		r.Use(sessionAuth)
 		r.Use(middleware.RequireUser)
 		r.Get("/applications", applicationHandler.ListMine)
 		r.Post("/applications", applicationHandler.Create)
@@ -72,6 +73,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	})
 
 	r.Route("/admin", func(r chi.Router) {
+		r.Use(sessionAuth)
 		r.Use(middleware.RequireUser)
 		r.Use(middleware.RequireAdmin)
 		r.Get("/users", adminHandler.ListUsers)

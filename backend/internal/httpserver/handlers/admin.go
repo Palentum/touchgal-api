@@ -18,6 +18,7 @@ type AdminHandler struct {
 	applications *application.Service
 	tokens       *token.Service
 	users        *usersvc.Service
+	sessions     sessionInvalidator
 	syncService  syncRunStarter
 	syncEnabled  bool
 	syncStore    syncRunStore
@@ -31,8 +32,12 @@ type syncRunStore interface {
 	ListRuns(ctx context.Context, limit int) ([]model.SyncRun, error)
 }
 
-func NewAdminHandler(apps *application.Service, tokens *token.Service, users *usersvc.Service, syncService syncRunStarter, syncStore syncRunStore, syncEnabled bool) *AdminHandler {
-	return &AdminHandler{applications: apps, tokens: tokens, users: users, syncService: syncService, syncStore: syncStore, syncEnabled: syncEnabled}
+type sessionInvalidator interface {
+	InvalidateUserSessions(ctx context.Context, userID uuid.UUID)
+}
+
+func NewAdminHandler(apps *application.Service, tokens *token.Service, users *usersvc.Service, sessions sessionInvalidator, syncService syncRunStarter, syncStore syncRunStore, syncEnabled bool) *AdminHandler {
+	return &AdminHandler{applications: apps, tokens: tokens, users: users, sessions: sessions, syncService: syncService, syncStore: syncStore, syncEnabled: syncEnabled}
 }
 
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +79,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.tokens.InvalidateUser(id)
+	h.invalidateUserAuthCaches(r.Context(), id)
 	Success(w, http.StatusOK, user)
 }
 
@@ -89,8 +94,15 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.tokens.InvalidateUser(id)
+	h.invalidateUserAuthCaches(r.Context(), id)
 	Success(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func (h *AdminHandler) invalidateUserAuthCaches(ctx context.Context, userID uuid.UUID) {
+	h.tokens.InvalidateUser(userID)
+	if h.sessions != nil {
+		h.sessions.InvalidateUserSessions(ctx, userID)
+	}
 }
 
 func (h *AdminHandler) ListApplications(w http.ResponseWriter, r *http.Request) {

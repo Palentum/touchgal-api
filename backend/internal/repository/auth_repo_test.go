@@ -47,18 +47,44 @@ func TestAuthRepoGetSessionUserReturnsDisabledUser(t *testing.T) {
 	if strings.Contains(queryer.sql, "u.status = 'active'") {
 		t.Fatalf("session lookup must not hide disabled accounts: %s", queryer.sql)
 	}
-	if !queryer.touchedLastSeen {
-		t.Fatal("expected session last_seen_at touch")
+	if queryer.execCalls != 0 {
+		t.Fatal("session lookup must not write last_seen_at")
+	}
+}
+
+func TestAuthRepoTouchSessionLastSeenUsesCutoff(t *testing.T) {
+	queryer := &authSessionQueryer{}
+	sessionID := uuid.New()
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	cutoff := now.Add(-5 * time.Minute)
+
+	if err := NewAuthRepo(queryer).TouchSessionLastSeen(context.Background(), sessionID, now, cutoff); err != nil {
+		t.Fatalf("touch session last seen: %v", err)
+	}
+	if queryer.execCalls != 1 {
+		t.Fatalf("expected one last_seen_at update, got %d", queryer.execCalls)
+	}
+	if !strings.Contains(queryer.execSQL, "last_seen_at IS NULL OR last_seen_at < $3") {
+		t.Fatalf("expected cutoff guard in SQL, got %s", queryer.execSQL)
+	}
+	if queryer.execArgs[0] != sessionID || queryer.execArgs[1] != now || queryer.execArgs[2] != cutoff {
+		t.Fatalf("unexpected touch args: %#v", queryer.execArgs)
 	}
 }
 
 type authSessionQueryer struct {
 	sql             string
+	execSQL         string
+	execArgs        []any
+	execCalls       int
 	row             pgx.Row
 	touchedLastSeen bool
 }
 
 func (q *authSessionQueryer) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+	q.execSQL = sql
+	q.execArgs = arguments
+	q.execCalls++
 	q.touchedLastSeen = strings.Contains(sql, "last_seen_at")
 	return pgconn.CommandTag{}, nil
 }

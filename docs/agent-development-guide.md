@@ -57,16 +57,17 @@ TouchGal main PostgreSQL (read-only)
 
 Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter 组织 REST API，并在 route group 上施加局部 middleware。本项目采用：
 
-- 全局 middleware：`RequestIDMiddleware` -> `Recover` -> `CORS` -> `SessionAuth`。
-- Cookie 登录路由：`/auth`。
-- 已登录 portal API：`r.Group(... RequireUser ...)`。
-- 管理 API：`/admin` + `RequireUser` + `RequireAdmin`。
+- 全局 middleware：`RequestIDMiddleware` -> `Recover` -> `CORS`；不要把 `SessionAuth` 挂成全局 middleware。
+- Cookie 登录路由：`/auth`，其中 `GET /auth/me` 单独使用 `SessionAuth`。
+- 已登录 portal API：`r.Group(... SessionAuth -> RequireUser ...)`。
+- 管理 API：`/admin` + `SessionAuth` + `RequireUser` + `RequireAdmin`。
 - Public API：`/v1` + `APIPreAuthRateLimit` + `APITokenAuth` + `APIRateLimit` + `APILastUsed` + `APIRequestLog`。
 
 - `/v1` Redis 限流必须同时按 token、user、application 维度独立计数；不要只取 `Effective*Limit` 后按 token key 计数，否则多 token 会放大账号上限。
 - `/v1` request logging 只允许通过 `services/requestlog.Writer` 的有界队列批量写入；不要在 middleware 中为每个请求启动 goroutine 或同步写 DB。Dashboard 统计应读取 `api_usage_*` 聚合表，raw `api_request_logs` 只短期保留用于排查，聚合明细按 dashboard 最大查询窗口清理。
 - `ClientIP` 只在直接 peer 是 loopback/private/link-local 时信任 `X-Forwarded-For` / `X-Real-IP`，避免公网直连伪造 pre-auth IP 限流 key。
 
+- Portal session 认证使用 Redis 短 TTL cache；`sessions.last_seen_at` 只能通过节流后的低频写入更新，避免每个带 cookie 的请求都触发 DB join + write。
 改路由时优先把新 endpoint 放入现有职责 group；不要创建并行认证路径。
 
 ### pgx 约定

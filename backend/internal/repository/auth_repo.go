@@ -78,8 +78,15 @@ func (r *AuthRepo) GetSessionUser(ctx context.Context, sessionHash string, now t
 	if err != nil {
 		return nil, nil, err
 	}
-	_, _ = r.db.Exec(ctx, `UPDATE sessions SET last_seen_at = now() WHERE id = $1`, session.ID)
 	return session, user, nil
+}
+
+func (r *AuthRepo) TouchSessionLastSeen(ctx context.Context, id uuid.UUID, now, cutoff time.Time) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE sessions SET last_seen_at = $2
+		WHERE id = $1 AND (last_seen_at IS NULL OR last_seen_at < $3)`,
+		id, now, cutoff)
+	return err
 }
 
 func (r *AuthRepo) RevokeSession(ctx context.Context, sessionHash string) error {

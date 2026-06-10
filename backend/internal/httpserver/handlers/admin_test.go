@@ -21,7 +21,7 @@ func (f *fakeSyncStarter) Start(ctx context.Context, mode string) (*model.SyncRu
 
 func TestAdminRunSyncRejectsWhenSyncDisabled(t *testing.T) {
 	starter := &fakeSyncStarter{}
-	handler := NewAdminHandler(nil, nil, nil, starter, nil, false)
+	handler := NewAdminHandler(nil, nil, nil, nil, starter, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/sync/runs", strings.NewReader(`{"mode":"incremental"}`))
 	rec := httptest.NewRecorder()
@@ -40,7 +40,7 @@ func TestAdminRunSyncRejectsWhenSyncDisabled(t *testing.T) {
 }
 
 func TestAdminRunSyncRejectsWhenSyncServiceMissing(t *testing.T) {
-	handler := NewAdminHandler(nil, nil, nil, nil, nil, true)
+	handler := NewAdminHandler(nil, nil, nil, nil, nil, nil, true)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/sync/runs", strings.NewReader(`{"mode":"incremental"}`))
 	rec := httptest.NewRecorder()
@@ -57,7 +57,7 @@ func TestAdminRunSyncRejectsWhenSyncServiceMissing(t *testing.T) {
 
 func TestAdminRunSyncRejectsLargeBody(t *testing.T) {
 	starter := &fakeSyncStarter{}
-	handler := NewAdminHandler(nil, nil, nil, starter, nil, true)
+	handler := NewAdminHandler(nil, nil, nil, nil, starter, nil, true)
 	body := `{"mode":"` + strings.Repeat("x", smallJSONBodyLimit) + `"}`
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/sync/runs", strings.NewReader(body))
