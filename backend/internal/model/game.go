@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 type GameSearchItem struct {
 	Name     string `json:"name"`
@@ -98,6 +101,37 @@ type RatingHistogram struct {
 	Score8  int `json:"8"`
 	Score9  int `json:"9"`
 	Score10 int `json:"10"`
+}
+
+func (h RatingHistogram) MarshalJSON() ([]byte, error) {
+	buf := make([]byte, 0, 64)
+	buf = append(buf, '{')
+	first := true
+	appendBucket := func(score string, count int) {
+		if count == 0 {
+			return
+		}
+		if !first {
+			buf = append(buf, ',')
+		}
+		first = false
+		buf = append(buf, '"')
+		buf = append(buf, score...)
+		buf = append(buf, '"', ':')
+		buf = strconv.AppendInt(buf, int64(count), 10)
+	}
+	appendBucket("1", h.Score1)
+	appendBucket("2", h.Score2)
+	appendBucket("3", h.Score3)
+	appendBucket("4", h.Score4)
+	appendBucket("5", h.Score5)
+	appendBucket("6", h.Score6)
+	appendBucket("7", h.Score7)
+	appendBucket("8", h.Score8)
+	appendBucket("9", h.Score9)
+	appendBucket("10", h.Score10)
+	buf = append(buf, '}')
+	return buf, nil
 }
 
 type RatingData struct {

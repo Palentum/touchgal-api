@@ -229,8 +229,8 @@ func TestSyncRepoUpsertRatingsBatchUsesAffectedSetForDeletesAndUpserts(t *testin
 		Histogram map[string]int `json:"histogram,omitempty"`
 	}
 	decodeJSONArg(t, queryer.args[0][0], &rawRows)
-	if len(rawRows[0].Histogram) != 10 || rawRows[0].Histogram["5"] != 3 {
-		t.Fatalf("expected fixed ten-bucket histogram JSON, got %#v", rawRows[0].Histogram)
+	if len(rawRows[0].Histogram) != 1 || rawRows[0].Histogram["5"] != 3 {
+		t.Fatalf("expected sparse non-zero histogram JSON, got %#v", rawRows[0].Histogram)
 	}
 	if rows[1].HasRating || rows[1].UniqueID != "g0000002" {
 		t.Fatalf("expected delete payload for missing rating, got %#v", rows[1])
