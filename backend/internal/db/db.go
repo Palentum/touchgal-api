@@ -10,6 +10,8 @@ import (
 	"github.com/touchgal/developer/backend/internal/config"
 )
 
+const postgresPingFallbackTimeout = 10 * time.Second
+
 func OpenPostgres(ctx context.Context, dsn string, cfg config.PostgresConfig) (*pgxpool.Pool, error) {
 	poolConfig, err := postgresPoolConfig(dsn, cfg)
 	if err != nil {
@@ -20,7 +22,7 @@ func OpenPostgres(ctx context.Context, dsn string, cfg config.PostgresConfig) (*
 	if err != nil {
 		return nil, err
 	}
-	pingCtx, cancel := contextWithOptionalTimeout(ctx, cfg.QueryTimeout)
+	pingCtx, cancel := context.WithTimeout(ctx, postgresPingTimeout(cfg.QueryTimeout))
 	defer cancel()
 	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
@@ -43,6 +45,13 @@ func postgresPoolConfig(dsn string, cfg config.PostgresConfig) (*pgxpool.Config,
 	setRuntimeDuration(poolConfig.ConnConfig.Config.RuntimeParams, "statement_timeout", cfg.StatementTimeout)
 	setRuntimeDuration(poolConfig.ConnConfig.Config.RuntimeParams, "idle_in_transaction_session_timeout", cfg.IdleInTransactionSessionTimeout)
 	return poolConfig, nil
+}
+
+func postgresPingTimeout(queryTimeout time.Duration) time.Duration {
+	if queryTimeout > 0 {
+		return queryTimeout
+	}
+	return postgresPingFallbackTimeout
 }
 
 func contextWithOptionalTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

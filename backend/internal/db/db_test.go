@@ -85,6 +85,18 @@ func TestPostgresPoolConfigRoundsRuntimeTimeoutsUpToOneMillisecond(t *testing.T)
 	}
 }
 
+func TestPostgresPingTimeoutUsesFallbackWhenQueryTimeoutDisabled(t *testing.T) {
+	if got := postgresPingTimeout(0); got != postgresPingFallbackTimeout {
+		t.Fatalf("expected fallback ping timeout, got %s", got)
+	}
+	if got := postgresPingTimeout(-time.Second); got != postgresPingFallbackTimeout {
+		t.Fatalf("expected fallback ping timeout for negative duration, got %s", got)
+	}
+	if got := postgresPingTimeout(250 * time.Millisecond); got != 250*time.Millisecond {
+		t.Fatalf("expected explicit query timeout, got %s", got)
+	}
+}
+
 func TestRedisOptionsFromConfigAppliesPoolAndTimeoutSettings(t *testing.T) {
 	cfg := config.Config{
 		RedisAddr:         "redis.example.com:6380",
