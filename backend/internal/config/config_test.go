@@ -308,6 +308,28 @@ func TestLoadTokenLimitDefaultsAndEnv(t *testing.T) {
 	}
 }
 
+func TestLoadTokenAuthCacheMaxEntries(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("API_TOKEN_AUTH_CACHE_MAX_ENTRIES", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.APITokenAuthCacheMaxEntries != DefaultAPITokenAuthCacheMaxEntries {
+		t.Fatalf("unexpected token auth cache max entries default: %d", cfg.APITokenAuthCacheMaxEntries)
+	}
+
+	t.Setenv("API_TOKEN_AUTH_CACHE_MAX_ENTRIES", "128")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("expected env config to load: %v", err)
+	}
+	if cfg.APITokenAuthCacheMaxEntries != 128 {
+		t.Fatalf("unexpected token auth cache max entries env: %d", cfg.APITokenAuthCacheMaxEntries)
+	}
+}
+
 func TestLoadSyncRunFinishTimeout(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("SYNC_RUN_FINISH_TIMEOUT", "")
@@ -335,6 +357,11 @@ func TestValidateTokenLimitSettings(t *testing.T) {
 	cfg.MaxActiveTokensPerUser = 0
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected invalid MAX_ACTIVE_TOKENS_PER_USER error")
+	}
+	cfg = validConfig()
+	cfg.APITokenAuthCacheMaxEntries = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid API_TOKEN_AUTH_CACHE_MAX_ENTRIES error")
 	}
 }
 
@@ -450,6 +477,7 @@ func validConfig() Config {
 		SessionAuthCacheTTLSeconds:        1,
 		SessionLastSeenUpdateIntervalSecs: 1,
 		APITokenAuthCacheTTLSeconds:       1,
+		APITokenAuthCacheMaxEntries:       DefaultAPITokenAuthCacheMaxEntries,
 		MaxActiveTokensPerUser:            1,
 		APILastUsedUpdateIntervalSecs:     1,
 		APIRequestLogQueueSize:            1,

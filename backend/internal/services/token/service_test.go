@@ -278,6 +278,39 @@ func TestAuthenticateCachesValidTokenAndDoesNotUpdateLastUsed(t *testing.T) {
 		t.Fatal("authenticate must not update last_used_at")
 	}
 }
+func TestAuthenticateBoundsAuthCacheEntries(t *testing.T) {
+	store := &fakeTokenStore{}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	svc.authCacheMaxEntries = 2
+
+	for i, ch := range []string{"A", "B", "C"} {
+		raw := "tgal_live_" + strings.Repeat(ch, generatedTokenSecretLength)
+		store.auth = &model.TokenAuthInfo{
+			Token: model.APIToken{
+				ID:            uuid.New(),
+				UserID:        uuid.New(),
+				ApplicationID: uuid.New(),
+				Status:        model.TokenActive,
+				TokenHash:     HashAPIToken(raw, "pepper"),
+				MinuteLimit:   10,
+				DailyLimit:    100,
+			},
+			ApplicationStatus: model.ApplicationApproved,
+		}
+		if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+			t.Fatalf("authenticate %d: %v", i, err)
+		}
+	}
+
+	if len(svc.authCache) != 2 {
+		t.Fatalf("expected auth cache to stay capped at 2 entries, got %d", len(svc.authCache))
+	}
+	for tokenID, tokenHash := range svc.authCacheTokenHashes {
+		if _, ok := svc.authCache[tokenHash]; !ok {
+			t.Fatalf("token index %s points at missing cache hash %s", tokenID, tokenHash)
+		}
+	}
+}
 
 func TestDeleteMineInvalidatesCachedToken(t *testing.T) {
 	raw := validRawToken()

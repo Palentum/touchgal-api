@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	MailDriverSMTP                = "smtp"
-	MailDriverPostal              = "postal"
-	MailDriverLog                 = "log"
-	DefaultMaxActiveTokensPerUser = 10
+	MailDriverSMTP                     = "smtp"
+	MailDriverPostal                   = "postal"
+	MailDriverLog                      = "log"
+	DefaultMaxActiveTokensPerUser      = 10
+	DefaultAPITokenAuthCacheMaxEntries = 4096
 )
 const DefaultSyncRunFinishTimeout = 15 * time.Second
 
@@ -96,6 +97,7 @@ type Config struct {
 	APIPreAuthIPMinuteLimit       int
 	APIPreAuthIPDailyLimit        int
 	APITokenAuthCacheTTLSeconds   int
+	APITokenAuthCacheMaxEntries   int
 	MaxActiveTokensPerUser        int
 	APILastUsedUpdateIntervalSecs int
 	APIRequestLogQueueSize        int
@@ -227,6 +229,7 @@ func Load() (Config, error) {
 		APIPreAuthIPMinuteLimit:       envInt("API_PREAUTH_IP_MINUTE_LIMIT", 600),
 		APIPreAuthIPDailyLimit:        envInt("API_PREAUTH_IP_DAILY_LIMIT", 20000),
 		APITokenAuthCacheTTLSeconds:   envInt("API_TOKEN_AUTH_CACHE_TTL_SECONDS", 60),
+		APITokenAuthCacheMaxEntries:   envInt("API_TOKEN_AUTH_CACHE_MAX_ENTRIES", DefaultAPITokenAuthCacheMaxEntries),
 		MaxActiveTokensPerUser:        envInt("MAX_ACTIVE_TOKENS_PER_USER", DefaultMaxActiveTokensPerUser),
 		APILastUsedUpdateIntervalSecs: envInt("API_LAST_USED_UPDATE_INTERVAL_SECONDS", 300),
 		APIRequestLogQueueSize:        envInt("API_REQUEST_LOG_QUEUE_SIZE", 16384),
@@ -422,6 +425,9 @@ func (c Config) Validate() error {
 	}
 	if c.APITokenAuthCacheTTLSeconds <= 0 {
 		return errors.New("API_TOKEN_AUTH_CACHE_TTL_SECONDS must be positive")
+	}
+	if c.APITokenAuthCacheMaxEntries <= 0 {
+		return errors.New("API_TOKEN_AUTH_CACHE_MAX_ENTRIES must be positive")
 	}
 	if c.APILastUsedUpdateIntervalSecs <= 0 {
 		return errors.New("API_LAST_USED_UPDATE_INTERVAL_SECONDS must be positive")

@@ -54,7 +54,7 @@ cp backend/.env.example backend/.env
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
-- `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、token auth 短缓存、`last_used_at` 写入节流与单账号 active token 数量上限。
+- `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_TOKEN_AUTH_CACHE_MAX_ENTRIES` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、token auth 短缓存及容量上限、`last_used_at` 写入节流与单账号 active token 数量上限。
 - `API_REQUEST_LOG_QUEUE_SIZE` / `API_REQUEST_LOG_BATCH_SIZE` / `API_REQUEST_LOG_FLUSH_INTERVAL` / `API_REQUEST_LOG_RETENTION_DAYS`：`/v1` request log 有界队列、批量写入间隔与 raw log 保留天数；dashboard 统计读取聚合表。
 - `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步，默认 `false`；生产建议保持关闭并使用独立 worker。
 - `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS` / `SYNC_RUN_FINISH_TIMEOUT`：仅在 `ENABLE_SYNC_WORKER=true` 时控制 API 进程内 incremental/full 同步周期，以及请求取消后持久化 sync run 结束状态的最大等待时间。

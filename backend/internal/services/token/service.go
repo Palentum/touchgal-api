@@ -40,6 +40,7 @@ type Service struct {
 	applications ApplicationStore
 
 	authCacheTTL               time.Duration
+	authCacheMaxEntries        int
 	authCacheMu                sync.RWMutex
 	authCache                  map[string]cachedAuthInfo
 	authCacheTokenHashes       map[uuid.UUID]string
@@ -62,11 +63,16 @@ func NewService(cfg config.Config, tokens Store, applications ApplicationStore) 
 	if authCacheTTL <= 0 {
 		authCacheTTL = time.Minute
 	}
+	authCacheMaxEntries := cfg.APITokenAuthCacheMaxEntries
+	if authCacheMaxEntries <= 0 {
+		authCacheMaxEntries = config.DefaultAPITokenAuthCacheMaxEntries
+	}
 	return &Service{
 		cfg:                        cfg,
 		tokens:                     tokens,
 		applications:               applications,
 		authCacheTTL:               authCacheTTL,
+		authCacheMaxEntries:        authCacheMaxEntries,
 		authCache:                  make(map[string]cachedAuthInfo),
 		authCacheTokenHashes:       make(map[uuid.UUID]string),
 		authCacheUserTokens:        make(map[uuid.UUID]map[uuid.UUID]struct{}),
@@ -325,11 +331,34 @@ func (s *Service) cacheAuthInfo(tokenHash string, info *model.TokenAuthInfo, now
 		s.authCacheApplicationTokens = make(map[uuid.UUID]map[uuid.UUID]struct{})
 	}
 	s.evictTokenLocked(info.Token.ID)
+	s.pruneExpiredAuthCacheLocked(now)
+	if maxEntries := s.authCacheMaxEntries; maxEntries > 0 && len(s.authCache) >= maxEntries {
+		s.evictAnyAuthCacheEntryLocked()
+	}
 	s.authCache[tokenHash] = cachedAuthInfo{info: *info, expiresAt: expiresAt}
 	s.authCacheTokenHashes[info.Token.ID] = tokenHash
 	addTokenIndex(s.authCacheUserTokens, info.Token.UserID, info.Token.ID)
 	addTokenIndex(s.authCacheApplicationTokens, info.Token.ApplicationID, info.Token.ID)
 	s.authCacheMu.Unlock()
+}
+
+func (s *Service) pruneExpiredAuthCacheLocked(now time.Time) {
+	for tokenHash, entry := range s.authCache {
+		if !now.Before(entry.expiresAt) {
+			s.evictTokenLocked(entry.info.Token.ID)
+			continue
+		}
+		if s.authCacheTokenHashes[entry.info.Token.ID] != tokenHash {
+			delete(s.authCache, tokenHash)
+		}
+	}
+}
+
+func (s *Service) evictAnyAuthCacheEntryLocked() {
+	for _, entry := range s.authCache {
+		s.evictTokenLocked(entry.info.Token.ID)
+		return
+	}
 }
 
 func addTokenIndex(index map[uuid.UUID]map[uuid.UUID]struct{}, ownerID, tokenID uuid.UUID) {
