@@ -29,6 +29,7 @@ type runStore interface {
 	FinishRun(ctx context.Context, id uuid.UUID, status string, sourceMaxUpdatedAt *time.Time, seen, upserted, deleted int, message string) (*model.SyncRun, error)
 	LastSuccessMaxUpdatedAt(ctx context.Context) (*time.Time, error)
 }
+type syncRunLockFunc func(ctx context.Context, pool *pgxpool.Pool, timeout time.Duration) (*repository.SyncRunLock, bool, error)
 
 type Service struct {
 	cfg    config.Config
@@ -36,6 +37,8 @@ type Service struct {
 	target *pgxpool.Pool
 	repo   runStore
 	log    zerolog.Logger
+
+	acquireLock syncRunLockFunc
 
 	lifecycleCtx    context.Context
 	lifecycleCancel context.CancelFunc
@@ -59,7 +62,7 @@ type sourceRelations struct {
 
 func NewService(cfg config.Config, source, target *pgxpool.Pool, repo *repository.SyncRepo, log zerolog.Logger) *Service {
 	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
-	return &Service{cfg: cfg, source: source, target: target, repo: repo, log: log, lifecycleCtx: lifecycleCtx, lifecycleCancel: lifecycleCancel}
+	return &Service{cfg: cfg, source: source, target: target, repo: repo, log: log, lifecycleCtx: lifecycleCtx, lifecycleCancel: lifecycleCancel, acquireLock: repository.TryAcquireSyncRunLock}
 }
 
 func (s *Service) Stop() {
@@ -108,16 +111,23 @@ func (s *Service) Start(_ context.Context, mode string) (*model.SyncRun, error) 
 	}
 	s.wg.Add(1)
 	runCtx := s.backgroundContext()
-	run, err := s.startRun(runCtx, mode)
+	lock, runRepo, err := s.acquireDistributedRunLock(runCtx)
 	if err != nil {
-		s.releaseRun()
 		s.wg.Done()
+		s.releaseRun()
+		return nil, err
+	}
+	run, err := s.startRun(runCtx, mode, runRepo)
+	if err != nil {
+		releaseSyncRunLock(runCtx, lock)
+		s.wg.Done()
+		s.releaseRun()
 		return nil, err
 	}
 	go func() {
 		defer s.wg.Done()
 		defer s.releaseRun()
-		if _, err := s.runStarted(runCtx, run); err != nil {
+		if _, err := s.runStarted(runCtx, run, lock, runRepo); err != nil {
 			s.log.Error().Err(err).Str("mode", run.Mode).Stringer("run_id", run.ID).Msg("sync failed")
 		}
 	}()
@@ -134,20 +144,58 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 	s.wg.Add(1)
 	defer s.wg.Done()
 	defer s.releaseRun()
-	run, err := s.startRun(ctx, mode)
+	lock, runRepo, err := s.acquireDistributedRunLock(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return s.runStarted(ctx, run)
+	run, err := s.startRun(ctx, mode, runRepo)
+	if err != nil {
+		releaseSyncRunLock(ctx, lock)
+		return nil, err
+	}
+	return s.runStarted(ctx, run, lock, runRepo)
 }
 
-func (s *Service) startRun(ctx context.Context, mode string) (*model.SyncRun, error) {
-	run, err := s.repo.StartRun(ctx, mode)
+func (s *Service) startRun(ctx context.Context, mode string, repo runStore) (*model.SyncRun, error) {
+	if repo == nil {
+		repo = s.repo
+	}
+	run, err := repo.StartRun(ctx, mode)
 	if err != nil {
 		return nil, err
 	}
 	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Msg("sync run started")
 	return run, nil
+}
+
+func (s *Service) acquireDistributedRunLock(ctx context.Context) (*repository.SyncRunLock, runStore, error) {
+	if s.target == nil {
+		return nil, s.repo, nil
+	}
+	acquire := s.acquireLock
+	if acquire == nil {
+		acquire = repository.TryAcquireSyncRunLock
+	}
+	lock, locked, err := acquire(ctx, s.target, s.cfg.SyncDatabasePool.QueryTimeout)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !locked {
+		return nil, nil, model.ErrSyncRunning
+	}
+	if lock == nil {
+		return nil, nil, errors.New("sync run lock was not returned")
+	}
+	return lock, lock.Repo(), nil
+}
+
+func releaseSyncRunLock(ctx context.Context, lock *repository.SyncRunLock) {
+	if lock == nil {
+		return
+	}
+	releaseCtx, cancel := finishContext(ctx)
+	defer cancel()
+	lock.Release(releaseCtx)
 }
 
 func finishContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -161,11 +209,14 @@ func optionalTimeoutContext(ctx context.Context, timeout time.Duration) (context
 	return context.WithTimeout(ctx, timeout)
 }
 
-func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.SyncRun, error) {
+func (s *Service) runStarted(ctx context.Context, run *model.SyncRun, lock *repository.SyncRunLock, runRepo runStore) (*model.SyncRun, error) {
 	mode := run.Mode
 	seen, upserted, deleted := 0, 0, 0
 	var sourceMax *time.Time
-	finishRepo := s.repo
+	if runRepo == nil {
+		runRepo = s.repo
+	}
+	finishRepo := runRepo
 	finish := func(status string, err error) (*model.SyncRun, error) {
 		message := ""
 		if err != nil {
@@ -194,6 +245,7 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 		}
 		return updated, err
 	}
+	defer releaseSyncRunLock(ctx, lock)
 
 	if s.source == nil {
 		return finish("failed", errors.New("SOURCE_DATABASE_DSN is not configured"))
@@ -202,25 +254,14 @@ func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.Sy
 		return finish("failed", errors.New("DATABASE_DSN is not configured"))
 	}
 
-	lock, locked, err := repository.TryAcquireSyncRunLock(ctx, s.target, s.cfg.SyncDatabasePool.QueryTimeout)
-	if err != nil {
-		return finish("failed", err)
+	if lock == nil {
+		return finish("failed", errors.New("sync run lock is not acquired"))
 	}
-	if !locked {
-		return finish("failed", model.ErrSyncRunning)
-	}
-	lockRepo := lock.Repo()
-	finishRepo = lockRepo
-	defer func() {
-		releaseCtx, cancel := finishContext(ctx)
-		defer cancel()
-		lock.Release(releaseCtx)
-	}()
 	if mode == ModeFull {
 		defer s.cleanupSeenSourcePatchIDs(ctx, lock, run.ID)
 	}
 
-	since, err := s.incrementalSince(ctx, mode, lockRepo)
+	since, err := s.incrementalSince(ctx, mode, runRepo)
 	if err != nil {
 		return finish("failed", err)
 	}

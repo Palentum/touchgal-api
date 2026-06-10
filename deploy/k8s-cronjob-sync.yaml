@@ -16,3 +16,4 @@ spec:
               envFrom:
                 - secretRef:
                     name: touchgal-developer-backend-env
+  concurrencyPolicy: Forbid

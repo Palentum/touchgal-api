@@ -166,7 +166,7 @@ curl "https://api.example.com/v1/me" \
 
 - `deploy/docker-compose.yml` 只编排 backend/frontend；PostgreSQL、Redis 使用主机服务。
 - 生产同样使用外部 PostgreSQL、Redis；主库只读 SOURCE DB 账号只配置给独立 sync worker。
-- 生产默认将 API HTTP 与 sync worker 分离：API 保持 `ENABLE_SYNC_WORKER=false`，使用 k8s CronJob、systemd timer 或系统 cron 执行 `touchgal-sync --mode=incremental`；只有小数据量或本地调试才建议启用 API 进程内 scheduler。
+- 生产默认将 API HTTP 与 sync worker 分离：API 保持 `ENABLE_SYNC_WORKER=false`，使用 k8s CronJob、systemd timer 或系统 cron 执行 `touchgal-sync --mode=incremental`；k8s CronJob 应设置 `concurrencyPolicy: Forbid`，服务层 PostgreSQL advisory lock 作为跨进程兜底；只有小数据量或本地调试才建议启用 API 进程内 scheduler。
 - 推荐 nginx/Ingress 终止 TLS，并将 `SESSION_COOKIE_SECURE=true`。
 
 ## 安全注意事项

@@ -9,14 +9,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/touchgal/developer/backend/internal/model"
+	"github.com/touchgal/developer/backend/internal/repository"
 )
 
 type fakeRunStore struct {
 	mu sync.Mutex
 
-	run model.SyncRun
+	run        model.SyncRun
+	startCount int
 
 	startCtxErr   error
 	finishCalled  chan struct{}
@@ -42,6 +45,7 @@ func newFakeRunStore() *fakeRunStore {
 func (s *fakeRunStore) StartRun(ctx context.Context, mode string) (*model.SyncRun, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.startCount++
 	s.startCtxErr = ctx.Err()
 	s.run.Mode = mode
 	s.run.Status = "running"
@@ -81,7 +85,7 @@ func TestRunStartedPersistsFailureWithCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	updated, err := service.runStarted(ctx, run)
+	updated, err := service.runStarted(ctx, run, nil, store)
 	if err == nil || !strings.Contains(err.Error(), "SOURCE_DATABASE_DSN") {
 		t.Fatalf("expected source configuration error, got run=%#v err=%v", updated, err)
 	}
@@ -96,6 +100,29 @@ func TestRunStartedPersistsFailureWithCanceledContext(t *testing.T) {
 	}
 	if !strings.Contains(store.finishMessage, "SOURCE_DATABASE_DSN") {
 		t.Fatalf("expected source error message, got %q", store.finishMessage)
+	}
+}
+func TestRunRejectsDistributedLockContentionBeforeCreatingRun(t *testing.T) {
+	store := newFakeRunStore()
+	service := &Service{
+		repo:   store,
+		target: &pgxpool.Pool{},
+		acquireLock: func(context.Context, *pgxpool.Pool, time.Duration) (*repository.SyncRunLock, bool, error) {
+			return nil, false, nil
+		},
+		log: zerolog.Nop(),
+	}
+
+	_, err := service.Run(context.Background(), ModeIncremental)
+	if !errors.Is(err, model.ErrSyncRunning) {
+		t.Fatalf("expected distributed lock conflict, got %v", err)
+	}
+
+	store.mu.Lock()
+	startCount := store.startCount
+	store.mu.Unlock()
+	if startCount != 0 {
+		t.Fatalf("expected sync run not to be created on lock conflict, got %d starts", startCount)
 	}
 }
 

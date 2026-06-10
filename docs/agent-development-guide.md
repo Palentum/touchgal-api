@@ -97,6 +97,8 @@ Context7 查询的 `pgx/v5` 文档要点：
 - clean DB upsert、关系替换、search_text 刷新与 full-sync unseen deletion 在 repository/service 层；批量写入使用短事务 batch commit。
 - full sync 通过 `sync_run_seen` staging 表记录当前 run 见过的 source patch，只有所有批次成功后才标记未见行 deleted；公开 API 默认只查 `deleted_at IS NULL` 且 SFW。
 
+- Sync run 必须先拿到 PostgreSQL advisory lock 再创建 `sync_runs`；锁冲突直接返回 `model.ErrSyncRunning`，不要额外创建 failed run 记录。Kubernetes CronJob 部署必须保留 `concurrencyPolicy: Forbid`，让数据库锁只作为跨入口兜底，而不是常态重叠控制。
+
 修改同步字段时需要同时检查：
 
 1. 来源 SQL 是否只读取允许公开的字段。
