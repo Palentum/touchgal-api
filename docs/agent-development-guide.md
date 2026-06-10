@@ -30,7 +30,7 @@ TouchGal main PostgreSQL (read-only)
 - `frontend/nuxt.config.ts`：Nuxt 模块、严格 TypeScript、`runtimeConfig.public`。
 - `frontend/composables/useApi.ts`：前端 API 统一入口，负责 `credentials: 'include'` 与 SSR Cookie 转发。
 
-本地调试日志：后端入口读取 `LOG_LEVEL`，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；需要查看 debug 事件时使用 `LOG_LEVEL=debug make backend-dev`。
+本地调试日志：后端入口读取 `LOG_LEVEL`，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；需要查看 debug 事件时，对启动该 Go 进程的命令设置 `LOG_LEVEL`，例如 `LOG_LEVEL=debug make backend-dev` 或 `LOG_LEVEL=debug make sync`。
 
 ## 后端改动流程
 

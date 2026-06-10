@@ -14,7 +14,12 @@ type Scheduler struct {
 }
 
 func StartScheduler(ctx context.Context, cfg config.Config, service *Service, log zerolog.Logger) (*Scheduler, error) {
-	if service == nil || !cfg.EnableSyncWorker {
+	if service == nil {
+		log.Debug().Msg("sync scheduler disabled: service unavailable")
+		return &Scheduler{}, nil
+	}
+	if !cfg.EnableSyncWorker {
+		log.Debug().Msg("sync scheduler disabled by config")
 		return &Scheduler{}, nil
 	}
 	c := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
@@ -23,14 +28,17 @@ func StartScheduler(ctx context.Context, cfg config.Config, service *Service, lo
 		if _, err := c.AddFunc(spec, func() { run(ctx, service, ModeIncremental, log) }); err != nil {
 			return nil, err
 		}
+		log.Debug().Str("mode", ModeIncremental).Int("interval_minutes", cfg.SyncIntervalMinutes).Msg("sync scheduled")
 	}
 	if cfg.SyncFullIntervalHours > 0 {
 		spec := fmt.Sprintf("@every %dh", cfg.SyncFullIntervalHours)
 		if _, err := c.AddFunc(spec, func() { run(ctx, service, ModeFull, log) }); err != nil {
 			return nil, err
 		}
+		log.Debug().Str("mode", ModeFull).Int("interval_hours", cfg.SyncFullIntervalHours).Msg("sync scheduled")
 	}
 	c.Start()
+	log.Debug().Msg("sync scheduler started")
 	return &Scheduler{cron: c}, nil
 }
 

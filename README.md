@@ -74,10 +74,11 @@ make backend-dev
 make frontend-dev
 ```
 
-需要输出 debug 日志时：
+需要输出 debug 日志时，对启动该 Go 进程的命令设置 `LOG_LEVEL`；单独运行同步命令时也要单独设置，或写入 `backend/.env`：
 
 ```bash
 LOG_LEVEL=debug make backend-dev
+LOG_LEVEL=debug make sync
 ```
 
 macOS 的默认临时目录路径可能过长，Nuxt dev 的 Vite Node IPC socket 会因此触发 `connect EINVAL`。`make frontend-dev` 会把 `TMPDIR` 固定到 `/tmp`；若直接进入 `frontend` 运行，请使用 `TMPDIR=/tmp pnpm dev`。

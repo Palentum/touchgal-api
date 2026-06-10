@@ -39,6 +39,7 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 	if err != nil {
 		return nil, err
 	}
+	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Msg("sync run started")
 	seen, upserted, deleted := 0, 0, 0
 	var sourceMax *time.Time
 	finish := func(status string, err error) (*model.SyncRun, error) {
@@ -49,6 +50,21 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 		updated, finishErr := s.repo.FinishRun(ctx, run.ID, status, sourceMax, seen, upserted, deleted, message)
 		if finishErr != nil && err == nil {
 			err = finishErr
+		}
+		event := s.log.Debug().
+			Str("mode", mode).
+			Stringer("run_id", run.ID).
+			Str("status", status).
+			Int("seen", seen).
+			Int("upserted", upserted).
+			Int("deleted", deleted)
+		if sourceMax != nil {
+			event = event.Time("source_max_updated_at", *sourceMax)
+		}
+		if finishErr != nil {
+			event.Err(finishErr).Msg("sync run finish update failed")
+		} else {
+			event.Msg("sync run finished")
 		}
 		return updated, err
 	}
@@ -64,10 +80,16 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 	if err != nil {
 		return finish("failed", err)
 	}
+	window := s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID)
+	if since != nil {
+		window = window.Time("since", *since)
+	}
+	window.Msg("sync source query window resolved")
 	sources, err := s.querySourceGames(ctx, mode, since)
 	if err != nil {
 		return finish("failed", err)
 	}
+	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Int("source_games", len(sources)).Msg("sync source games loaded")
 
 	tx, err := s.target.Begin(ctx)
 	if err != nil {
