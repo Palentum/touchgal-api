@@ -13,44 +13,62 @@ type GameRepo struct{ db Queryer }
 
 func NewGameRepo(db Queryer) *GameRepo { return &GameRepo{db: db} }
 
+func likeContainsPattern(value string) string {
+	for i := 0; i < len(value); i++ {
+		switch value[i] {
+		case '%', '_', '\\':
+			var b strings.Builder
+			b.Grow(len(value) + 4)
+			b.WriteByte('%')
+			b.WriteString(value[:i])
+			for ; i < len(value); i++ {
+				switch value[i] {
+				case '%', '_', '\\':
+					b.WriteByte('\\')
+				}
+				b.WriteByte(value[i])
+			}
+			b.WriteByte('%')
+			return b.String()
+		}
+	}
+	return "%" + value + "%"
+}
+
 func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int) (model.GameSearchResult, error) {
 	offset := (page - 1) * limit
-	like := "%" + strings.ToLower(keyword) + "%"
+	pattern := likeContainsPattern(keyword)
 	rows, err := r.db.Query(ctx, `
-		WITH matched AS (
-			SELECT DISTINCT g.unique_id, g.name
-			FROM games g
-			LEFT JOIN game_aliases a ON a.game_unique_id = g.unique_id
-			LEFT JOIN game_tags gt ON gt.game_unique_id = g.unique_id
-			LEFT JOIN tags t ON t.id = gt.tag_id
-			LEFT JOIN game_companies gc ON gc.game_unique_id = g.unique_id
-			LEFT JOIN companies c ON c.id = gc.company_id
-			WHERE g.deleted_at IS NULL
-			  AND g.content_limit = 'sfw'
-			  AND (
-			    lower(g.name) LIKE $1 OR lower(g.search_text) LIKE $1 OR
-			    lower(coalesce(a.name, '')) LIKE $1 OR lower(coalesce(t.name, '')) LIKE $1 OR lower(coalesce(c.name, '')) LIKE $1
-			  )
-		)
-		SELECT unique_id, name, count(*) OVER() AS total
-		FROM matched
-		ORDER BY name ASC
-		LIMIT $2 OFFSET $3`, like, limit, offset)
+		SELECT unique_id, name
+		FROM games
+		WHERE deleted_at IS NULL
+		  AND content_limit = 'sfw'
+		  AND search_text ILIKE $1 ESCAPE E'\\'
+		ORDER BY name ASC, unique_id ASC
+		LIMIT $2 OFFSET $3`, pattern, limit, offset)
 	if err != nil {
 		return model.GameSearchResult{}, err
 	}
 	defer rows.Close()
 
-	items := []model.GameSearchItem{}
-	total := 0
+	items := make([]model.GameSearchItem, 0, limit)
 	for rows.Next() {
 		var item model.GameSearchItem
-		if err := rows.Scan(&item.UniqueID, &item.Name, &total); err != nil {
+		if err := rows.Scan(&item.UniqueID, &item.Name); err != nil {
 			return model.GameSearchResult{}, err
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
+		return model.GameSearchResult{}, err
+	}
+	total := 0
+	if err := r.db.QueryRow(ctx, `
+		SELECT count(*)
+		FROM games
+		WHERE deleted_at IS NULL
+		  AND content_limit = 'sfw'
+		  AND search_text ILIKE $1 ESCAPE E'\\'`, pattern).Scan(&total); err != nil {
 		return model.GameSearchResult{}, err
 	}
 	return model.GameSearchResult{Items: items, Pagination: model.Pagination{Page: page, Limit: limit, Total: total, HasMore: offset+len(items) < total}}, nil

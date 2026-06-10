@@ -19,11 +19,25 @@ func (fakeGameStore) Detail(ctx context.Context, uniqueID, touchgalSiteURL strin
 
 func TestSearchParamsValidation(t *testing.T) {
 	keyword, page, limit, err := NormalizeSearch(" summer ", 0, 999)
-	if err != nil || keyword != "summer" || page != 1 || limit != 50 {
+	if err != nil || keyword != "summer" || page != 1 || limit != maxSearchLimit {
 		t.Fatalf("unexpected normalization: %q %d %d %v", keyword, page, limit, err)
 	}
 	if _, _, _, err := NormalizeSearch("", 1, 10); err != model.ErrInvalidInput {
 		t.Fatal("empty keyword accepted")
+	}
+	if _, _, _, err := NormalizeSearch("ab", 1, 10); err != model.ErrInvalidInput {
+		t.Fatal("short keyword accepted")
+	}
+	if _, _, _, err := NormalizeSearch("あい", 1, 10); err != model.ErrInvalidInput {
+		t.Fatal("short unicode keyword accepted")
+	}
+	if _, _, _, err := NormalizeSearch("summer", maxSearchPage+1, 10); err != model.ErrInvalidInput {
+		t.Fatal("page above cap accepted")
+	}
+}
+func TestSearchParamsRejectInvalidUTF8(t *testing.T) {
+	if _, _, _, err := NormalizeSearch(string([]byte{0xff, 0xff, 0xff}), 1, 10); err != model.ErrInvalidInput {
+		t.Fatalf("expected invalid UTF-8 rejection, got %v", err)
 	}
 }
 

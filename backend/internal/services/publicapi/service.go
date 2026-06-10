@@ -3,6 +3,7 @@ package publicapi
 import (
 	"context"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
@@ -20,19 +21,34 @@ type Service struct {
 
 func NewService(cfg config.Config, games GameStore) *Service { return &Service{cfg: cfg, games: games} }
 
+const (
+	minSearchKeywordRunes = 3
+	maxSearchKeywordRunes = 100
+	maxSearchPage         = 100
+	defaultSearchLimit    = 20
+	maxSearchLimit        = 50
+)
+
 func NormalizeSearch(keyword string, page, limit int) (string, int, int, error) {
 	keyword = strings.TrimSpace(keyword)
-	if keyword == "" || len(keyword) > 100 {
+	if !utf8.ValidString(keyword) {
+		return "", 0, 0, model.ErrInvalidInput
+	}
+	keywordRunes := utf8.RuneCountInString(keyword)
+	if keywordRunes < minSearchKeywordRunes || keywordRunes > maxSearchKeywordRunes {
 		return "", 0, 0, model.ErrInvalidInput
 	}
 	if page < 1 {
 		page = 1
 	}
-	if limit < 1 {
-		limit = 20
+	if page > maxSearchPage {
+		return "", 0, 0, model.ErrInvalidInput
 	}
-	if limit > 50 {
-		limit = 50
+	if limit < 1 {
+		limit = defaultSearchLimit
+	}
+	if limit > maxSearchLimit {
+		limit = maxSearchLimit
 	}
 	return keyword, page, limit, nil
 }

@@ -145,9 +145,9 @@ paths:
     get:
       summary: Search sanitized games
       parameters:
-        - { name: keyword, in: query, schema: { type: string, minLength: 1, maxLength: 100 } }
-        - { name: q, in: query, schema: { type: string, minLength: 1, maxLength: 100 } }
-        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: keyword, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
+        - { name: q, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         '200':
