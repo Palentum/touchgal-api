@@ -83,9 +83,10 @@ func (s *Service) Dashboard(ctx context.Context, userID uuid.UUID, days int, tok
 			s.cache = make(map[dashboardCacheKey]dashboardCacheEntry)
 		}
 		pruneExpiredDashboardCacheLocked(s.cache, cacheNow)
-		if len(s.cache) < dashboardCacheMaxEntries {
-			s.cache[key] = dashboardCacheEntry{data: data, expiresAt: expiresAt}
+		if len(s.cache) >= dashboardCacheMaxEntries {
+			evictOneDashboardCacheEntryLocked(s.cache)
 		}
+		s.cache[key] = dashboardCacheEntry{data: data, expiresAt: expiresAt}
 		s.cacheMu.Unlock()
 	}
 	return data, nil
@@ -105,5 +106,11 @@ func pruneExpiredDashboardCacheLocked(cache map[dashboardCacheKey]dashboardCache
 		if !now.Before(entry.expiresAt) {
 			delete(cache, key)
 		}
+	}
+}
+func evictOneDashboardCacheEntryLocked(cache map[dashboardCacheKey]dashboardCacheEntry) {
+	for key := range cache {
+		delete(cache, key)
+		return
 	}
 }

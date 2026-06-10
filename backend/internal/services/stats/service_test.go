@@ -118,12 +118,21 @@ func TestDashboardCacheDoesNotGrowPastMaxEntries(t *testing.T) {
 	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	svc.nowFunc = func() time.Time { return now }
 
+	var lastUserID uuid.UUID
 	for i := 0; i < dashboardCacheMaxEntries+1; i++ {
-		if _, err := svc.Dashboard(context.Background(), uuid.New(), 30, nil); err != nil {
+		lastUserID = uuid.New()
+		if _, err := svc.Dashboard(context.Background(), lastUserID, 30, nil); err != nil {
 			t.Fatalf("dashboard %d: %v", i, err)
 		}
 	}
 	if len(svc.cache) != dashboardCacheMaxEntries {
 		t.Fatalf("expected cache cap %d, got %d", dashboardCacheMaxEntries, len(svc.cache))
+	}
+	callsAfterFill := store.calls
+	if _, err := svc.Dashboard(context.Background(), lastUserID, 30, nil); err != nil {
+		t.Fatalf("cached latest dashboard: %v", err)
+	}
+	if store.calls != callsAfterFill {
+		t.Fatal("cache must keep accepting new entries after reaching capacity")
 	}
 }
