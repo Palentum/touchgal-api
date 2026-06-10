@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
@@ -19,14 +21,28 @@ const (
 	ModeFull        = "full"
 
 	sourceRelationBatchSize = 1000
+	syncRunFinishTimeout    = 15 * time.Second
 )
+
+type runStore interface {
+	StartRun(ctx context.Context, mode string) (*model.SyncRun, error)
+	FinishRun(ctx context.Context, id uuid.UUID, status string, sourceMaxUpdatedAt *time.Time, seen, upserted, deleted int, message string) (*model.SyncRun, error)
+	LastSuccessMaxUpdatedAt(ctx context.Context) (*time.Time, error)
+}
 
 type Service struct {
 	cfg    config.Config
 	source *pgxpool.Pool
 	target *pgxpool.Pool
-	repo   *repository.SyncRepo
+	repo   runStore
 	log    zerolog.Logger
+
+	lifecycleCtx    context.Context
+	lifecycleCancel context.CancelFunc
+	wg              sync.WaitGroup
+
+	runMu      sync.Mutex
+	runRunning bool
 }
 
 type syncSource struct {
@@ -42,18 +58,104 @@ type sourceRelations struct {
 }
 
 func NewService(cfg config.Config, source, target *pgxpool.Pool, repo *repository.SyncRepo, log zerolog.Logger) *Service {
-	return &Service{cfg: cfg, source: source, target: target, repo: repo, log: log}
+	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
+	return &Service{cfg: cfg, source: source, target: target, repo: repo, log: log, lifecycleCtx: lifecycleCtx, lifecycleCancel: lifecycleCancel}
+}
+
+func (s *Service) Stop() {
+	if s.lifecycleCancel != nil {
+		s.lifecycleCancel()
+	}
+	s.wg.Wait()
+}
+
+func (s *Service) backgroundContext() context.Context {
+	if s.lifecycleCtx != nil {
+		return s.lifecycleCtx
+	}
+	return context.Background()
+}
+
+func validateMode(mode string) error {
+	if mode != ModeIncremental && mode != ModeFull {
+		return model.ErrInvalidInput
+	}
+	return nil
+}
+
+func (s *Service) acquireRun() bool {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.runRunning {
+		return false
+	}
+	s.runRunning = true
+	return true
+}
+
+func (s *Service) releaseRun() {
+	s.runMu.Lock()
+	s.runRunning = false
+	s.runMu.Unlock()
+}
+
+func (s *Service) Start(_ context.Context, mode string) (*model.SyncRun, error) {
+	if err := validateMode(mode); err != nil {
+		return nil, err
+	}
+	if !s.acquireRun() {
+		return nil, model.ErrSyncRunning
+	}
+	s.wg.Add(1)
+	runCtx := s.backgroundContext()
+	run, err := s.startRun(runCtx, mode)
+	if err != nil {
+		s.releaseRun()
+		s.wg.Done()
+		return nil, err
+	}
+	go func() {
+		defer s.wg.Done()
+		defer s.releaseRun()
+		if _, err := s.runStarted(runCtx, run); err != nil {
+			s.log.Error().Err(err).Str("mode", run.Mode).Stringer("run_id", run.ID).Msg("sync failed")
+		}
+	}()
+	return run, nil
 }
 
 func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) {
-	if mode != ModeIncremental && mode != ModeFull {
-		return nil, model.ErrInvalidInput
+	if err := validateMode(mode); err != nil {
+		return nil, err
 	}
+	if !s.acquireRun() {
+		return nil, model.ErrSyncRunning
+	}
+	s.wg.Add(1)
+	defer s.wg.Done()
+	defer s.releaseRun()
+	run, err := s.startRun(ctx, mode)
+	if err != nil {
+		return nil, err
+	}
+	return s.runStarted(ctx, run)
+}
+
+func (s *Service) startRun(ctx context.Context, mode string) (*model.SyncRun, error) {
 	run, err := s.repo.StartRun(ctx, mode)
 	if err != nil {
 		return nil, err
 	}
 	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Msg("sync run started")
+	return run, nil
+}
+
+func finishContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), syncRunFinishTimeout)
+}
+
+func (s *Service) runStarted(ctx context.Context, run *model.SyncRun) (*model.SyncRun, error) {
+	mode := run.Mode
 	seen, upserted, deleted := 0, 0, 0
 	var sourceMax *time.Time
 	finish := func(status string, err error) (*model.SyncRun, error) {
@@ -61,7 +163,9 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 		if err != nil {
 			message = err.Error()
 		}
-		updated, finishErr := s.repo.FinishRun(ctx, run.ID, status, sourceMax, seen, upserted, deleted, message)
+		finishCtx, cancel := finishContext(ctx)
+		defer cancel()
+		updated, finishErr := s.repo.FinishRun(finishCtx, run.ID, status, sourceMax, seen, upserted, deleted, message)
 		if finishErr != nil && err == nil {
 			err = finishErr
 		}
@@ -120,7 +224,11 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 	if err != nil {
 		return finish("failed", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		rollbackCtx, cancel := finishContext(ctx)
+		defer cancel()
+		_ = tx.Rollback(rollbackCtx)
+	}()
 	txRepo := repository.NewSyncRepo(tx)
 	seenIDs := make([]int, 0, len(items))
 	for start := 0; start < len(items); start += sourceRelationBatchSize {

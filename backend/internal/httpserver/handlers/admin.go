@@ -10,7 +10,6 @@ import (
 	"github.com/touchgal/developer/backend/internal/httpserver/middleware"
 	"github.com/touchgal/developer/backend/internal/model"
 	"github.com/touchgal/developer/backend/internal/services/application"
-	syncsvc "github.com/touchgal/developer/backend/internal/services/sync"
 	"github.com/touchgal/developer/backend/internal/services/token"
 	usersvc "github.com/touchgal/developer/backend/internal/services/users"
 )
@@ -19,15 +18,19 @@ type AdminHandler struct {
 	applications *application.Service
 	tokens       *token.Service
 	users        *usersvc.Service
-	syncService  *syncsvc.Service
+	syncService  syncRunStarter
 	syncStore    syncRunStore
+}
+
+type syncRunStarter interface {
+	Start(ctx context.Context, mode string) (*model.SyncRun, error)
 }
 
 type syncRunStore interface {
 	ListRuns(ctx context.Context, limit int) ([]model.SyncRun, error)
 }
 
-func NewAdminHandler(apps *application.Service, tokens *token.Service, users *usersvc.Service, syncService *syncsvc.Service, syncStore syncRunStore) *AdminHandler {
+func NewAdminHandler(apps *application.Service, tokens *token.Service, users *usersvc.Service, syncService syncRunStarter, syncStore syncRunStore) *AdminHandler {
 	return &AdminHandler{applications: apps, tokens: tokens, users: users, syncService: syncService, syncStore: syncStore}
 }
 
@@ -171,12 +174,12 @@ func (h *AdminHandler) RunSync(w http.ResponseWriter, r *http.Request) {
 		ErrorCode(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid JSON body")
 		return
 	}
-	run, err := h.syncService.Run(r.Context(), req.Mode)
+	run, err := h.syncService.Start(r.Context(), req.Mode)
 	if err != nil {
 		Error(w, err)
 		return
 	}
-	Success(w, http.StatusOK, run)
+	Success(w, http.StatusAccepted, run)
 }
 
 func pageLimit(r *http.Request) (int, int) {

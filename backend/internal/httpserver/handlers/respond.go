@@ -70,6 +70,8 @@ func classify(err error) (int, string, string) {
 		return http.StatusConflict, "CONFLICT", "Resource already exists"
 	case errors.Is(err, model.ErrApplicationOpen):
 		return http.StatusForbidden, "FORBIDDEN", "Application is not approved"
+	case errors.Is(err, model.ErrSyncRunning):
+		return http.StatusConflict, "SYNC_RUNNING", "Sync is already running"
 	default:
 		return http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error"
 	}

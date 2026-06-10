@@ -15,4 +15,5 @@ var (
 	ErrExpiredCode       = errors.New("expired verification code")
 	ErrApplicationOpen   = errors.New("application is not approved")
 	ErrAccountDisabled   = errors.New("account disabled")
+	ErrSyncRunning       = errors.New("sync is already running")
 )

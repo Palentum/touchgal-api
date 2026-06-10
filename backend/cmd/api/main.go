@@ -77,6 +77,7 @@ func run() error {
 	publicService := publicapi.NewService(cfg, repos.Games)
 	statsService := stats.NewService(repos.Stats)
 	syncService := syncsvc.NewService(cfg, source, target, repos.Sync, logger)
+	defer syncService.Stop()
 
 	scheduler, err := syncsvc.StartScheduler(ctx, cfg, syncService, logger)
 	if err != nil {

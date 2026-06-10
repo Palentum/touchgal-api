@@ -6,9 +6,16 @@
         <h1 class="tg-display-md">同步状态</h1>
         <p class="tg-muted mt-3">触发 clean DB 同步并查看最近运行记录。</p>
       </div>
-      <div class="tg-actions">
-        <button class="tg-btn tg-btn-cream" @click="run('incremental')">运行增量同步</button>
-        <button class="tg-btn tg-btn-secondary-dark" @click="run('full')">运行全量同步</button>
+      <div>
+        <div class="tg-actions">
+          <button class="tg-btn tg-btn-cream" :disabled="pendingMode !== null" @click="run('incremental')">
+            {{ pendingMode === 'incremental' ? '正在触发增量同步...' : '运行增量同步' }}
+          </button>
+          <button class="tg-btn tg-btn-secondary-dark" :disabled="pendingMode !== null" @click="run('full')">
+            {{ pendingMode === 'full' ? '正在触发全量同步...' : '运行全量同步' }}
+          </button>
+        </div>
+        <p v-if="errorMessage" class="tg-message-error mt-3">{{ errorMessage }}</p>
       </div>
     </div>
     <AdminSyncRunTable :runs="runs" />
@@ -18,8 +25,82 @@
 import type { SyncRun } from '~/components/admin/SyncRunTable.vue'
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 const { apiFetch } = useApi()
+type SyncMode = 'incremental' | 'full'
+
 const runs = ref<SyncRun[]>([])
-const load = async () => { const res = await apiFetch<SyncRun[]>('/admin/sync/runs'); if (res.success) runs.value = res.data }
-const run = async (mode: 'incremental' | 'full') => { await apiFetch('/admin/sync/run', { method: 'POST', body: { mode } }); await load() }
-onMounted(load)
+const pendingMode = ref<SyncMode | null>(null)
+const errorMessage = ref('')
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+let disposed = false
+
+const hasRunningRun = computed(() => runs.value.some(run => run.status === 'running'))
+
+const clearPoll = () => {
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+}
+
+const queuePoll = () => {
+  if (disposed || !hasRunningRun.value || pollTimer) return
+  pollTimer = setTimeout(() => {
+    pollTimer = null
+    void load()
+  }, 3000)
+}
+
+const upsertRun = (run: SyncRun) => {
+  runs.value = [run, ...runs.value.filter(item => item.id !== run.id)].slice(0, 50)
+}
+
+const load = async () => {
+  if (disposed) return
+  try {
+    const res = await apiFetch<SyncRun[]>('/admin/sync/runs')
+    if (disposed) return
+    if (res.success) {
+      runs.value = res.data
+      if (hasRunningRun.value) queuePoll()
+      else clearPoll()
+    } else {
+      errorMessage.value = res.error.message
+    }
+  } catch {
+    if (!disposed) {
+      errorMessage.value = '刷新同步记录失败'
+      if (hasRunningRun.value) queuePoll()
+    }
+  }
+}
+
+const run = async (mode: SyncMode) => {
+  if (pendingMode.value) return
+  pendingMode.value = mode
+  errorMessage.value = ''
+  try {
+    const res = await apiFetch<SyncRun>('/admin/sync/run', { method: 'POST', body: { mode } })
+    if (disposed) return
+    if (res.success) {
+      upsertRun(res.data)
+      queuePoll()
+      void load()
+    } else {
+      errorMessage.value = res.error.message
+    }
+  } catch (error: any) {
+    if (!disposed) errorMessage.value = error?.data?.error?.message || '触发同步失败'
+  } finally {
+    if (!disposed) pendingMode.value = null
+  }
+}
+
+onMounted(() => {
+  disposed = false
+  void load()
+})
+onUnmounted(() => {
+  disposed = true
+  clearPoll()
+})
 </script>
