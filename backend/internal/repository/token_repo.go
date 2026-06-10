@@ -15,15 +15,18 @@ func NewTokenRepo(db Queryer) *TokenRepo { return &TokenRepo{db: db} }
 
 const tokenListByUserCapHint = 8
 
+var errTokenCreateRequiresTransaction = errors.New("token creation requires transaction-capable queryer")
+
 type txBeginner interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 func (r *TokenRepo) Create(ctx context.Context, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error) {
-	if beginner, ok := r.db.(txBeginner); ok {
-		return r.createInTx(ctx, beginner, token, maxActiveTokensPerUser)
+	beginner, ok := r.db.(txBeginner)
+	if !ok {
+		return nil, errTokenCreateRequiresTransaction
 	}
-	return createToken(ctx, r.db, token, maxActiveTokensPerUser)
+	return r.createInTx(ctx, beginner, token, maxActiveTokensPerUser)
 }
 
 func (r *TokenRepo) createInTx(ctx context.Context, beginner txBeginner, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error) {

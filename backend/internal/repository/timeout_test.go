@@ -75,6 +75,41 @@ func TestWithQueryTimeoutCancelsQueryRowContextAfterScan(t *testing.T) {
 		t.Fatalf("expected QueryRow context to be canceled after Scan, got %v", queryer.rowCtx.Err())
 	}
 }
+func TestWithQueryTimeoutPreservesBegin(t *testing.T) {
+	queryer := &recordingTimeoutBeginner{}
+	wrapped := WithQueryTimeout(queryer, time.Minute)
+	beginner, ok := wrapped.(txBeginner)
+	if !ok {
+		t.Fatal("wrapped queryer must preserve transaction support")
+	}
+	tx, err := beginner.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, ok := tx.(timeoutTx); !ok {
+		t.Fatalf("expected timeout-wrapped transaction, got %T", tx)
+	}
+	if _, ok := queryer.beginCtx.Deadline(); !ok {
+		t.Fatal("expected Begin context deadline")
+	}
+	if queryer.beginCtx.Err() != context.Canceled {
+		t.Fatalf("expected Begin context to be canceled after return, got %v", queryer.beginCtx.Err())
+	}
+}
+
+type recordingTimeoutBeginner struct {
+	recordingTimeoutQueryer
+	beginCtx context.Context
+}
+
+func (q *recordingTimeoutBeginner) Begin(ctx context.Context) (pgx.Tx, error) {
+	q.beginCtx = ctx
+	return fakeTimeoutTx{}, nil
+}
+
+type fakeTimeoutTx struct {
+	pgx.Tx
+}
 
 type recordingTimeoutQueryer struct {
 	execCtx  context.Context

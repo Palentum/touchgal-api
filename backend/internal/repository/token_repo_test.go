@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -77,16 +78,76 @@ func (r tokenRow) Scan(dest ...any) error {
 	*(dest[12].(*time.Time)) = r.token.UpdatedAt
 	return nil
 }
+
+type tokenCreateBeginner struct {
+	tx *tokenCreateTx
+}
+
+func (q *tokenCreateBeginner) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+	panic("unexpected exec")
+}
+
+func (q *tokenCreateBeginner) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	panic("unexpected query")
+}
+
+func (q *tokenCreateBeginner) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	panic("unexpected query row outside transaction")
+}
+
+func (q *tokenCreateBeginner) Begin(ctx context.Context) (pgx.Tx, error) {
+	return q.tx, nil
+}
+
+type tokenCreateTx struct {
+	pgx.Tx
+	lockSQL    string
+	lockArgs   []any
+	createSQL  string
+	createArgs []any
+	row        pgx.Row
+	committed  bool
+}
+
+func (tx *tokenCreateTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if strings.Contains(sql, "SELECT id FROM users WHERE id = $1 FOR UPDATE") {
+		tx.lockSQL = sql
+		tx.lockArgs = args
+		return uuidRow{id: args[0].(uuid.UUID)}
+	}
+	tx.createSQL = sql
+	tx.createArgs = args
+	return tx.row
+}
+
+func (tx *tokenCreateTx) Commit(ctx context.Context) error {
+	tx.committed = true
+	return nil
+}
+
+func (tx *tokenCreateTx) Rollback(ctx context.Context) error {
+	return nil
+}
+
+type uuidRow struct {
+	id uuid.UUID
+}
+
+func (r uuidRow) Scan(dest ...any) error {
+	*(dest[0].(*uuid.UUID)) = r.id
+	return nil
+}
+
 func TestTokenRepoCreateLocksUserAndPassesActiveLimit(t *testing.T) {
 	userID := uuid.New()
 	tokenID := uuid.New()
 	applicationID := uuid.New()
-	queryer := &queryRowOnlyQueryer{row: tokenRow{token: model.APIToken{
+	tx := &tokenCreateTx{row: tokenRow{token: model.APIToken{
 		ID: tokenID, UserID: userID, ApplicationID: applicationID, Name: "prod",
 		TokenPrefix: "tgal_live_abcd", TokenHash: "hash", Status: model.TokenActive,
 		MinuteLimit: 60, DailyLimit: 1000, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}}}
-	repo := NewTokenRepo(queryer)
+	repo := NewTokenRepo(&tokenCreateBeginner{tx: tx})
 
 	created, err := repo.Create(context.Background(), model.APIToken{
 		ID: tokenID, UserID: userID, ApplicationID: applicationID, Name: "prod",
@@ -98,24 +159,38 @@ func TestTokenRepoCreateLocksUserAndPassesActiveLimit(t *testing.T) {
 	if created.ID != tokenID || created.UserID != userID || created.ApplicationID != applicationID {
 		t.Fatalf("unexpected token: %#v", created)
 	}
-	if !strings.Contains(queryer.sql, "FROM (SELECT id FROM users WHERE id = $2 FOR UPDATE) AS u") {
-		t.Fatalf("create must lock the user row before counting active tokens: %q", queryer.sql)
+	if !strings.Contains(tx.lockSQL, "SELECT id FROM users WHERE id = $1 FOR UPDATE") {
+		t.Fatalf("create must lock the user row before counting active tokens: %q", tx.lockSQL)
 	}
-	if !strings.Contains(queryer.sql, "t.status = 'active'") || !strings.Contains(queryer.sql, "t.expires_at IS NULL OR t.expires_at > now()") {
-		t.Fatalf("create must count active non-expired tokens: %q", queryer.sql)
+	if !strings.Contains(tx.createSQL, "FROM (SELECT id FROM users WHERE id = $2 FOR UPDATE) AS u") {
+		t.Fatalf("create must lock the user row inside insert statement: %q", tx.createSQL)
 	}
-	if len(queryer.args) != 10 || queryer.args[0] != tokenID || queryer.args[1] != userID || queryer.args[9] != 10 {
-		t.Fatalf("unexpected create args: %#v", queryer.args)
+	if !strings.Contains(tx.createSQL, "t.status = 'active'") || !strings.Contains(tx.createSQL, "t.expires_at IS NULL OR t.expires_at > now()") {
+		t.Fatalf("create must count active non-expired tokens: %q", tx.createSQL)
+	}
+	if len(tx.createArgs) != 10 || tx.createArgs[0] != tokenID || tx.createArgs[1] != userID || tx.createArgs[9] != 10 {
+		t.Fatalf("unexpected create args: %#v", tx.createArgs)
+	}
+	if !tx.committed {
+		t.Fatal("create transaction must commit after inserting token")
 	}
 }
 
 func TestTokenRepoCreateMapsActiveLimitToSentinel(t *testing.T) {
-	queryer := &queryRowOnlyQueryer{row: tokenRow{err: pgx.ErrNoRows}}
-	repo := NewTokenRepo(queryer)
+	tx := &tokenCreateTx{row: tokenRow{err: pgx.ErrNoRows}}
+	repo := NewTokenRepo(&tokenCreateBeginner{tx: tx})
 
 	_, err := repo.Create(context.Background(), model.APIToken{ID: uuid.New(), UserID: uuid.New()}, 1)
 	if err != model.ErrTokenLimitExceeded {
 		t.Fatalf("expected token limit error, got %v", err)
+	}
+}
+func TestTokenRepoCreateRequiresTransactionCapableQueryer(t *testing.T) {
+	repo := NewTokenRepo(&queryRowOnlyQueryer{row: tokenRow{}})
+
+	_, err := repo.Create(context.Background(), model.APIToken{ID: uuid.New(), UserID: uuid.New()}, 1)
+	if !errors.Is(err, errTokenCreateRequiresTransaction) {
+		t.Fatalf("expected transaction-capable queryer error, got %v", err)
 	}
 }
 
