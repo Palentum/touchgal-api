@@ -33,6 +33,24 @@ func TestSessionAuthDoesNotRunOnPublicHealth(t *testing.T) {
 	}
 }
 
+func TestSessionAuthDoesNotRunOnPublicReadiness(t *testing.T) {
+	cfg := routerTestConfig()
+	store := &routerSessionStore{err: model.ErrNotFound}
+	router := NewRouter(cfg, Services{Auth: auth.NewService(cfg, nil, store, nil, nil)}, &repository.Repositories{}, nil, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodGet, "/v1/ready", nil)
+	req.AddCookie(&http.Cookie{Name: cfg.SessionCookieName, Value: "raw-session"})
+	res := httptest.NewRecorder()
+
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected readiness status 503 without configured checks, got %d", res.Code)
+	}
+	if store.lookups != 0 {
+		t.Fatalf("public readiness must not perform session lookup, got %d", store.lookups)
+	}
+}
+
 func TestSessionAuthRunsOnPortalGroup(t *testing.T) {
 	cfg := routerTestConfig()
 	store := &routerSessionStore{err: model.ErrNotFound}

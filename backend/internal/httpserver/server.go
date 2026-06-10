@@ -29,6 +29,7 @@ type Services struct {
 	Stats        *stats.Service
 	RequestLogs  *requestlog.Writer
 	Sync         *syncsvc.Service
+	ReadinessDB  repository.Queryer
 }
 
 func NewRouter(cfg config.Config, services Services, repos *repository.Repositories, redisClient *redis.Client, logger zerolog.Logger) http.Handler {
@@ -38,7 +39,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r.Use(middleware.CORS(cfg))
 	sessionAuth := middleware.SessionAuth(cfg, services.Auth)
 
-	health := handlers.HealthHandler{}
+	health := handlers.NewHealthHandler(services.ReadinessDB, redisClient)
 	docs := handlers.DocsHandler{}
 	authHandler := handlers.NewAuthHandler(cfg, services.Auth)
 	applicationHandler := handlers.NewApplicationHandler(services.Applications)
@@ -50,6 +51,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r.Get("/openapi.yaml", docs.OpenAPI)
 	r.Get("/docs", docs.Swagger)
 	r.Get("/v1/health", health.Health)
+	r.Get("/v1/ready", health.Ready)
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/register/start", authHandler.RegisterStart)

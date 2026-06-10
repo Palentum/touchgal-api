@@ -61,7 +61,8 @@ func run() error {
 	}
 	defer redisClient.Close()
 
-	repos := repository.NewWithQueryer(repository.WithQueryTimeout(target, cfg.DatabasePool.QueryTimeout))
+	apiQueryer := repository.WithQueryTimeout(target, cfg.DatabasePool.QueryTimeout)
+	repos := repository.NewWithQueryer(apiQueryer)
 	var syncService *syncsvc.Service
 	if cfg.EnableSyncWorker {
 		source, err := db.OpenOptionalPostgres(ctx, cfg.SourceDatabaseDSN, cfg.SourceDatabasePool)
@@ -127,6 +128,7 @@ func run() error {
 			Stats:        statsService,
 			RequestLogs:  requestLogWriter,
 			Sync:         syncService,
+			ReadinessDB:  apiQueryer,
 		}, repos, redisClient, logger),
 		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 		ReadTimeout:       cfg.HTTPReadTimeout,

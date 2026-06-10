@@ -6,6 +6,9 @@
 3. 如果后端运行在 Docker Compose 容器内，连接主机服务时将连接主机名配置为 `host.docker.internal`。
 4. 只在独立 sync worker 的 env 中配置主库只读账号 `SOURCE_DATABASE_DSN`；API env 默认不需要 source DB 凭据。
    生产环境默认用 `backend/cmd/sync`、systemd timer 或 Kubernetes CronJob 独立跑同步，并保持 API `ENABLE_SYNC_WORKER=false`。Kubernetes CronJob 必须配置 `concurrencyPolicy: Forbid`；服务层仍使用 PostgreSQL advisory lock 兜底，防止 API 手动触发、API 内置 scheduler 与独立 worker 跨进程并发写 clean DB。仅本地调试或小数据量部署可启用 API 进程内 `ENABLE_SYNC_WORKER=true`，此时才把 `SOURCE_DATABASE_DSN` 配给 API 进程。
+   API readiness 使用 `/v1/ready`，只检查 clean PostgreSQL 与 Redis，不连接 source DB；Compose 示例用该端点做 backend healthcheck，并让 frontend 等待 `service_healthy`。
+   Compose、systemd 与 Kubernetes 示例都包含默认 CPU/memory/task 限制；生产应按实例规格和同步批量大小调整，而不是移除限制。
 5. 执行 `make migrate-up`。
 6. 执行 `make sync-full` 初始化 clean DB。
 7. 启动 `docker compose -f deploy/docker-compose.yml up --build`。
+   `deploy/nginx.conf` 是完整 nginx 示例：`/api/` 做请求/连接限流、超时与 `no-store`，`/_nuxt/` 使用 immutable 长缓存，`/logo.webp` 使用短 TTL，避免固定 public 文件名长期失效困难。

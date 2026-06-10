@@ -29,7 +29,7 @@ components:
         error:
           type: object
           properties:
-            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, INTERNAL_ERROR] }
+            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, NOT_READY, INTERNAL_ERROR] }
             message: { type: string }
     HealthResponse:
       type: object
@@ -39,6 +39,15 @@ components:
           type: object
           properties:
             status: { type: string, example: ok }
+            version: { type: string, example: v1 }
+    ReadinessResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          properties:
+            status: { type: string, example: ready }
             version: { type: string, example: v1 }
     User:
       type: object
@@ -135,6 +144,14 @@ paths:
       summary: Health check
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/HealthResponse' } } } }
+  /v1/ready:
+    get:
+      security: []
+      summary: Readiness check
+      description: Checks clean PostgreSQL and Redis dependencies without touching the source database.
+      responses:
+        '200': { description: Ready, content: { application/json: { schema: { $ref: '#/components/schemas/ReadinessResponse' } } } }
+        '503': { description: Not ready, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /v1/me:
     get:
       summary: API token self check

@@ -9,14 +9,33 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/v1/ready >/dev/null"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    cpus: "1.0"
+    mem_limit: 512m
+    pids_limit: 256
 
   frontend:
     build:
       context: ../frontend
     env_file:
       - ../frontend/.env
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    cpus: "0.5"
+    mem_limit: 256m
+    pids_limit: 128

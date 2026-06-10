@@ -8,6 +8,10 @@ EnvironmentFile=/opt/touchgal-developer/backend/.env
 ExecStart=/usr/local/bin/touchgal-api
 Restart=always
 RestartSec=5
+MemoryMax=512M
+CPUQuota=100%
+TasksMax=256
+LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target
