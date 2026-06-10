@@ -97,6 +97,13 @@ func TestPostgresPingTimeoutUsesFallbackWhenQueryTimeoutDisabled(t *testing.T) {
 	}
 }
 
+func TestRedisOptionsFromConfigAppliesSafeTimeoutDefaults(t *testing.T) {
+	options := redisOptionsFromConfig(config.Config{})
+	if options.DialTimeout != redisDefaultDialTimeout || options.ReadTimeout != redisDefaultReadTimeout || options.WriteTimeout != redisDefaultWriteTimeout || options.PoolTimeout != redisDefaultPoolTimeout {
+		t.Fatalf("unexpected Redis timeout defaults: dial=%s read=%s write=%s pool=%s", options.DialTimeout, options.ReadTimeout, options.WriteTimeout, options.PoolTimeout)
+	}
+}
+
 func TestRedisOptionsFromConfigAppliesPoolAndTimeoutSettings(t *testing.T) {
 	cfg := config.Config{
 		RedisAddr:         "redis.example.com:6380",

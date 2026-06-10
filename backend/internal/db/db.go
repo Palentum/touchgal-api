@@ -10,7 +10,13 @@ import (
 	"github.com/touchgal/developer/backend/internal/config"
 )
 
-const postgresPingFallbackTimeout = 10 * time.Second
+const (
+	postgresPingFallbackTimeout = 10 * time.Second
+	redisDefaultDialTimeout     = 5 * time.Second
+	redisDefaultReadTimeout     = 3 * time.Second
+	redisDefaultWriteTimeout    = 3 * time.Second
+	redisDefaultPoolTimeout     = 4 * time.Second
+)
 
 func OpenPostgres(ctx context.Context, dsn string, cfg config.PostgresConfig) (*pgxpool.Pool, error) {
 	poolConfig, err := postgresPoolConfig(dsn, cfg)
@@ -80,6 +86,13 @@ func OpenOptionalPostgres(ctx context.Context, dsn string, cfg config.PostgresCo
 	return OpenPostgres(ctx, dsn, cfg)
 }
 
+func redisTimeoutOrDefault(value, fallback time.Duration) time.Duration {
+	if value == 0 {
+		return fallback
+	}
+	return value
+}
+
 func redisOptionsFromConfig(cfg config.Config) *redis.Options {
 	return &redis.Options{
 		Addr:         cfg.RedisAddr,
@@ -87,10 +100,10 @@ func redisOptionsFromConfig(cfg config.Config) *redis.Options {
 		DB:           cfg.RedisDB,
 		PoolSize:     cfg.RedisPoolSize,
 		MinIdleConns: cfg.RedisMinIdleConns,
-		DialTimeout:  cfg.RedisDialTimeout,
-		ReadTimeout:  cfg.RedisReadTimeout,
-		WriteTimeout: cfg.RedisWriteTimeout,
-		PoolTimeout:  cfg.RedisPoolTimeout,
+		DialTimeout:  redisTimeoutOrDefault(cfg.RedisDialTimeout, redisDefaultDialTimeout),
+		ReadTimeout:  redisTimeoutOrDefault(cfg.RedisReadTimeout, redisDefaultReadTimeout),
+		WriteTimeout: redisTimeoutOrDefault(cfg.RedisWriteTimeout, redisDefaultWriteTimeout),
+		PoolTimeout:  redisTimeoutOrDefault(cfg.RedisPoolTimeout, redisDefaultPoolTimeout),
 	}
 }
 

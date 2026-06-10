@@ -64,7 +64,7 @@ Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter �
 - Public API：`/v1` + `APIPreAuthRateLimit` + `APITokenAuth` + `APIRateLimit` + `APILastUsed` + `APIRequestLog`。
 
 - `/v1` Redis 限流必须同时按 token、user、application 维度独立计数；不要只取 `Effective*Limit` 后按 token key 计数，否则多 token 会放大账号上限。
-- Redis client pool/timeout 配置来自 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_DIAL_TIMEOUT`、`REDIS_READ_TIMEOUT`、`REDIS_WRITE_TIMEOUT`、`REDIS_POOL_TIMEOUT`；高 QPS `/v1` 调优应改配置，不要在 middleware 内创建额外 Redis client。
+- Redis client pool/timeout 配置来自 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_DIAL_TIMEOUT`、`REDIS_READ_TIMEOUT`、`REDIS_WRITE_TIMEOUT`、`REDIS_POOL_TIMEOUT`；timeout 值为 `0` 时由本项目转换为固定安全默认值（5s/3s/3s/4s），不要依赖 go-redis 版本默认语义；高 QPS `/v1` 调优应改配置，不要在 middleware 内创建额外 Redis client。
 - `/v1` request logging 只允许通过 `services/requestlog.Writer` 的有界队列批量写入；不要在 middleware 中为每个请求启动 goroutine 或同步写 DB。Dashboard 统计应读取 `api_usage_*` 聚合表，raw `api_request_logs` 只短期保留用于排查，聚合明细按 dashboard 最大查询窗口清理。
 - `ClientIP` 只在直接 peer 是 loopback/private/link-local 时信任 `X-Forwarded-For` / `X-Real-IP`，避免公网直连伪造 pre-auth IP 限流 key。
 

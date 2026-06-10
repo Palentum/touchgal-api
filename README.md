@@ -45,7 +45,7 @@ cp backend/.env.example backend/.env
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`；默认只配置给独立 sync worker，API 进程在 `ENABLE_SYNC_WORKER=false` 时不需要该凭据。
 - `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；sync 使用独立 target/source pool、分页读取和短事务 batch commit，避免 full sync 占用 API pool 或形成单个长事务。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
-- `REDIS_POOL_SIZE` / `REDIS_MIN_IDLE_CONNS` / `REDIS_*_TIMEOUT`：go-redis 连接池与 dial/read/write/pool wait timeout；默认 `0` 沿用 go-redis 默认值，高 QPS 部署按实例容量和 `/v1` 峰值并发调优。
+- `REDIS_POOL_SIZE` / `REDIS_MIN_IDLE_CONNS` / `REDIS_*_TIMEOUT`：go-redis 连接池与 dial/read/write/pool wait timeout；timeout 默认 `0` 会由本项目转换为固定安全值（5s/3s/3s/4s），避免依赖 go-redis 版本默认语义，高 QPS 部署按实例容量和 `/v1` 峰值并发调优。
 - `SESSION_SECRET` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
 - `ENABLE_PPROF` / `ENABLE_METRICS` / `OBSERVABILITY_ADDR`：可选只读诊断端点；默认关闭并绑定 `127.0.0.1:6060`，启用后提供 `/debug/pprof/*`、`/debug/pprof/trace` 与 `/debug/vars`，不要绑定公网地址。
