@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -41,6 +42,9 @@ type Config struct {
 	HTTPWriteTimeout      time.Duration
 	HTTPIdleTimeout       time.Duration
 	HTTPMaxHeaderBytes    int
+	EnablePprof           bool
+	EnableMetrics         bool
+	ObservabilityAddr     string
 	PublicURL             string
 	APIBaseURL            string
 
@@ -168,6 +172,9 @@ func Load() (Config, error) {
 		HTTPWriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 60*time.Second),
 		HTTPIdleTimeout:       envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 		HTTPMaxHeaderBytes:    envInt("HTTP_MAX_HEADER_BYTES", 1<<20),
+		EnablePprof:           envBool("ENABLE_PPROF", false),
+		EnableMetrics:         envBool("ENABLE_METRICS", false),
+		ObservabilityAddr:     env("OBSERVABILITY_ADDR", "127.0.0.1:6060"),
 		PublicURL:             env("PUBLIC_BASE_URL", "http://localhost:3000"),
 		APIBaseURL:            env("API_BASE_URL", "http://localhost:8080"),
 
@@ -298,6 +305,31 @@ func validateRedisConfig(cfg Config) error {
 	return nil
 }
 
+func validateObservabilityConfig(cfg Config) error {
+	if !cfg.EnablePprof && !cfg.EnableMetrics {
+		return nil
+	}
+	addr := strings.TrimSpace(cfg.ObservabilityAddr)
+	if addr == "" {
+		return errors.New("OBSERVABILITY_ADDR is required when ENABLE_PPROF or ENABLE_METRICS is true")
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("OBSERVABILITY_ADDR must be host:port: %w", err)
+	}
+	if host == "" {
+		return errors.New("OBSERVABILITY_ADDR must not bind to a wildcard address")
+	}
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || (!ip.IsLoopback() && !ip.IsPrivate()) {
+		return errors.New("OBSERVABILITY_ADDR must bind to localhost, loopback, or a private management address")
+	}
+	return nil
+}
+
 func (c Config) Validate() error {
 	if c.DatabaseDSN == "" {
 		return errors.New("DATABASE_DSN is required")
@@ -316,6 +348,9 @@ func (c Config) Validate() error {
 	}
 	if c.HTTPMaxHeaderBytes <= 0 {
 		return errors.New("HTTP_MAX_HEADER_BYTES must be positive")
+	}
+	if err := validateObservabilityConfig(c); err != nil {
+		return err
 	}
 	if err := validatePostgresConfig("DB", c.DatabasePool); err != nil {
 		return err

@@ -48,6 +48,7 @@ cp backend/.env.example backend/.env
 - `REDIS_POOL_SIZE` / `REDIS_MIN_IDLE_CONNS` / `REDIS_*_TIMEOUT`：go-redis 连接池与 dial/read/write/pool wait timeout；默认 `0` 沿用 go-redis 默认值，高 QPS 部署按实例容量和 `/v1` 峰值并发调优。
 - `SESSION_SECRET` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
+- `ENABLE_PPROF` / `ENABLE_METRICS` / `OBSERVABILITY_ADDR`：可选只读诊断端点；默认关闭并绑定 `127.0.0.1:6060`，启用后提供 `/debug/pprof/*`、`/debug/pprof/trace` 与 `/debug/vars`，不要绑定公网地址。
 - `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`。
 - `MAIL_SEND_TIMEOUT_SECONDS`：SMTP/Postal 单次发信超时，默认 10 秒，避免邮件服务卡顿长期阻塞发码请求。
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
@@ -87,6 +88,20 @@ LOG_LEVEL=debug make sync
 ```
 
 macOS 的默认临时目录路径可能过长，Nuxt dev 的 Vite Node IPC socket 会因此触发 `connect EINVAL`。`make frontend-dev` 会把 `TMPDIR` 固定到 `/tmp`；若直接进入 `frontend` 运行，请使用 `TMPDIR=/tmp pnpm dev`。
+
+## 性能验证
+
+只读基线流程见 `docs/performance.md`。常用命令：
+
+```bash
+make bench
+DATABASE_DSN='postgres://...' make perf-explain
+SOURCE_DATABASE_DSN='postgres://readonly_user:...' make perf-explain-source
+make frontend-analyze
+```
+
+`REDIS_BENCH_ADDR=localhost:6379 REDIS_BENCH_DB=15 make bench` 会额外跑真实 Redis 限流 benchmark；未设置专用 Redis DB 时该 benchmark 自动跳过。
+
 
 ## 数据库迁移
 

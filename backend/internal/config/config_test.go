@@ -64,6 +64,32 @@ func TestLoadHTTPServerEnv(t *testing.T) {
 	}
 }
 
+func TestLoadObservabilityDefaultsAndEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("ENABLE_PPROF", "")
+	t.Setenv("ENABLE_METRICS", "")
+	t.Setenv("OBSERVABILITY_ADDR", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.EnablePprof || cfg.EnableMetrics || cfg.ObservabilityAddr != "127.0.0.1:6060" {
+		t.Fatalf("unexpected observability defaults: %+v", cfg)
+	}
+
+	t.Setenv("ENABLE_PPROF", "true")
+	t.Setenv("ENABLE_METRICS", "true")
+	t.Setenv("OBSERVABILITY_ADDR", "127.0.0.1:7070")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("expected env config to load: %v", err)
+	}
+	if !cfg.EnablePprof || !cfg.EnableMetrics || cfg.ObservabilityAddr != "127.0.0.1:7070" {
+		t.Fatalf("unexpected observability env config: %+v", cfg)
+	}
+}
+
 func TestValidateHTTPServerSettings(t *testing.T) {
 	cfg := validConfig()
 	cfg.HTTPReadHeaderTimeout = 0
@@ -98,6 +124,36 @@ func TestValidateHTTPServerSettings(t *testing.T) {
 	cfg.HTTPWriteTimeout = cfg.HTTPReadTimeout + cfg.DatabasePool.QueryTimeout
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected HTTP_WRITE_TIMEOUT not greater than HTTP_READ_TIMEOUT plus DB_QUERY_TIMEOUT error")
+	}
+}
+
+func TestValidateObservabilitySettings(t *testing.T) {
+	cfg := validConfig()
+	cfg.EnablePprof = true
+	cfg.ObservabilityAddr = "127.0.0.1:6060"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected loopback observability address to be valid: %v", err)
+	}
+
+	cfg = validConfig()
+	cfg.EnableMetrics = true
+	cfg.ObservabilityAddr = "10.0.0.10:6060"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected private observability address to be valid: %v", err)
+	}
+
+	cfg = validConfig()
+	cfg.EnablePprof = true
+	cfg.ObservabilityAddr = ":6060"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected wildcard observability address error")
+	}
+
+	cfg = validConfig()
+	cfg.EnableMetrics = true
+	cfg.ObservabilityAddr = "8.8.8.8:6060"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected public observability address error")
 	}
 }
 
@@ -349,6 +405,7 @@ func validConfig() Config {
 		HTTPWriteTimeout:                  40 * time.Second,
 		HTTPIdleTimeout:                   time.Second,
 		HTTPMaxHeaderBytes:                1,
+		ObservabilityAddr:                 "127.0.0.1:6060",
 		DatabasePool:                      defaultDatabasePostgresConfig(),
 		SyncDatabasePool:                  defaultSyncPostgresConfig(),
 		SourceDatabasePool:                defaultSourcePostgresConfig(),

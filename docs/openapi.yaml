@@ -95,6 +95,22 @@ components:
         dailyLimit: { type: integer }
         lastUsedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+    Pagination:
+      type: object
+      required: [page, limit, total, hasMore]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          maximum: 100
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+        total:
+          type: integer
+          minimum: 0
+        hasMore: { type: boolean }
     GameSearchItem:
       type: object
       properties:
@@ -137,6 +153,19 @@ components:
                 yes: { type: integer }
                 strongYes: { type: integer }
         touchgalUrl: { type: string }
+  headers:
+    XRateLimitLimitMinute:
+      description: Effective per-minute request limit for the authenticated API token, user, or application scope.
+      schema: { type: integer, minimum: 0 }
+    XRateLimitRemainingMinute:
+      description: Remaining requests in the current minute window for the tightest authenticated rate-limit scope.
+      schema: { type: integer, minimum: 0 }
+    XRateLimitLimitDay:
+      description: Effective per-day request limit for the authenticated API token, user, or application scope.
+      schema: { type: integer, minimum: 0 }
+    XRateLimitRemainingDay:
+      description: Remaining requests in the current day window for the tightest authenticated rate-limit scope.
+      schema: { type: integer, minimum: 0 }
 paths:
   /v1/health:
     get:
@@ -158,13 +187,21 @@ paths:
       responses:
         '200': { description: OK }
         '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429':
+          description: Rate limited. Token-authenticated /v1 responses include rate-limit headers.
+          headers:
+            X-RateLimit-Limit-Minute: { $ref: '#/components/headers/XRateLimitLimitMinute' }
+            X-RateLimit-Remaining-Minute: { $ref: '#/components/headers/XRateLimitRemainingMinute' }
+            X-RateLimit-Limit-Day: { $ref: '#/components/headers/XRateLimitLimitDay' }
+            X-RateLimit-Remaining-Day: { $ref: '#/components/headers/XRateLimitRemainingDay' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /v1/games/search:
     get:
       summary: Search sanitized games
       parameters:
         - { name: keyword, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
         - { name: q, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
-        - { name: page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 1 } }
+        - { name: page, in: query, description: 'Offset page. Maximum 100; cursor pagination is not available, so use narrower keywords instead of deep crawling.', schema: { type: integer, minimum: 1, maximum: 100, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
         '200':
@@ -179,9 +216,16 @@ paths:
                     type: object
                     properties:
                       items: { type: array, items: { $ref: '#/components/schemas/GameSearchItem' } }
-                      pagination: { type: object }
-        '401': { description: Unauthorized }
-        '429': { description: Rate limited }
+                      pagination: { $ref: '#/components/schemas/Pagination' }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429':
+          description: Rate limited. Token-authenticated /v1 responses include rate-limit headers.
+          headers:
+            X-RateLimit-Limit-Minute: { $ref: '#/components/headers/XRateLimitLimitMinute' }
+            X-RateLimit-Remaining-Minute: { $ref: '#/components/headers/XRateLimitRemainingMinute' }
+            X-RateLimit-Limit-Day: { $ref: '#/components/headers/XRateLimitLimitDay' }
+            X-RateLimit-Remaining-Day: { $ref: '#/components/headers/XRateLimitRemainingDay' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /v1/games/{uniqueId}:
     get:
       summary: Get sanitized game detail
@@ -190,6 +234,14 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, properties: { success: { type: boolean }, data: { $ref: '#/components/schemas/GameDetail' } } } } } }
         '404': { description: Not found }
+        '429':
+          description: Rate limited. Token-authenticated /v1 responses include rate-limit headers.
+          headers:
+            X-RateLimit-Limit-Minute: { $ref: '#/components/headers/XRateLimitLimitMinute' }
+            X-RateLimit-Remaining-Minute: { $ref: '#/components/headers/XRateLimitRemainingMinute' }
+            X-RateLimit-Limit-Day: { $ref: '#/components/headers/XRateLimitLimitDay' }
+            X-RateLimit-Remaining-Day: { $ref: '#/components/headers/XRateLimitRemainingDay' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/register/start:
     post:
       security: []
@@ -361,5 +413,10 @@ paths:
     get:
       security: []
       summary: Dashboard stats summary, trend, sources, and endpoint rollups
-      parameters: [ { name: days, in: query, schema: { type: integer, default: 30 } }, { name: tokenId, in: query, schema: { type: string, format: uuid } } ]
+      parameters:
+        - name: days
+          in: query
+          description: Dashboard window in days. Values above 90 are normalized to 90 by the backend.
+          schema: { type: integer, minimum: 1, maximum: 90, default: 30 }
+        - { name: tokenId, in: query, schema: { type: string, format: uuid } }
       responses: { '200': { description: OK } }

@@ -3,6 +3,7 @@
 1. 创建 `backend/.env` 与 `frontend/.env`。
 2. 确认主机 PostgreSQL、Redis 已启动，并在 `backend/.env` 配置 `DATABASE_DSN`、`REDIS_ADDR`。
    按实际 QPS 调整 `DB_*`、`SYNC_DB_*`、`SOURCE_DB_*` 连接池与 timeout，保持 sync 使用独立 target/source pool；同时调整 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_DIAL_TIMEOUT`、`REDIS_READ_TIMEOUT`、`REDIS_WRITE_TIMEOUT`、`REDIS_POOL_TIMEOUT`，避免高并发 `/v1` 请求在 Redis pool wait 或慢 Redis I/O 上堆积；同时调整 `HTTP_READ_HEADER_TIMEOUT`、`HTTP_READ_TIMEOUT`、`HTTP_WRITE_TIMEOUT`、`HTTP_IDLE_TIMEOUT`、`HTTP_MAX_HEADER_BYTES` 与 nginx `client_max_body_size`/body timeout，避免慢客户端或超大请求体占用连接、goroutine、内存；`HTTP_WRITE_TIMEOUT` 必须大于正数 `DB_QUERY_TIMEOUT` 加 `HTTP_READ_TIMEOUT`，让后端仍能返回数据库超时错误；并调整 `API_REQUEST_LOG_QUEUE_SIZE`、`API_REQUEST_LOG_BATCH_SIZE`、`API_REQUEST_LOG_FLUSH_INTERVAL`、`API_REQUEST_LOG_RETENTION_DAYS`，避免 raw request log 无界增长。
+   可选诊断端点通过 `ENABLE_PPROF`、`ENABLE_METRICS` 与 `OBSERVABILITY_ADDR` 控制，默认关闭。启用时只允许绑定 localhost、loopback 或 private 管理地址，并通过 SSH tunnel、kubectl port-forward 或内网管理面访问 `/debug/pprof/*`、`/debug/pprof/trace`、`/debug/vars`；不要经公网 Ingress 暴露。
 3. 如果后端运行在 Docker Compose 容器内，连接主机服务时将连接主机名配置为 `host.docker.internal`。
 4. 只在独立 sync worker 的 env 中配置主库只读账号 `SOURCE_DATABASE_DSN`；API env 默认不需要 source DB 凭据。
    生产环境默认用 `backend/cmd/sync`、systemd timer 或 Kubernetes CronJob 独立跑同步，并保持 API `ENABLE_SYNC_WORKER=false`。Kubernetes CronJob 必须配置 `concurrencyPolicy: Forbid`；服务层仍使用 PostgreSQL advisory lock 兜底，防止 API 手动触发、API 内置 scheduler 与独立 worker 跨进程并发写 clean DB。仅本地调试或小数据量部署可启用 API 进程内 `ENABLE_SYNC_WORKER=true`，此时才把 `SOURCE_DATABASE_DSN` 配给 API 进程。

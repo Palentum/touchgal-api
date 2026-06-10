@@ -60,6 +60,10 @@ make migrate-up    # cd backend && goose -dir internal/db/migrations postgres "$
 make sync          # cd backend && go run ./cmd/sync --mode=incremental
 make sync-full     # cd backend && go run ./cmd/sync --mode=full
 make test          # cd backend && go test ./...; cd frontend && pnpm typecheck
+make bench         # cd backend && go test -run='^$' -bench=. -benchmem ./...
+make perf-explain  # read-only clean DB EXPLAIN baseline; requires DATABASE_DSN
+make perf-explain-source # read-only source DB sync EXPLAIN baseline; requires SOURCE_DATABASE_DSN
+make frontend-analyze # cd frontend && pnpm analyze
 ```
 
 Useful direct commands:
@@ -112,7 +116,7 @@ cd frontend && pnpm preview
 - Frontend package manager: `pnpm@11.5.0` (`frontend/package.json`). Use pnpm, not npm/yarn. Docker uses Node 22 with Corepack.
 - Frontend framework: Nuxt 3, Vue 3, Pinia, Nuxt UI, ECharts/vue-echarts.
 - Local services: PostgreSQL and Redis run on the host, not in `deploy/docker-compose.yml`; containers should use `host.docker.internal` when connecting back to host services.
-- Configuration is env-driven. Copy `.env.example` files before running local services; `SOURCE_DATABASE_DSN` must be read-only. `ENABLE_SYNC_WORKER` defaults to `false`; production should run `backend/cmd/sync` separately unless intentionally enabling in-process sync for small/local deployments.
+- Configuration is env-driven. Copy `.env.example` files before running local services; `SOURCE_DATABASE_DSN` must be read-only. `ENABLE_SYNC_WORKER` defaults to `false`; production should run `backend/cmd/sync` separately unless intentionally enabling in-process sync for small/local deployments. `ENABLE_PPROF` and `ENABLE_METRICS` default to `false`; if enabled, `OBSERVABILITY_ADDR` must stay on localhost, loopback, or a private management interface.
 - OpenAPI is static YAML served by the backend docs handler and duplicated under `docs/` for documentation.
 - No repository-wide lint config or CI workflow is present. Do not invent lint commands; use the configured tests/typecheck unless adding tooling intentionally.
 
@@ -132,3 +136,4 @@ cd frontend && pnpm preview
 - No coverage threshold, OpenAPI validator, E2E suite, or CI config is configured in the repo.
 - For backend behavior changes, add or update focused Go tests near the changed service/middleware package and run the package test or `cd backend && go test ./...`.
 - For frontend changes, run `cd frontend && pnpm typecheck`; run `pnpm build` when changing Nuxt config, route structure, or SSR-sensitive code.
+- Performance baseline commands are documented in `docs/performance.md`: `make bench`, `make perf-explain`, `make perf-explain-source`, and `make frontend-analyze`.

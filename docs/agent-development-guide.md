@@ -144,6 +144,15 @@ API schema 或路由变更时，必须同时更新：
 - 前端改动：运行 `cd frontend && pnpm typecheck`；修改 Nuxt config、route structure 或 SSR-sensitive code 时运行 `pnpm build`。
 - 全量检查：`make test` 等价于 `cd backend && go test ./...` 加 `cd frontend && pnpm typecheck`。
 
+
+## 性能验证流程
+
+- Go 基准：`make bench`；真实 Redis 限流压测需显式设置 `REDIS_BENCH_ADDR`，否则自动跳过。
+- clean DB EXPLAIN：`make perf-explain DATABASE_DSN=...`，脚本在只读事务中覆盖 search、detail、dashboard 聚合查询。
+- source DB EXPLAIN：`make perf-explain-source SOURCE_DATABASE_DSN=...`，必须使用主库只读账号，覆盖 full/incremental sync page query。
+- Nuxt bundle：`make frontend-analyze`，底层运行 `nuxt analyze --no-serve`；不要提交 `.nuxt` 产物。
+- Runtime 诊断：`ENABLE_PPROF` / `ENABLE_METRICS` 默认关闭；启用时 `OBSERVABILITY_ADDR` 只能绑定 localhost、loopback 或 private 管理地址，暴露 `/debug/pprof/*`、`/debug/pprof/trace`、`/debug/vars`。
+
 ## 安全检查清单
 
 交付前逐项确认：

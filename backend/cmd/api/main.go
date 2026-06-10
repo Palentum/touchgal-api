@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -103,6 +104,9 @@ func run() error {
 		CleanupInterval: time.Hour,
 	}, logger)
 	requestLogWriter.Start()
+	if cfg.EnableMetrics {
+		httpserver.PublishRequestLogMetrics(requestLogWriter)
+	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -137,11 +141,42 @@ func run() error {
 		MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
 	}
 
+	var observabilityServer *http.Server
+	var observabilityListener net.Listener
+	if cfg.EnablePprof || cfg.EnableMetrics {
+		observabilityServer = &http.Server{
+			Addr:              cfg.ObservabilityAddr,
+			Handler:           httpserver.NewObservabilityRouter(cfg.EnablePprof, cfg.EnableMetrics),
+			ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
+			ReadTimeout:       cfg.HTTPReadTimeout,
+			WriteTimeout:      cfg.HTTPWriteTimeout,
+			IdleTimeout:       cfg.HTTPIdleTimeout,
+			MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
+		}
+		observabilityListener, err = net.Listen("tcp", cfg.ObservabilityAddr)
+		if err != nil {
+			return err
+		}
+		defer observabilityListener.Close()
+		go func() {
+			logger.Info().Str("addr", cfg.ObservabilityAddr).Bool("pprof", cfg.EnablePprof).Bool("metrics", cfg.EnableMetrics).Msg("observability listening")
+			if err := observabilityServer.Serve(observabilityListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error().Err(err).Msg("observability server stopped")
+				stop()
+			}
+		}()
+	}
+
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		apiShutdownCtx, apiCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = server.Shutdown(apiShutdownCtx)
+		apiCancel()
+		if observabilityServer != nil {
+			observabilityShutdownCtx, observabilityCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = observabilityServer.Shutdown(observabilityShutdownCtx)
+			observabilityCancel()
+		}
 	}()
 
 	logger.Info().Str("addr", cfg.HTTPAddr).Msg("api listening")

@@ -110,6 +110,20 @@ func (w *Writer) Dropped() uint64 {
 	return w.dropped.Load()
 }
 
+func (w *Writer) Pending() int {
+	if w == nil {
+		return 0
+	}
+	return len(w.input)
+}
+
+func (w *Writer) Capacity() int {
+	if w == nil {
+		return 0
+	}
+	return cap(w.input)
+}
+
 func (w *Writer) run() {
 	defer close(w.done)
 	batch := make([]model.RequestLog, 0, w.cfg.BatchSize)
