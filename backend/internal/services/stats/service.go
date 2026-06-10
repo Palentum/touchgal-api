@@ -2,21 +2,50 @@ package stats
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/touchgal/developer/backend/internal/model"
 )
 
+const (
+	dashboardCacheTTL        = 30 * time.Second
+	dashboardCacheMaxEntries = 4096
+)
+
 type Store interface {
-	Summary(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) (model.StatsSummary, error)
-	Trend(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsTrend, error)
-	Sources(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsSource, error)
-	Endpoints(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsEndpoint, error)
+	Dashboard(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) (model.StatsDashboard, error)
 }
 
-type Service struct{ store Store }
+type Service struct {
+	store    Store
+	cacheMu  sync.RWMutex
+	cache    map[dashboardCacheKey]dashboardCacheEntry
+	cacheTTL time.Duration
+	nowFunc  func() time.Time
+}
 
-func NewService(store Store) *Service { return &Service{store: store} }
+type dashboardCacheKey struct {
+	userID   uuid.UUID
+	days     int
+	tokenID  uuid.UUID
+	hasToken bool
+}
+
+type dashboardCacheEntry struct {
+	data      model.StatsDashboard
+	expiresAt time.Time
+}
+
+func NewService(store Store) *Service {
+	return &Service{
+		store:    store,
+		cache:    make(map[dashboardCacheKey]dashboardCacheEntry),
+		cacheTTL: dashboardCacheTTL,
+		nowFunc:  time.Now,
+	}
+}
 
 func NormalizeDays(days int) int {
 	if days <= 0 {
@@ -28,15 +57,53 @@ func NormalizeDays(days int) int {
 	return days
 }
 
-func (s *Service) Summary(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) (model.StatsSummary, error) {
-	return s.store.Summary(ctx, userID, NormalizeDays(days), tokenID)
+func (s *Service) Dashboard(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) (model.StatsDashboard, error) {
+	normalizedDays := NormalizeDays(days)
+	key := newDashboardCacheKey(userID, normalizedDays, tokenID)
+	now := s.nowFunc()
+
+	s.cacheMu.RLock()
+	entry, ok := s.cache[key]
+	if ok && now.Before(entry.expiresAt) {
+		s.cacheMu.RUnlock()
+		return entry.data, nil
+	}
+	s.cacheMu.RUnlock()
+
+	data, err := s.store.Dashboard(ctx, userID, normalizedDays, tokenID)
+	if err != nil {
+		return model.StatsDashboard{}, err
+	}
+
+	if s.cacheTTL > 0 {
+		cacheNow := s.nowFunc()
+		expiresAt := cacheNow.Add(s.cacheTTL)
+		s.cacheMu.Lock()
+		if s.cache == nil {
+			s.cache = make(map[dashboardCacheKey]dashboardCacheEntry)
+		}
+		pruneExpiredDashboardCacheLocked(s.cache, cacheNow)
+		if len(s.cache) < dashboardCacheMaxEntries {
+			s.cache[key] = dashboardCacheEntry{data: data, expiresAt: expiresAt}
+		}
+		s.cacheMu.Unlock()
+	}
+	return data, nil
 }
-func (s *Service) Trend(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsTrend, error) {
-	return s.store.Trend(ctx, userID, NormalizeDays(days), tokenID)
+
+func newDashboardCacheKey(userID uuid.UUID, days int, tokenID *uuid.UUID) dashboardCacheKey {
+	key := dashboardCacheKey{userID: userID, days: days}
+	if tokenID != nil {
+		key.tokenID = *tokenID
+		key.hasToken = true
+	}
+	return key
 }
-func (s *Service) Sources(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsSource, error) {
-	return s.store.Sources(ctx, userID, NormalizeDays(days), tokenID)
-}
-func (s *Service) Endpoints(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsEndpoint, error) {
-	return s.store.Endpoints(ctx, userID, NormalizeDays(days), tokenID)
+
+func pruneExpiredDashboardCacheLocked(cache map[dashboardCacheKey]dashboardCacheEntry, now time.Time) {
+	for key, entry := range cache {
+		if !now.Before(entry.expiresAt) {
+			delete(cache, key)
+		}
+	}
 }

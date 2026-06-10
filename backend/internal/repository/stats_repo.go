@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -257,11 +258,32 @@ func (r *StatsRepo) DeleteRequestLogRollupsBefore(ctx context.Context, before ti
 	return deleted, err
 }
 
-func (r *StatsRepo) Summary(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) (model.StatsSummary, error) {
+func (r *StatsRepo) Dashboard(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) (model.StatsDashboard, error) {
 	where, args := statsAggregateWhere(userID, days, tokenID)
-	var summary model.StatsSummary
+	var dashboard model.StatsDashboard
+	var trendJSON, sourcesJSON, endpointsJSON []byte
 	err := r.db.QueryRow(ctx, fmt.Sprintf(`
-		WITH daily AS (
+		WITH daily_rollups AS (
+			SELECT date, total_requests, success_requests, error_requests, total_latency_ms
+			FROM api_usage_daily
+			WHERE %s
+		),
+		origin_rollups AS (
+			SELECT origin, referer_host, requests
+			FROM api_usage_origin_daily
+			WHERE %s
+		),
+		ip_rollups AS (
+			SELECT ip
+			FROM api_usage_ip_daily
+			WHERE %s
+		),
+		route_rollups AS (
+			SELECT route, requests, error_requests, total_latency_ms
+			FROM api_usage_route_daily
+			WHERE %s
+		),
+		summary_daily AS (
 			SELECT coalesce(sum(total_requests), 0)::int AS total_requests,
 			       coalesce(sum(success_requests), 0)::int AS success_requests,
 			       coalesce(sum(error_requests), 0)::int AS error_requests,
@@ -269,98 +291,101 @@ func (r *StatsRepo) Summary(ctx context.Context, userID uuid.UUID, days int, tok
 				       WHEN coalesce(sum(total_requests), 0) = 0 THEN 0
 				       ELSE (coalesce(sum(total_latency_ms), 0) / sum(total_requests))::int
 			       END AS avg_latency_ms
-			FROM api_usage_daily
-			WHERE %s
+			FROM daily_rollups
 		),
-		origins AS (
+		summary_origins AS (
 			SELECT count(DISTINCT nullif(origin, ''))::int AS unique_origins
-			FROM api_usage_origin_daily
-			WHERE %s
+			FROM origin_rollups
 		),
-		ips AS (
+		summary_ips AS (
 			SELECT count(DISTINCT ip)::int AS unique_ips
-			FROM api_usage_ip_daily
-			WHERE %s
+			FROM ip_rollups
+		),
+		trend_rows AS (
+			SELECT date,
+			       to_char(date, 'YYYY-MM-DD') AS day,
+			       coalesce(sum(total_requests), 0)::int AS total_requests,
+			       coalesce(sum(success_requests), 0)::int AS success_requests,
+			       coalesce(sum(error_requests), 0)::int AS error_requests
+			FROM daily_rollups
+			GROUP BY date
+			ORDER BY date
+		),
+		source_rows AS (
+			SELECT coalesce(nullif(origin, ''), 'unknown') AS origin,
+			       coalesce(nullif(referer_host, ''), 'unknown') AS referer_host,
+			       coalesce(sum(requests), 0)::int AS requests
+			FROM origin_rollups
+			GROUP BY origin, referer_host
+			ORDER BY requests DESC, origin, referer_host
+			LIMIT 20
+		),
+		endpoint_rows AS (
+			SELECT route,
+			       coalesce(sum(requests), 0)::int AS requests,
+			       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(total_latency_ms), 0) / sum(requests))::int END AS avg_latency_ms,
+			       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(error_requests), 0)::float / sum(requests)::float) END AS error_rate
+			FROM route_rollups
+			GROUP BY route
+			ORDER BY requests DESC, route
+			LIMIT 50
 		)
-		SELECT daily.total_requests,
-		       daily.success_requests,
-		       daily.error_requests,
-		       daily.avg_latency_ms,
-		       origins.unique_origins,
-		       ips.unique_ips
-		FROM daily, origins, ips`, where, where, where), args...).Scan(&summary.TotalRequests, &summary.SuccessRequests, &summary.ErrorRequests, &summary.AvgLatencyMS, &summary.UniqueOrigins, &summary.UniqueIPs)
-	return summary, err
-}
-
-func (r *StatsRepo) Trend(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsTrend, error) {
-	where, args := statsAggregateWhere(userID, days, tokenID)
-	rows, err := r.db.Query(ctx, fmt.Sprintf(`
-		SELECT to_char(date, 'YYYY-MM-DD') AS day,
-		       coalesce(sum(total_requests), 0)::int,
-		       coalesce(sum(success_requests), 0)::int,
-		       coalesce(sum(error_requests), 0)::int
-		FROM api_usage_daily WHERE %s
-		GROUP BY date ORDER BY date`, where), args...)
+		SELECT summary_daily.total_requests,
+		       summary_daily.success_requests,
+		       summary_daily.error_requests,
+		       summary_daily.avg_latency_ms,
+		       summary_origins.unique_origins,
+		       summary_ips.unique_ips,
+		       coalesce((
+			       SELECT jsonb_agg(jsonb_build_object(
+				       'date', day,
+				       'totalRequests', total_requests,
+				       'successRequests', success_requests,
+				       'errorRequests', error_requests
+			       ) ORDER BY date)
+			       FROM trend_rows
+		       ), '[]'::jsonb),
+		       coalesce((
+			       SELECT jsonb_agg(jsonb_build_object(
+				       'origin', origin,
+				       'refererHost', referer_host,
+				       'requests', requests
+			       ) ORDER BY requests DESC, origin, referer_host)
+			       FROM source_rows
+		       ), '[]'::jsonb),
+		       coalesce((
+			       SELECT jsonb_agg(jsonb_build_object(
+				       'route', route,
+				       'requests', requests,
+				       'avgLatencyMs', avg_latency_ms,
+				       'errorRate', error_rate
+			       ) ORDER BY requests DESC, route)
+			       FROM endpoint_rows
+		       ), '[]'::jsonb)
+		FROM summary_daily, summary_origins, summary_ips`, where, where, where, where), args...).Scan(
+		&dashboard.Summary.TotalRequests,
+		&dashboard.Summary.SuccessRequests,
+		&dashboard.Summary.ErrorRequests,
+		&dashboard.Summary.AvgLatencyMS,
+		&dashboard.Summary.UniqueOrigins,
+		&dashboard.Summary.UniqueIPs,
+		&trendJSON,
+		&sourcesJSON,
+		&endpointsJSON,
+	)
 	if err != nil {
-		return nil, err
+		return model.StatsDashboard{}, err
 	}
-	defer rows.Close()
-	items := []model.StatsTrend{}
-	for rows.Next() {
-		var item model.StatsTrend
-		if err := rows.Scan(&item.Date, &item.TotalRequests, &item.SuccessRequests, &item.ErrorRequests); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+	if err := json.Unmarshal(trendJSON, &dashboard.Trend); err != nil {
+		return model.StatsDashboard{}, err
 	}
-	return items, rows.Err()
-}
-
-func (r *StatsRepo) Sources(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsSource, error) {
-	where, args := statsAggregateWhere(userID, days, tokenID)
-	rows, err := r.db.Query(ctx, fmt.Sprintf(`
-		SELECT coalesce(nullif(origin, ''), 'unknown') AS origin,
-		       coalesce(nullif(referer_host, ''), 'unknown') AS referer_host,
-		       coalesce(sum(requests), 0)::int
-		FROM api_usage_origin_daily WHERE %s
-		GROUP BY origin, referer_host ORDER BY sum(requests) DESC LIMIT 20`, where), args...)
-	if err != nil {
-		return nil, err
+	if err := json.Unmarshal(sourcesJSON, &dashboard.Sources); err != nil {
+		return model.StatsDashboard{}, err
 	}
-	defer rows.Close()
-	items := []model.StatsSource{}
-	for rows.Next() {
-		var item model.StatsSource
-		if err := rows.Scan(&item.Origin, &item.RefererHost, &item.Requests); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
+	if err := json.Unmarshal(endpointsJSON, &dashboard.Endpoints); err != nil {
+		return model.StatsDashboard{}, err
 	}
-	return items, rows.Err()
-}
-
-func (r *StatsRepo) Endpoints(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) ([]model.StatsEndpoint, error) {
-	where, args := statsAggregateWhere(userID, days, tokenID)
-	rows, err := r.db.Query(ctx, fmt.Sprintf(`
-		SELECT route,
-		       coalesce(sum(requests), 0)::int,
-		       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(total_latency_ms), 0) / sum(requests))::int END,
-		       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(error_requests), 0)::float / sum(requests)::float) END
-		FROM api_usage_route_daily WHERE %s
-		GROUP BY route ORDER BY sum(requests) DESC LIMIT 50`, where), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []model.StatsEndpoint{}
-	for rows.Next() {
-		var item model.StatsEndpoint
-		if err := rows.Scan(&item.Route, &item.Requests, &item.AvgLatencyMS, &item.ErrorRate); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
+	return dashboard, nil
 }
 
 func statsAggregateWhere(userID uuid.UUID, days int, tokenID *uuid.UUID) (string, []any) {

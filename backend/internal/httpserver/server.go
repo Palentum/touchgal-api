@@ -68,10 +68,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 		r.Post("/tokens", tokenHandler.Create)
 		r.Patch("/tokens/{id}", tokenHandler.UpdateMine)
 		r.Delete("/tokens/{id}", tokenHandler.DeleteMine)
-		r.Get("/dashboard/stats/summary", statsHandler.Summary)
-		r.Get("/dashboard/stats/trend", statsHandler.Trend)
-		r.Get("/dashboard/stats/sources", statsHandler.Sources)
-		r.Get("/dashboard/stats/endpoints", statsHandler.Endpoints)
+		r.Get("/dashboard/stats", statsHandler.Dashboard)
 	})
 
 	r.Route("/admin", func(r chi.Router) {

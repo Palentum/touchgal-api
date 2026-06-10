@@ -36,15 +36,17 @@ func (q *recordingStatsQueryer) QueryRow(ctx context.Context, sql string, args .
 	return q.row
 }
 
-type statsSummaryRow struct{}
+type statsDashboardRow struct{}
 
-func (statsSummaryRow) Scan(dest ...any) error {
+func (statsDashboardRow) Scan(dest ...any) error {
 	for _, d := range dest {
 		switch target := d.(type) {
 		case *int:
 			*target = 0
 		case *float64:
 			*target = 0
+		case *[]byte:
+			*target = []byte("[]")
 		}
 	}
 	return nil
@@ -84,30 +86,30 @@ func TestStatsRepoInsertRequestLogsWritesRawAndAggregatesInOneBatch(t *testing.T
 	}
 }
 
-func TestStatsRepoSummaryReadsAggregatesNotRawLogs(t *testing.T) {
-	queryer := &recordingStatsQueryer{row: statsSummaryRow{}}
+func TestStatsRepoDashboardReadsAggregatesNotRawLogs(t *testing.T) {
+	queryer := &recordingStatsQueryer{row: statsDashboardRow{}}
 	repo := NewStatsRepo(queryer)
 	userID := uuid.New()
 
-	if _, err := repo.Summary(context.Background(), userID, 30, nil); err != nil {
-		t.Fatalf("summary: %v", err)
+	if _, err := repo.Dashboard(context.Background(), userID, 30, nil); err != nil {
+		t.Fatalf("dashboard: %v", err)
 	}
 	sql := strings.ToLower(queryer.rowSQL)
 	if strings.Contains(sql, "api_request_logs") {
-		t.Fatalf("summary must not read raw request logs: %s", queryer.rowSQL)
+		t.Fatalf("dashboard must not read raw request logs: %s", queryer.rowSQL)
 	}
-	for _, want := range []string{"api_usage_daily", "api_usage_origin_daily", "api_usage_ip_daily"} {
+	for _, want := range []string{"api_usage_daily", "api_usage_origin_daily", "api_usage_ip_daily", "api_usage_route_daily", "jsonb_agg"} {
 		if !strings.Contains(sql, want) {
-			t.Fatalf("summary SQL missing %q: %s", want, queryer.rowSQL)
+			t.Fatalf("dashboard SQL missing %q: %s", want, queryer.rowSQL)
 		}
 	}
 	if len(queryer.rowArgs) != 2 || queryer.rowArgs[0] != userID || queryer.rowArgs[1] != 30 {
-		t.Fatalf("summary args got %#v", queryer.rowArgs)
+		t.Fatalf("dashboard args got %#v", queryer.rowArgs)
 	}
 }
 
 func TestStatsRepoDeletesRollupRowsByDate(t *testing.T) {
-	queryer := &recordingStatsQueryer{row: statsSummaryRow{}}
+	queryer := &recordingStatsQueryer{row: statsDashboardRow{}}
 	repo := NewStatsRepo(queryer)
 	before := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 

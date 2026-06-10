@@ -13,43 +13,10 @@ type StatsHandler struct{ svc *stats.Service }
 
 func NewStatsHandler(svc *stats.Service) *StatsHandler { return &StatsHandler{svc: svc} }
 
-func (h *StatsHandler) Summary(w http.ResponseWriter, r *http.Request) {
+func (h *StatsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r)
 	days, tokenID := statsQuery(r)
-	data, err := h.svc.Summary(r.Context(), user.ID, days, tokenID)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	Success(w, http.StatusOK, data)
-}
-
-func (h *StatsHandler) Trend(w http.ResponseWriter, r *http.Request) {
-	user, _ := middleware.CurrentUser(r)
-	days, tokenID := statsQuery(r)
-	data, err := h.svc.Trend(r.Context(), user.ID, days, tokenID)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	Success(w, http.StatusOK, data)
-}
-
-func (h *StatsHandler) Sources(w http.ResponseWriter, r *http.Request) {
-	user, _ := middleware.CurrentUser(r)
-	days, tokenID := statsQuery(r)
-	data, err := h.svc.Sources(r.Context(), user.ID, days, tokenID)
-	if err != nil {
-		Error(w, err)
-		return
-	}
-	Success(w, http.StatusOK, data)
-}
-
-func (h *StatsHandler) Endpoints(w http.ResponseWriter, r *http.Request) {
-	user, _ := middleware.CurrentUser(r)
-	days, tokenID := statsQuery(r)
-	data, err := h.svc.Endpoints(r.Context(), user.ID, days, tokenID)
+	data, err := h.svc.Dashboard(r.Context(), user.ID, days, tokenID)
 	if err != nil {
 		Error(w, err)
 		return

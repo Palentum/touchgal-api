@@ -61,16 +61,43 @@ const trendData = ref<TrendItem[]>([])
 const sourceData = ref<SourceItem[]>([])
 const endpointData = ref<EndpointItem[]>([])
 
-const load = async () => {
-  const id = tokenId.value || undefined
-  const [summaryRes, trendRes, sourceRes, endpointRes, tokenRes] = await Promise.all([dash.summary(days.value, id), dash.trend(days.value, id), dash.sources(days.value, id), dash.endpoints(days.value, id), dash.tokens()])
-  if (summaryRes.success) summaryData.value = summaryRes.data
-  if (trendRes.success) trendData.value = trendRes.data
-  if (sourceRes.success) sourceData.value = sourceRes.data
-  if (endpointRes.success) endpointData.value = endpointRes.data
+let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let statsRequestSeq = 0
+
+const loadTokens = async () => {
+  const tokenRes = await dash.tokens()
   if (tokenRes.success) tokens.value = tokenRes.data
 }
 
-watch([days, tokenId], load)
-onMounted(load)
+const loadStats = async () => {
+  const requestSeq = ++statsRequestSeq
+  const id = tokenId.value || undefined
+  const res = await dash.stats(days.value, id)
+  if (requestSeq !== statsRequestSeq) return
+  if (res.success) {
+    summaryData.value = res.data.summary
+    trendData.value = res.data.trend
+    sourceData.value = res.data.sources
+    endpointData.value = res.data.endpoints
+  }
+}
+
+const scheduleStatsLoad = () => {
+  statsRequestSeq++
+  if (statsDebounceTimer) clearTimeout(statsDebounceTimer)
+  statsDebounceTimer = setTimeout(() => {
+    statsDebounceTimer = null
+    void loadStats()
+  }, 200)
+}
+
+watch([days, tokenId], scheduleStatsLoad)
+onMounted(() => {
+  void loadTokens()
+  void loadStats()
+})
+onBeforeUnmount(() => {
+  if (statsDebounceTimer) clearTimeout(statsDebounceTimer)
+  statsRequestSeq++
+})
 </script>

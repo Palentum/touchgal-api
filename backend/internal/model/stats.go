@@ -49,6 +49,12 @@ type StatsEndpoint struct {
 	AvgLatencyMS int     `json:"avgLatencyMs"`
 	ErrorRate    float64 `json:"errorRate"`
 }
+type StatsDashboard struct {
+	Summary   StatsSummary    `json:"summary"`
+	Trend     []StatsTrend    `json:"trend"`
+	Sources   []StatsSource   `json:"sources"`
+	Endpoints []StatsEndpoint `json:"endpoints"`
+}
 
 type SyncRun struct {
 	ID                 uuid.UUID  `json:"id"`

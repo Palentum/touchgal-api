@@ -340,24 +340,9 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses: { '200': { description: Token deleted }, '404': { description: Token not found } }
-  /dashboard/stats/summary:
+  /dashboard/stats:
     get:
       security: []
-      summary: Dashboard summary
+      summary: Dashboard stats summary, trend, sources, and endpoint rollups
       parameters: [ { name: days, in: query, schema: { type: integer, default: 30 } }, { name: tokenId, in: query, schema: { type: string, format: uuid } } ]
-      responses: { '200': { description: OK } }
-  /dashboard/stats/trend:
-    get:
-      security: []
-      summary: Dashboard trend
-      responses: { '200': { description: OK } }
-  /dashboard/stats/sources:
-    get:
-      security: []
-      summary: Dashboard origins and referers
-      responses: { '200': { description: OK } }
-  /dashboard/stats/endpoints:
-    get:
-      security: []
-      summary: Dashboard endpoint stats
       responses: { '200': { description: OK } }
