@@ -1,9 +1,13 @@
 package email
 
 import (
+	"crypto/tls"
+	"errors"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/touchgal/developer/backend/internal/config"
@@ -62,7 +66,62 @@ func (m *SMTPMailer) SendVerificationCode(to, purpose, code string, ttlMinutes i
 	if m.cfg.SMTPUsername != "" || m.cfg.SMTPPassword != "" {
 		auth = smtp.PlainAuth("", m.cfg.SMTPUsername, m.cfg.SMTPPassword, m.cfg.SMTPHost)
 	}
-	return smtp.SendMail(addr, auth, m.cfg.SMTPFrom, []string{to}, []byte(msg))
+	return m.sendMail(addr, auth, []string{to}, []byte(msg))
+}
+
+func (m *SMTPMailer) sendMail(addr string, auth smtp.Auth, to []string, msg []byte) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return err
+	}
+	timeout := m.cfg.MailSendTimeout()
+	conn, err := (&net.Dialer{Timeout: timeout}).Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		_ = conn.Close()
+		return err
+	}
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+	defer c.Close()
+
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return err
+		}
+	}
+	if auth != nil {
+		if ok, _ := c.Extension("AUTH"); !ok {
+			return errors.New("smtp: server doesn't support AUTH")
+		}
+		if err := c.Auth(auth); err != nil {
+			return err
+		}
+	}
+	if err := c.Mail(m.cfg.SMTPFrom); err != nil {
+		return err
+	}
+	for _, addr := range to {
+		if err := c.Rcpt(addr); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 type LoggingMailer struct{ Logger zerolog.Logger }

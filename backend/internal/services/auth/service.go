@@ -336,9 +336,6 @@ func (s *Service) issueCode(ctx context.Context, purpose, emailAddr, ip string) 
 	if _, err := s.codes.InsertCode(ctx, emailAddr, purpose, hash, ip, s.nowFunc().Add(s.cfg.EmailCodeTTL())); err != nil {
 		return err
 	}
-	if err := s.redis.Set(ctx, "email_code_hash:"+purpose+":"+emailAddr, hash, s.cfg.EmailCodeTTL()).Err(); err != nil {
-		return err
-	}
 	return s.mailer.SendVerificationCode(emailAddr, purpose, code, s.cfg.EmailCodeTTLMinutes)
 }
 

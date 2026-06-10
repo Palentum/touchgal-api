@@ -143,6 +143,36 @@ func TestValidateMailDriverRejectsUnknownDriver(t *testing.T) {
 	}
 }
 
+func TestLoadMailSendTimeoutDefaultAndEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("MAIL_SEND_TIMEOUT_SECONDS", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.MailSendTimeoutSeconds != 10 || cfg.MailSendTimeout() != 10*time.Second {
+		t.Fatalf("unexpected mail send timeout default: seconds=%d duration=%s", cfg.MailSendTimeoutSeconds, cfg.MailSendTimeout())
+	}
+
+	t.Setenv("MAIL_SEND_TIMEOUT_SECONDS", "3")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("expected env config to load: %v", err)
+	}
+	if cfg.MailSendTimeoutSeconds != 3 || cfg.MailSendTimeout() != 3*time.Second {
+		t.Fatalf("unexpected mail send timeout from env: seconds=%d duration=%s", cfg.MailSendTimeoutSeconds, cfg.MailSendTimeout())
+	}
+}
+
+func TestValidateMailSendTimeoutPositive(t *testing.T) {
+	cfg := validConfig()
+	cfg.MailSendTimeoutSeconds = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid MAIL_SEND_TIMEOUT_SECONDS error")
+	}
+}
+
 func TestValidateRejectsUnknownLogLevel(t *testing.T) {
 	cfg := validConfig()
 	cfg.LogLevel = "verbose"
@@ -263,5 +293,6 @@ func validConfig() Config {
 		APIRequestLogFlushInterval:        time.Second,
 		APIRequestLogRetentionDays:        1,
 		MailDriver:                        MailDriverSMTP,
+		MailSendTimeoutSeconds:            10,
 	}
 }

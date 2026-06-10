@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/touchgal/developer/backend/internal/config"
 )
@@ -25,7 +24,7 @@ func NewPostalMailer(cfg config.Config) *PostalMailer {
 	return &PostalMailer{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: cfg.MailSendTimeout(),
 		},
 	}
 }

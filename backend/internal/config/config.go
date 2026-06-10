@@ -64,12 +64,13 @@ type Config struct {
 
 	MailDriver string
 
-	SMTPHost     string
-	SMTPPort     int
-	SMTPUsername string
-	SMTPPassword string
-	SMTPFrom     string
-	SMTPFromName string
+	SMTPHost               string
+	SMTPPort               int
+	SMTPUsername           string
+	SMTPPassword           string
+	SMTPFrom               string
+	SMTPFromName           string
+	MailSendTimeoutSeconds int
 
 	PostalAPIURL string
 	PostalAPIKey string
@@ -184,12 +185,13 @@ func Load() (Config, error) {
 
 		MailDriver: strings.ToLower(strings.TrimSpace(env("MAIL_DRIVER", MailDriverSMTP))),
 
-		SMTPHost:     env("SMTP_HOST", ""),
-		SMTPPort:     envInt("SMTP_PORT", 587),
-		SMTPUsername: env("SMTP_USERNAME", ""),
-		SMTPPassword: env("SMTP_PASSWORD", ""),
-		SMTPFrom:     env("SMTP_FROM", "no-reply@example.com"),
-		SMTPFromName: env("SMTP_FROM_NAME", "TouchGal API"),
+		SMTPHost:               env("SMTP_HOST", ""),
+		SMTPPort:               envInt("SMTP_PORT", 587),
+		SMTPUsername:           env("SMTP_USERNAME", ""),
+		SMTPPassword:           env("SMTP_PASSWORD", ""),
+		SMTPFrom:               env("SMTP_FROM", "no-reply@example.com"),
+		SMTPFromName:           env("SMTP_FROM_NAME", "TouchGal API"),
+		MailSendTimeoutSeconds: envInt("MAIL_SEND_TIMEOUT_SECONDS", 10),
 
 		PostalAPIURL: env("POSTAL_API_URL", ""),
 		PostalAPIKey: env("POSTAL_API_KEY", ""),
@@ -319,6 +321,9 @@ func (c Config) Validate() error {
 			return errors.New("POSTAL_API_KEY is required when MAIL_DRIVER=postal")
 		}
 	}
+	if c.MailSendTimeoutSeconds <= 0 {
+		return errors.New("MAIL_SEND_TIMEOUT_SECONDS must be positive")
+	}
 	if c.EmailCodeMaxAttempts <= 0 {
 		return errors.New("EMAIL_CODE_MAX_ATTEMPTS must be positive")
 	}
@@ -376,6 +381,13 @@ func (c Config) EmailCodeTTL() time.Duration {
 
 func (c Config) EmailCooldown() time.Duration {
 	return time.Duration(c.EmailCodeResendCooldownSecs) * time.Second
+}
+
+func (c Config) MailSendTimeout() time.Duration {
+	if c.MailSendTimeoutSeconds <= 0 {
+		return 10 * time.Second
+	}
+	return time.Duration(c.MailSendTimeoutSeconds) * time.Second
 }
 
 func (c Config) APITokenAuthCacheTTL() time.Duration {

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +41,38 @@ func TestRequestLoginCodeAllowsDisabledUser(t *testing.T) {
 	}
 	if mailer.sentTo != "dev@example.com" || mailer.sentPurpose != "login" {
 		t.Fatalf("expected login mail, got purpose=%q email=%q", mailer.sentPurpose, mailer.sentTo)
+	}
+}
+
+func TestRequestLoginCodeDoesNotCacheUnusedCodeHash(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+	codes := &disabledCodeSessionStore{}
+	svc := &Service{
+		cfg: config.Config{
+			SessionSecret:               "secret",
+			EmailCodeTTLMinutes:         10,
+			EmailCodeResendCooldownSecs: 60,
+			EmailCodeMaxAttempts:        5,
+		},
+		users:   disabledUserStore{user: &model.User{ID: uuid.New(), Email: "dev@example.com"}},
+		codes:   codes,
+		redis:   client,
+		mailer:  &disabledMailer{},
+		nowFunc: time.Now,
+	}
+
+	if err := svc.RequestLoginCode(context.Background(), "dev@example.com", "127.0.0.1"); err != nil {
+		t.Fatalf("request login code: %v", err)
+	}
+	for _, key := range server.Keys() {
+		if strings.HasPrefix(key, "email_code_hash:") {
+			t.Fatalf("unexpected unused code hash cache key %q", key)
+		}
+	}
+	if codes.insertedPurpose != "login" || codes.insertedEmail != "dev@example.com" {
+		t.Fatalf("expected DB-backed login code insertion, got purpose=%q email=%q", codes.insertedPurpose, codes.insertedEmail)
 	}
 }
 

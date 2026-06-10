@@ -48,6 +48,7 @@ cp backend/.env.example backend/.env
 - `SESSION_SECRET` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
 - `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`。
+- `MAIL_SEND_TIMEOUT_SECONDS`：SMTP/Postal 单次发信超时，默认 10 秒，避免邮件服务卡顿长期阻塞发码请求。
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
@@ -116,7 +117,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 
 ## 邮箱驱动配置
 
-通过 `MAIL_DRIVER` 选择邮箱验证码驱动：`smtp` 使用 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`；`postal` 使用 `POSTAL_API_URL`、`POSTAL_API_KEY`，并复用 `SMTP_FROM`、`SMTP_FROM_NAME` 作为发件人。`POSTAL_API_URL` 必须使用 `https://`，可填 Postal 根地址或完整 `/api/v1/send/message` 地址。`log` 会将验证码写入结构化日志。开发环境未配置 SMTP 时，后端仍会回退到日志驱动；生产应选择并配置真实邮件驱动。
+通过 `MAIL_DRIVER` 选择邮箱验证码驱动：`smtp` 使用 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`；`postal` 使用 `POSTAL_API_URL`、`POSTAL_API_KEY`，并复用 `SMTP_FROM`、`SMTP_FROM_NAME` 作为发件人。SMTP 与 Postal 单次发信都受 `MAIL_SEND_TIMEOUT_SECONDS` 限制。`POSTAL_API_URL` 必须使用 `https://`，可填 Postal 根地址或完整 `/api/v1/send/message` 地址。`log` 会将验证码写入结构化日志。开发环境未配置 SMTP 时，后端仍会回退到日志驱动；生产应选择并配置真实邮件驱动。
 
 ## API token 申请流程
 
