@@ -63,6 +63,7 @@ Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter �
 - 管理 API：`/admin` + `RequireUser` + `RequireAdmin`。
 - Public API：`/v1` + `APIPreAuthRateLimit` + `APITokenAuth` + `APIRateLimit` + `APILastUsed` + `APIRequestLog`。
 
+- `/v1` request logging 只允许通过 `services/requestlog.Writer` 的有界队列批量写入；不要在 middleware 中为每个请求启动 goroutine 或同步写 DB。Dashboard 统计应读取 `api_usage_*` 聚合表，raw `api_request_logs` 只短期保留用于排查，聚合明细按 dashboard 最大查询窗口清理。
 - `ClientIP` 只在直接 peer 是 loopback/private/link-local 时信任 `X-Forwarded-For` / `X-Real-IP`，避免公网直连伪造 pre-auth IP 限流 key。
 
 改路由时优先把新 endpoint 放入现有职责 group；不要创建并行认证路径。

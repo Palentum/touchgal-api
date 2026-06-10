@@ -1,17 +1,15 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rs/zerolog"
 	"github.com/touchgal/developer/backend/internal/model"
 )
 
-type RequestLogStore interface {
-	InsertRequestLog(ctx context.Context, log model.RequestLog) error
+type RequestLogSink interface {
+	EnqueueRequestLog(log model.RequestLog) bool
 }
 
 type statusWriter struct {
@@ -24,7 +22,7 @@ func (w *statusWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
-func APIRequestLog(store RequestLogStore, logger zerolog.Logger) func(http.Handler) http.Handler {
+func APIRequestLog(sink RequestLogSink) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			started := time.Now()
@@ -32,28 +30,38 @@ func APIRequestLog(store RequestLogStore, logger zerolog.Logger) func(http.Handl
 			next.ServeHTTP(sw, r)
 			info, _ := CurrentToken(r)
 			log := model.RequestLog{
-				Method:     r.Method,
-				Path:       r.URL.Path,
-				Route:      chi.RouteContext(r.Context()).RoutePattern(),
+				Method:     truncateLogField(r.Method, 20),
+				Path:       truncateLogField(r.URL.Path, 500),
+				Route:      truncateLogField(chi.RouteContext(r.Context()).RoutePattern(), 300),
 				StatusCode: sw.status,
 				LatencyMS:  int(time.Since(started).Milliseconds()),
-				IP:         ClientIP(r),
-				UserAgent:  r.UserAgent(),
-				Origin:     r.Header.Get("Origin"),
-				Referer:    r.Referer(),
+				IP:         truncateLogField(ClientIP(r), 100),
+				UserAgent:  truncateLogField(r.UserAgent(), 1000),
+				Origin:     truncateLogField(r.Header.Get("Origin"), 1000),
+				Referer:    truncateLogField(r.Referer(), 1000),
 			}
 			if info != nil {
 				log.TokenID = &info.Token.ID
 				log.UserID = &info.Token.UserID
 				log.ApplicationID = &info.Token.ApplicationID
 			}
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
-				if err := store.InsertRequestLog(ctx, log); err != nil {
-					logger.Warn().Err(err).Msg("api request log write failed")
-				}
-			}()
+			if sink != nil {
+				sink.EnqueueRequestLog(log)
+			}
 		})
 	}
+}
+
+func truncateLogField(value string, maxRunes int) string {
+	if maxRunes <= 0 || len(value) <= maxRunes {
+		return value
+	}
+	runes := 0
+	for idx := range value {
+		if runes == maxRunes {
+			return value[:idx]
+		}
+		runes++
+	}
+	return value
 }

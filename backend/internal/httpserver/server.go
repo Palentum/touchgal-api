@@ -13,6 +13,7 @@ import (
 	"github.com/touchgal/developer/backend/internal/services/application"
 	"github.com/touchgal/developer/backend/internal/services/auth"
 	"github.com/touchgal/developer/backend/internal/services/publicapi"
+	"github.com/touchgal/developer/backend/internal/services/requestlog"
 	"github.com/touchgal/developer/backend/internal/services/stats"
 	syncsvc "github.com/touchgal/developer/backend/internal/services/sync"
 	"github.com/touchgal/developer/backend/internal/services/token"
@@ -26,6 +27,7 @@ type Services struct {
 	Users        *usersvc.Service
 	PublicAPI    *publicapi.Service
 	Stats        *stats.Service
+	RequestLogs  *requestlog.Writer
 	Sync         *syncsvc.Service
 }
 
@@ -94,7 +96,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 			r.Use(middleware.APITokenAuth(services.Tokens))
 			r.Use(middleware.APIRateLimit(redisClient))
 			r.Use(middleware.APILastUsed(services.Tokens, redisClient, logger, cfg.APILastUsedUpdateInterval()))
-			r.Use(middleware.APIRequestLog(repos.Stats, logger))
+			r.Use(middleware.APIRequestLog(services.RequestLogs))
 			r.Get("/me", publicHandler.Me)
 			r.Get("/games/search", publicHandler.Search)
 			r.Get("/games/{uniqueId}", publicHandler.Detail)

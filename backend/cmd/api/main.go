@@ -19,6 +19,7 @@ import (
 	"github.com/touchgal/developer/backend/internal/services/auth"
 	"github.com/touchgal/developer/backend/internal/services/email"
 	"github.com/touchgal/developer/backend/internal/services/publicapi"
+	"github.com/touchgal/developer/backend/internal/services/requestlog"
 	"github.com/touchgal/developer/backend/internal/services/stats"
 	syncsvc "github.com/touchgal/developer/backend/internal/services/sync"
 	"github.com/touchgal/developer/backend/internal/services/token"
@@ -76,6 +77,22 @@ func run() error {
 	userService := usersvc.NewService(repos.Users)
 	publicService := publicapi.NewService(cfg, repos.Games)
 	statsService := stats.NewService(repos.Stats)
+	requestLogWriter := requestlog.NewWriter(repos.Stats, requestlog.Config{
+		QueueSize:       cfg.APIRequestLogQueueSize,
+		BatchSize:       cfg.APIRequestLogBatchSize,
+		FlushInterval:   cfg.APIRequestLogFlushInterval,
+		WriteTimeout:    2 * time.Second,
+		RetentionDays:   cfg.APIRequestLogRetentionDays,
+		CleanupInterval: time.Hour,
+	}, logger)
+	requestLogWriter.Start()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := requestLogWriter.Stop(shutdownCtx); err != nil {
+			logger.Warn().Err(err).Msg("api request log writer stopped with pending logs")
+		}
+	}()
 	syncService := syncsvc.NewService(cfg, source, target, repos.Sync, logger)
 	defer syncService.Stop()
 
@@ -94,6 +111,7 @@ func run() error {
 			Users:        userService,
 			PublicAPI:    publicService,
 			Stats:        statsService,
+			RequestLogs:  requestLogWriter,
 			Sync:         syncService,
 		}, repos, redisClient, logger),
 		ReadHeaderTimeout: 10 * time.Second,

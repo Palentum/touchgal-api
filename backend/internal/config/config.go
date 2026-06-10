@@ -61,6 +61,10 @@ type Config struct {
 	APIPreAuthIPDailyLimit        int
 	APITokenAuthCacheTTLSeconds   int
 	APILastUsedUpdateIntervalSecs int
+	APIRequestLogQueueSize        int
+	APIRequestLogBatchSize        int
+	APIRequestLogFlushInterval    time.Duration
+	APIRequestLogRetentionDays    int
 	EnableSyncWorker              bool
 	SyncIntervalMinutes           int
 	SyncFullIntervalHours         int
@@ -118,6 +122,10 @@ func Load() (Config, error) {
 		APIPreAuthIPDailyLimit:        envInt("API_PREAUTH_IP_DAILY_LIMIT", 20000),
 		APITokenAuthCacheTTLSeconds:   envInt("API_TOKEN_AUTH_CACHE_TTL_SECONDS", 60),
 		APILastUsedUpdateIntervalSecs: envInt("API_LAST_USED_UPDATE_INTERVAL_SECONDS", 300),
+		APIRequestLogQueueSize:        envInt("API_REQUEST_LOG_QUEUE_SIZE", 16384),
+		APIRequestLogBatchSize:        envInt("API_REQUEST_LOG_BATCH_SIZE", 500),
+		APIRequestLogFlushInterval:    envDuration("API_REQUEST_LOG_FLUSH_INTERVAL", time.Second),
+		APIRequestLogRetentionDays:    envInt("API_REQUEST_LOG_RETENTION_DAYS", 14),
 		EnableSyncWorker:              envBool("ENABLE_SYNC_WORKER", true),
 		SyncIntervalMinutes:           envInt("SYNC_INTERVAL_MINUTES", 30),
 		SyncFullIntervalHours:         envInt("SYNC_FULL_INTERVAL_HOURS", 24),
@@ -178,6 +186,18 @@ func (c Config) Validate() error {
 	if c.APILastUsedUpdateIntervalSecs <= 0 {
 		return errors.New("API_LAST_USED_UPDATE_INTERVAL_SECONDS must be positive")
 	}
+	if c.APIRequestLogQueueSize <= 0 {
+		return errors.New("API_REQUEST_LOG_QUEUE_SIZE must be positive")
+	}
+	if c.APIRequestLogBatchSize <= 0 || c.APIRequestLogBatchSize > 5000 {
+		return errors.New("API_REQUEST_LOG_BATCH_SIZE must be between 1 and 5000")
+	}
+	if c.APIRequestLogFlushInterval <= 0 {
+		return errors.New("API_REQUEST_LOG_FLUSH_INTERVAL must be positive")
+	}
+	if c.APIRequestLogRetentionDays <= 0 {
+		return errors.New("API_REQUEST_LOG_RETENTION_DAYS must be positive")
+	}
 	return nil
 }
 
@@ -218,6 +238,17 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(val)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+func envDuration(key string, fallback time.Duration) time.Duration {
+	val := strings.TrimSpace(os.Getenv(key))
+	if val == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(val)
 	if err != nil {
 		return fallback
 	}

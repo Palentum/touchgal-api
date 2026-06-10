@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestValidateMailDriverPostalRequiresAPISettings(t *testing.T) {
 	cfg := validConfig()
@@ -52,6 +55,32 @@ func TestValidateRejectsUnknownLogLevel(t *testing.T) {
 	}
 }
 
+func TestValidateAPIRequestLogSettings(t *testing.T) {
+	cfg := validConfig()
+	cfg.APIRequestLogQueueSize = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid API_REQUEST_LOG_QUEUE_SIZE error")
+	}
+
+	cfg = validConfig()
+	cfg.APIRequestLogBatchSize = 5001
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid API_REQUEST_LOG_BATCH_SIZE error")
+	}
+
+	cfg = validConfig()
+	cfg.APIRequestLogFlushInterval = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid API_REQUEST_LOG_FLUSH_INTERVAL error")
+	}
+
+	cfg = validConfig()
+	cfg.APIRequestLogRetentionDays = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid API_REQUEST_LOG_RETENTION_DAYS error")
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		DatabaseDSN:                   "postgres://example",
@@ -65,6 +94,10 @@ func validConfig() Config {
 		APIPreAuthIPDailyLimit:        1,
 		APITokenAuthCacheTTLSeconds:   1,
 		APILastUsedUpdateIntervalSecs: 1,
+		APIRequestLogQueueSize:        1,
+		APIRequestLogBatchSize:        1,
+		APIRequestLogFlushInterval:    time.Second,
+		APIRequestLogRetentionDays:    1,
 		MailDriver:                    MailDriverSMTP,
 	}
 }

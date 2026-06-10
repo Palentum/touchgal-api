@@ -51,6 +51,7 @@ cp backend/.env.example backend/.env
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
 - `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS`：`/v1` pre-auth IP 粗限流、token auth 短缓存与 `last_used_at` 写入节流。
+- `API_REQUEST_LOG_QUEUE_SIZE` / `API_REQUEST_LOG_BATCH_SIZE` / `API_REQUEST_LOG_FLUSH_INTERVAL` / `API_REQUEST_LOG_RETENTION_DAYS`：`/v1` request log 有界队列、批量写入间隔与 raw log 保留天数；dashboard 统计读取聚合表。
 - `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步。
 - `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS`：incremental/full 同步周期。
 
