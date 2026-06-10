@@ -32,14 +32,20 @@
     <div class="tg-grid-2">
       <div class="tg-card">
         <h2 class="tg-title-lg">请求趋势 / 成功失败</h2>
-        <div class="tg-chart-box mt-4">
-          <DashboardRequestTrendChart :data="trendData" />
+        <div ref="trendChartHost" class="tg-chart-box mt-4">
+          <LazyDashboardRequestTrendChart v-if="trendChartVisible" :data="trendData" />
+          <div v-else class="flex min-h-[320px] items-center justify-center text-sm text-[var(--tg-muted)]">
+            图表将在进入视口后加载
+          </div>
         </div>
       </div>
       <div class="tg-card">
         <h2 class="tg-title-lg">请求来源</h2>
-        <div class="tg-chart-box mt-4">
-          <DashboardSourcePieChart :data="sourceData" />
+        <div ref="sourceChartHost" class="tg-chart-box mt-4">
+          <LazyDashboardSourcePieChart v-if="sourceChartVisible" :data="sourceData" />
+          <div v-else class="flex min-h-[320px] items-center justify-center text-sm text-[var(--tg-muted)]">
+            图表将在进入视口后加载
+          </div>
         </div>
       </div>
     </div>
@@ -63,6 +69,41 @@ const endpointData = ref<EndpointItem[]>([])
 
 let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let statsRequestSeq = 0
+
+const trendChartHost = ref<HTMLElement | null>(null)
+const sourceChartHost = ref<HTMLElement | null>(null)
+const trendChartVisible = ref(false)
+const sourceChartVisible = ref(false)
+
+let chartObserver: IntersectionObserver | null = null
+
+const revealAllCharts = () => {
+  trendChartVisible.value = true
+  sourceChartVisible.value = true
+}
+
+const revealChart = (target: Element) => {
+  if (target === trendChartHost.value) trendChartVisible.value = true
+  if (target === sourceChartHost.value) sourceChartVisible.value = true
+}
+
+const setupChartObserver = () => {
+  if (!('IntersectionObserver' in window)) {
+    revealAllCharts()
+    return
+  }
+
+  chartObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      revealChart(entry.target)
+      chartObserver?.unobserve(entry.target)
+    }
+  }, { rootMargin: '240px 0px', threshold: 0.01 })
+
+  if (trendChartHost.value) chartObserver.observe(trendChartHost.value)
+  if (sourceChartHost.value) chartObserver.observe(sourceChartHost.value)
+}
 
 const loadTokens = async () => {
   const tokenRes = await dash.tokens()
@@ -95,9 +136,12 @@ watch([days, tokenId], scheduleStatsLoad)
 onMounted(() => {
   void loadTokens()
   void loadStats()
+  setupChartObserver()
 })
 onBeforeUnmount(() => {
   if (statsDebounceTimer) clearTimeout(statsDebounceTimer)
+  chartObserver?.disconnect()
+  chartObserver = null
   statsRequestSeq++
 })
 </script>
