@@ -14,7 +14,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
   if (to.path.startsWith('/dashboard')) {
     const access = useApplicationAccess()
-    const ok = await access.fetchApplications(auth.user.id, true)
+    const ok = await access.ensureApplications(auth.user.id)
     if (!ok) {
       if (to.path !== '/dashboard/apply') {
         return navigateTo('/dashboard/apply')

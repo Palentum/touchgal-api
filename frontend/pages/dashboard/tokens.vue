@@ -42,7 +42,6 @@ import type { TokenItem } from '~/composables/useDashboard'
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 const dash = useDashboard()
 const { apiFetch } = useApi()
-const auth = useAuthStore()
 const access = useApplicationAccess()
 const apps = access.applications
 const tokens = ref<TokenItem[]>([])
@@ -54,7 +53,7 @@ const deletingToken = ref<TokenItem | null>(null)
 const deleteError = ref('')
 const deleting = ref(false)
 const load = async () => {
-  const [, tokenRes] = await Promise.all([access.fetchApplications(auth.user?.id), dash.tokens()])
+  const tokenRes = await dash.tokens()
   if (tokenRes.success) tokens.value = tokenRes.data
 }
 

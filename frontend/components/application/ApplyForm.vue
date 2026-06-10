@@ -75,7 +75,7 @@ const startReapply = () => {
 }
 
 const loadApplications = async () => {
-  await access.fetchApplications(auth.user?.id)
+  await access.ensureApplications(auth.user?.id)
 }
 
 const submit = async () => {
@@ -83,7 +83,7 @@ const submit = async () => {
     const applicantName = auth.user?.displayName?.trim() || auth.user?.email || ''
     const res = await apiFetch<ApplicationItem>('/applications', { method: 'POST', body: { ...form, applicantName, expectedDailyRequests: Number(form.expectedDailyRequests) } })
     if (res.success) {
-      applications.value = [res.data, ...applications.value.filter((app) => app.id !== res.data.id)]
+      access.upsertApplication(res.data, auth.user?.id)
       isReapplying.value = false
       ok.value = true
       message.value = '申请已提交，等待管理员审核。'

@@ -55,9 +55,6 @@ const items = computed(() => {
 })
 onMounted(() => {
   hydrated.value = true
-  if (auth.user) {
-    void access.fetchApplications(auth.user.id)
-  }
 })
 const logout = async () => {
   await auth.logout()

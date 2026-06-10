@@ -47,8 +47,7 @@ export interface StatsDashboard {
 
 export const useDashboard = () => {
   const { apiFetch } = useApi()
-  const applications = () => apiFetch<ApplicationItem[]>('/applications')
   const tokens = () => apiFetch<TokenItem[]>('/tokens')
   const stats = (days = 30, tokenId?: string) => apiFetch<StatsDashboard>('/dashboard/stats', { query: { days, tokenId } })
-  return { applications, tokens, stats }
+  return { tokens, stats }
 }

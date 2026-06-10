@@ -50,7 +50,7 @@ const summaryData = ref({ totalRequests: 0, successRequests: 0, errorRequests: 0
 const formatLimit = (value?: number) => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('zh-CN') : '—'
 
 onMounted(async () => {
-  const [, statsRes] = await Promise.all([access.fetchApplications(auth.user?.id), dash.stats(7)])
+  const statsRes = await dash.stats(7)
   if (statsRes.success) summaryData.value = statsRes.data.summary
 })
 </script>
