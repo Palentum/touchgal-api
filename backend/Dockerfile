@@ -12,6 +12,5 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/touchgal-api /usr/local/bin/touchgal-api
 COPY --from=build /out/touchgal-sync /usr/local/bin/touchgal-sync
-COPY internal/openapi ./internal/openapi
 EXPOSE 8080
 CMD ["touchgal-api"]
