@@ -1,31 +1,31 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (import.meta.server) {
-    return
-  }
+  const nuxtApp = useNuxtApp()
   const auth = useAuthStore()
+  const access = useApplicationAccess()
+  const redirect = (path: string) => nuxtApp.runWithContext(() => navigateTo(path))
+
   if (!auth.loaded) {
     await auth.fetchMe()
   }
   if (auth.isAccountDisabled) {
-    return navigateTo('/account-disabled')
+    return redirect('/account-disabled')
   }
   if (!auth.user) {
-    return navigateTo(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    return redirect(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }
   if (to.path.startsWith('/dashboard')) {
-    const access = useApplicationAccess()
     const ok = await access.ensureApplications(auth.user.id)
     if (!ok) {
       if (to.path !== '/dashboard/apply') {
-        return navigateTo('/dashboard/apply')
+        return redirect('/dashboard/apply')
       }
       return
     }
     if (!access.hasApprovedApplication.value && to.path !== '/dashboard/apply') {
-      return navigateTo('/dashboard/apply')
+      return redirect('/dashboard/apply')
     }
     if (access.hasApprovedApplication.value && to.path === '/dashboard/apply') {
-      return navigateTo('/dashboard')
+      return redirect('/dashboard')
     }
   }
 })

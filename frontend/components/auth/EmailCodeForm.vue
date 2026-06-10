@@ -70,7 +70,7 @@ const verifyCode = async () => {
   try {
     const path = props.mode === 'register' ? '/auth/register/verify' : '/auth/login/verify'
     await apiFetch(path, { method: 'POST', body: { email: email.value, code: code.value } })
-    await auth.fetchMe()
+    await auth.fetchMe({ refresh: true })
     if (auth.isAccountDisabled) {
       await redirectAccountDisabled()
       return

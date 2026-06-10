@@ -111,7 +111,7 @@ import type { AdminUser, AdminUserPatch, UserStatus } from '~/components/admin/U
 
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
-const { apiFetch } = useApi()
+const { apiFetch, apiData } = useApi()
 const auth = useAuthStore()
 const users = ref<AdminUser[]>([])
 const status = ref<UserStatus | 'all'>('all')
@@ -140,17 +140,29 @@ const query = computed(() => ({
   status: status.value === 'all' ? undefined : status.value,
   q: search.value.trim() || undefined
 }))
+const { data: usersResponse, refresh: refreshUsers } = await apiData<AdminUser[]>('admin:users', '/admin/users', { query, dedupe: 'cancel' })
+
+const syncUsers = () => {
+  const res = usersResponse.value
+  if (!res) {
+    return
+  }
+  if (res.success) {
+    users.value = res.data
+    error.value = ''
+  } else {
+    error.value = res.error.message
+  }
+}
+
+watch(usersResponse, syncUsers, { immediate: true })
 
 const load = async () => {
   loading.value = true
   error.value = ''
   try {
-    const res = await apiFetch<AdminUser[]>('/admin/users', { query: query.value })
-    if (res.success) {
-      users.value = res.data
-    } else {
-      error.value = res.error.message
-    }
+    await refreshUsers()
+    syncUsers()
   } catch {
     error.value = '加载用户失败'
   } finally {
@@ -290,5 +302,4 @@ const confirmDeleteUser = async () => {
   }
 }
 
-onMounted(load)
 </script>

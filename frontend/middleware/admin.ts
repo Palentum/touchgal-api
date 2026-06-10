@@ -1,18 +1,18 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (import.meta.server) {
-    return
-  }
+  const nuxtApp = useNuxtApp()
   const auth = useAuthStore()
+  const redirect = (path: string) => nuxtApp.runWithContext(() => navigateTo(path))
+
   if (!auth.loaded) {
     await auth.fetchMe()
   }
   if (auth.isAccountDisabled) {
-    return navigateTo('/account-disabled')
+    return redirect('/account-disabled')
   }
   if (!auth.user) {
-    return navigateTo(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    return redirect(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }
   if (!auth.user.isAdmin) {
-    return navigateTo('/dashboard')
+    return redirect('/dashboard')
   }
 })

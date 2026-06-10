@@ -11,9 +11,9 @@
 <script setup lang="ts">
 import type { TokenItem } from '~/composables/useDashboard'
 definePageMeta({ layout: 'admin', middleware: 'admin' })
-const { apiFetch } = useApi()
-const tokens = ref<TokenItem[]>([])
-const load = async () => { const res = await apiFetch<TokenItem[]>('/admin/tokens', { query: { page: 1, limit: 50 } }); if (res.success) tokens.value = res.data }
+const { apiFetch, apiData } = useApi()
+const { data: tokensResponse, refresh: refreshTokens } = await apiData<TokenItem[]>('admin:tokens', '/admin/tokens', { query: { page: 1, limit: 50 } })
+const tokens = computed(() => tokensResponse.value?.success ? tokensResponse.value.data : [])
+const load = async () => { await refreshTokens() }
 const deleteToken = async (id: string) => { await apiFetch(`/admin/tokens/${id}`, { method: 'DELETE' }); await load() }
-onMounted(load)
 </script>

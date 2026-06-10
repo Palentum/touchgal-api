@@ -80,7 +80,8 @@ import type { ApplicationItem } from '~/composables/useDashboard'
 
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
-const { apiFetch } = useApi()
+const { apiFetch, apiData } = useApi()
+const { data: applicationsResponse, refresh: refreshApplications } = await apiData<ApplicationItem[]>('admin:applications', '/admin/applications', { query: { page: 1, limit: 50 } })
 const applications = ref<ApplicationItem[]>([])
 const selectedApplication = ref<ApplicationItem | null>(null)
 const reviewingApplicationId = ref<string | null>(null)
@@ -94,9 +95,17 @@ const reviewLimits = reactive({
 const submittingReview = computed(() => reviewingApplicationId.value !== null)
 const canSubmitReview = computed(() => reviewLimits.minuteLimit > 0 && reviewLimits.dailyLimit > 0 && reviewLimits.dailyLimit >= reviewLimits.minuteLimit)
 
+const syncApplications = () => {
+  if (applicationsResponse.value?.success) {
+    applications.value = applicationsResponse.value.data
+  }
+}
+
+watch(applicationsResponse, syncApplications, { immediate: true })
+
 const load = async () => {
-  const res = await apiFetch<ApplicationItem[]>('/admin/applications', { query: { page: 1, limit: 50 } })
-  if (res.success) applications.value = res.data
+  await refreshApplications()
+  syncApplications()
 }
 
 const openReviewDialog = (application: ApplicationItem) => {
@@ -151,5 +160,4 @@ const submitReview = async (action: 'approve' | 'reject') => {
   }
 }
 
-onMounted(load)
 </script>

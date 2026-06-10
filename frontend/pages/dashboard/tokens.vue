@@ -40,11 +40,11 @@
 import type { TokenItem } from '~/composables/useDashboard'
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
-const dash = useDashboard()
-const { apiFetch } = useApi()
+const { apiFetch, apiData } = useApi()
 const access = useApplicationAccess()
 const apps = access.applications
-const tokens = ref<TokenItem[]>([])
+const { data: tokensResponse, refresh: refreshTokens } = await apiData<TokenItem[]>('dashboard:tokens', '/tokens')
+const tokens = computed(() => tokensResponse.value?.success ? tokensResponse.value.data : [])
 const editingToken = ref<TokenItem | null>(null)
 const editName = ref('')
 const editError = ref('')
@@ -53,8 +53,7 @@ const deletingToken = ref<TokenItem | null>(null)
 const deleteError = ref('')
 const deleting = ref(false)
 const load = async () => {
-  const tokenRes = await dash.tokens()
-  if (tokenRes.success) tokens.value = tokenRes.data
+  await refreshTokens()
 }
 
 const openEditToken = (token: TokenItem) => {
@@ -115,5 +114,4 @@ const confirmDeleteToken = async () => {
   await load()
 }
 
-onMounted(load)
 </script>

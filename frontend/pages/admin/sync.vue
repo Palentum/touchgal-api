@@ -24,12 +24,13 @@
 <script setup lang="ts">
 import type { SyncRun } from '~/components/admin/SyncRunTable.vue'
 definePageMeta({ layout: 'admin', middleware: 'admin' })
-const { apiFetch } = useApi()
+const { apiFetch, apiData } = useApi()
 type SyncMode = 'incremental' | 'full'
 
-const runs = ref<SyncRun[]>([])
+const { data: runsResponse, refresh: refreshRuns } = await apiData<SyncRun[]>('admin:sync:runs', '/admin/sync/runs', { dedupe: 'cancel' })
+const runs = ref<SyncRun[]>(runsResponse.value?.success ? runsResponse.value.data : [])
 const pendingMode = ref<SyncMode | null>(null)
-const errorMessage = ref('')
+const errorMessage = ref(runsResponse.value && !runsResponse.value.success ? runsResponse.value.error.message : '')
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let disposed = false
 
@@ -57,13 +58,14 @@ const upsertRun = (run: SyncRun) => {
 const load = async () => {
   if (disposed) return
   try {
-    const res = await apiFetch<SyncRun[]>('/admin/sync/runs')
+    await refreshRuns()
     if (disposed) return
-    if (res.success) {
+    const res = runsResponse.value
+    if (res?.success) {
       runs.value = res.data
       if (hasRunningRun.value) queuePoll()
       else clearPoll()
-    } else {
+    } else if (res) {
       errorMessage.value = res.error.message
     }
   } catch {
@@ -97,7 +99,7 @@ const run = async (mode: SyncMode) => {
 
 onMounted(() => {
   disposed = false
-  void load()
+  if (hasRunningRun.value) queuePoll()
 })
 onUnmounted(() => {
   disposed = true

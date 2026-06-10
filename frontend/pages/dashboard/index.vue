@@ -41,18 +41,17 @@
 </template>
 
 <script setup lang="ts">
+import type { StatsDashboard, StatsSummary } from '~/composables/useDashboard'
+
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 const auth = useAuthStore()
-const dash = useDashboard()
+const { apiData } = useApi()
 const access = useApplicationAccess()
 const apps = access.applications
-const summaryData = ref({ totalRequests: 0, successRequests: 0, errorRequests: 0, avgLatencyMs: 0, uniqueOrigins: 0, uniqueIPs: 0 })
+const emptySummary: StatsSummary = { totalRequests: 0, successRequests: 0, errorRequests: 0, avgLatencyMs: 0, uniqueOrigins: 0, uniqueIPs: 0 }
+const { data: statsResponse } = await apiData<StatsDashboard>('dashboard:index:stats:7', '/dashboard/stats', { query: { days: 7 } })
+const summaryData = computed(() => statsResponse.value?.success ? statsResponse.value.data.summary : emptySummary)
 const formatLimit = (value?: number) => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('zh-CN') : '—'
-
-onMounted(async () => {
-  const statsRes = await dash.stats(7)
-  if (statsRes.success) summaryData.value = statsRes.data.summary
-})
 </script>
 
 <style scoped>

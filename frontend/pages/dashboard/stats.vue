@@ -55,20 +55,29 @@
 </template>
 
 <script setup lang="ts">
-import type { EndpointItem, SourceItem, StatsSummary, TokenItem, TrendItem } from '~/composables/useDashboard'
+import type { EndpointItem, SourceItem, StatsDashboard, StatsSummary, TokenItem, TrendItem } from '~/composables/useDashboard'
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
-const dash = useDashboard()
+const { apiData } = useApi()
 const days = ref(30)
 const tokenId = ref('')
-const tokens = ref<TokenItem[]>([])
-const summaryData = ref<StatsSummary>({ totalRequests: 0, successRequests: 0, errorRequests: 0, avgLatencyMs: 0, uniqueOrigins: 0, uniqueIPs: 0 })
-const trendData = ref<TrendItem[]>([])
-const sourceData = ref<SourceItem[]>([])
-const endpointData = ref<EndpointItem[]>([])
+const emptySummary: StatsSummary = { totalRequests: 0, successRequests: 0, errorRequests: 0, avgLatencyMs: 0, uniqueOrigins: 0, uniqueIPs: 0 }
+const statsQuery = computed(() => ({ days: days.value, tokenId: tokenId.value || undefined }))
+const [{ data: tokensResponse }, { data: statsResponse, refresh: refreshStats }] = await Promise.all([
+  apiData<TokenItem[]>('dashboard:stats:tokens', '/tokens'),
+  apiData<StatsDashboard>('dashboard:stats', '/dashboard/stats', {
+    query: statsQuery,
+    dedupe: 'cancel'
+  })
+])
+const tokens = computed(() => tokensResponse.value?.success ? tokensResponse.value.data : [])
+const statsData = computed(() => statsResponse.value?.success ? statsResponse.value.data : null)
+const summaryData = computed<StatsSummary>(() => statsData.value?.summary ?? emptySummary)
+const trendData = computed<TrendItem[]>(() => statsData.value?.trend ?? [])
+const sourceData = computed<SourceItem[]>(() => statsData.value?.sources ?? [])
+const endpointData = computed<EndpointItem[]>(() => statsData.value?.endpoints ?? [])
 
 let statsDebounceTimer: ReturnType<typeof setTimeout> | null = null
-let statsRequestSeq = 0
 
 const trendChartHost = ref<HTMLElement | null>(null)
 const sourceChartHost = ref<HTMLElement | null>(null)
@@ -105,26 +114,11 @@ const setupChartObserver = () => {
   if (sourceChartHost.value) chartObserver.observe(sourceChartHost.value)
 }
 
-const loadTokens = async () => {
-  const tokenRes = await dash.tokens()
-  if (tokenRes.success) tokens.value = tokenRes.data
-}
-
 const loadStats = async () => {
-  const requestSeq = ++statsRequestSeq
-  const id = tokenId.value || undefined
-  const res = await dash.stats(days.value, id)
-  if (requestSeq !== statsRequestSeq) return
-  if (res.success) {
-    summaryData.value = res.data.summary
-    trendData.value = res.data.trend
-    sourceData.value = res.data.sources
-    endpointData.value = res.data.endpoints
-  }
+  await refreshStats()
 }
 
 const scheduleStatsLoad = () => {
-  statsRequestSeq++
   if (statsDebounceTimer) clearTimeout(statsDebounceTimer)
   statsDebounceTimer = setTimeout(() => {
     statsDebounceTimer = null
@@ -134,14 +128,11 @@ const scheduleStatsLoad = () => {
 
 watch([days, tokenId], scheduleStatsLoad)
 onMounted(() => {
-  void loadTokens()
-  void loadStats()
   setupChartObserver()
 })
 onBeforeUnmount(() => {
   if (statsDebounceTimer) clearTimeout(statsDebounceTimer)
   chartObserver?.disconnect()
   chartObserver = null
-  statsRequestSeq++
 })
 </script>

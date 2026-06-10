@@ -34,7 +34,6 @@
 <script setup lang="ts">
 const auth = useAuthStore()
 const access = useApplicationAccess()
-const hydrated = ref(false)
 
 const applyItem = { to: '/dashboard/apply', label: '账号申请' }
 const dashboardItems = [
@@ -43,7 +42,7 @@ const dashboardItems = [
   { to: '/dashboard/stats', label: '请求统计' },
   { to: '/dashboard/console', label: 'API 调试台' }
 ]
-const showPending = computed(() => !hydrated.value || !auth.loaded || !auth.user || !access.checked.value)
+const showPending = computed(() => !auth.loaded || !auth.user || !access.checked.value)
 const items = computed(() => {
   if (showPending.value) {
     return []
@@ -52,9 +51,6 @@ const items = computed(() => {
     return [applyItem]
   }
   return dashboardItems
-})
-onMounted(() => {
-  hydrated.value = true
 })
 const logout = async () => {
   await auth.logout()

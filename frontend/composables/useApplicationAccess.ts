@@ -1,15 +1,14 @@
+import type { ApiResponse } from '~/composables/useApi'
 import type { ApplicationItem } from '~/composables/useDashboard'
 
 const applicationsCacheTTL = 60 * 1000
-
-let applicationsRequestUserId: string | null = null
-let applicationsRequestId = 0
-let applicationsRequest: Promise<boolean> | null = null
-
 const approvedApplicationStatus = 'approved'
+
 type EnsureApplicationsOptions = {
   staleWhileRevalidate?: boolean
 }
+
+const applicationsDataKey = (currentUserId: string | null) => `dashboard:applications:${currentUserId || 'anonymous'}`
 
 export const useApplicationAccess = () => {
   const applications = useState<ApplicationItem[]>('dashboard:applications', () => [])
@@ -18,6 +17,7 @@ export const useApplicationAccess = () => {
   const checked = useState('dashboard:applicationsChecked', () => false)
   const userId = useState<string | null>('dashboard:applicationsUserId', () => null)
   const fetchedAt = useState('dashboard:applicationsFetchedAt', () => 0)
+  const nuxtApp = useNuxtApp()
 
   const setUserScope = (currentUserId?: string) => {
     if (!currentUserId) {
@@ -38,6 +38,24 @@ export const useApplicationAccess = () => {
 
   const isFresh = () => loaded.value && Date.now() - fetchedAt.value < applicationsCacheTTL
 
+  const applyApplicationsResponse = (res: ApiResponse<ApplicationItem[]> | null | undefined, preserveStaleData: boolean) => {
+    if (!res?.success) {
+      if (preserveStaleData) {
+        fetchedAt.value = Date.now()
+      } else {
+        applications.value = []
+        loaded.value = false
+        fetchedAt.value = 0
+      }
+      return false
+    }
+
+    applications.value = res.data
+    loaded.value = true
+    fetchedAt.value = Date.now()
+    return true
+  }
+
   const refreshApplications = async (currentUserId?: string, background = false) => {
     if (!setUserScope(currentUserId)) {
       checked.value = true
@@ -45,65 +63,34 @@ export const useApplicationAccess = () => {
     }
 
     const requestUserId = userId.value
-    if (applicationsRequest && applicationsRequestUserId === requestUserId) {
-      return applicationsRequest
-    }
-
+    const preserveStaleData = background && loaded.value
     loading.value = true
     if (!background) {
       checked.value = false
     }
 
-    const requestId = ++applicationsRequestId
-    const preserveStaleData = background && loaded.value
-    const isCurrentRequest = () => userId.value === requestUserId && applicationsRequestId === requestId
-    const request = (async () => {
-      try {
-        const { apiFetch } = useApi()
-        const res = await apiFetch<ApplicationItem[]>('/applications')
-        if (!isCurrentRequest()) {
-          return false
-        }
-        if (!res.success) {
-          if (preserveStaleData) {
-            fetchedAt.value = Date.now()
-          } else {
-            applications.value = []
-            loaded.value = false
-            fetchedAt.value = 0
-          }
-          return false
-        }
-        applications.value = res.data
-        loaded.value = true
-        fetchedAt.value = Date.now()
-        return true
-      } catch {
-        if (isCurrentRequest()) {
-          if (preserveStaleData) {
-            fetchedAt.value = Date.now()
-          } else {
-            applications.value = []
-            loaded.value = false
-            fetchedAt.value = 0
-          }
-        }
-        return false
-      } finally {
-        if (applicationsRequestId === requestId) {
-          applicationsRequest = null
-          applicationsRequestUserId = null
-        }
-        if (isCurrentRequest()) {
-          checked.value = true
-          loading.value = false
-        }
+    try {
+      const key = applicationsDataKey(requestUserId)
+      const cached = await nuxtApp.runWithContext(() => useNuxtData<ApiResponse<ApplicationItem[]>>(key).data)
+      const hasCached = cached.value !== null && cached.value !== undefined
+      const shouldRefresh = hasCached && (background || !loaded.value || !isFresh())
+      const { data, refresh } = await nuxtApp.runWithContext(() => {
+        const { apiData } = useApi()
+        return apiData<ApplicationItem[]>(key, '/applications', { immediate: !shouldRefresh })
+      })
+      if (shouldRefresh) {
+        await refresh()
       }
-    })()
-
-    applicationsRequest = request
-    applicationsRequestUserId = requestUserId
-    return request
+      if (userId.value !== requestUserId) {
+        return false
+      }
+      return applyApplicationsResponse(data.value, preserveStaleData)
+    } finally {
+      if (userId.value === requestUserId) {
+        checked.value = true
+        loading.value = false
+      }
+    }
   }
 
   const ensureApplications = async (currentUserId?: string, options: EnsureApplicationsOptions = {}) => {
@@ -138,15 +125,13 @@ export const useApplicationAccess = () => {
   }
 
   const resetApplications = () => {
+    nuxtApp.runWithContext(() => clearNuxtData(applicationsDataKey(userId.value)))
     applications.value = []
     loaded.value = false
     checked.value = false
     loading.value = false
     fetchedAt.value = 0
     userId.value = null
-    applicationsRequest = null
-    applicationsRequestId++
-    applicationsRequestUserId = null
   }
 
   return { applications, loaded, checked, loading, hasApprovedApplication, ensureApplications, refreshApplications, upsertApplication, invalidateApplications, resetApplications }
