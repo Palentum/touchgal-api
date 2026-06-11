@@ -138,7 +138,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 ## API token 申请流程
 
 1. 用户通过邮箱验证码注册或登录。
-2. 登录后访问 `/apply` 提交一次账户级申请：负责人、项目地址、预估请求量、使用场景、同意条款。
+2. 登录后访问 `/dashboard/apply` 提交一次账户级申请：负责人、项目地址、预估请求量、使用场景、同意条款。
 3. 管理员在 `/admin/applications` 审核账户申请。
 4. 申请 `approved` 后，该账户可在 `/dashboard/tokens` 创建 token；active token 数量受 `MAX_ACTIVE_TOKENS_PER_USER` 限制（默认 10），管理员账户默认视为已通过申请。
 5. token 明文只返回一次；数据库只保存 hash。
