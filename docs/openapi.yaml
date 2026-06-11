@@ -29,7 +29,7 @@ components:
         error:
           type: object
           properties:
-            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, NOT_READY, INTERNAL_ERROR] }
+            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, CODE_COOLDOWN, INVALID_CODE, EXPIRED_CODE, NOT_READY, INTERNAL_ERROR] }
             message: { type: string }
     HealthResponse:
       type: object
@@ -152,6 +152,17 @@ components:
                 yes: { type: integer }
                 strongYes: { type: integer }
         touchgalUrl: { type: string }
+    CodeStartResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          required: [sent, expiresInSeconds, resendCooldownSeconds]
+          properties:
+            sent: { type: boolean, const: true }
+            expiresInSeconds: { type: integer, minimum: 1, example: 600 }
+            resendCooldownSeconds: { type: integer, minimum: 1, example: 60 }
   headers:
     XRateLimitLimitMinute:
       description: Effective per-minute request limit for the authenticated API token, user, or application scope.
@@ -248,7 +259,13 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [email, displayName], properties: { email: { type: string, format: email }, displayName: { type: string } } } } }
-      responses: { '200': { description: Code sent } }
+      responses:
+        '200':
+          description: Code sent
+          content: { application/json: { schema: { $ref: '#/components/schemas/CodeStartResponse' } } }
+        '429':
+          description: Code resend cooldown
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/register/verify:
     post:
       security: []
@@ -256,7 +273,11 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [email, code], properties: { email: { type: string }, code: { type: string, minLength: 6, maxLength: 6 } } } } }
-      responses: { '200': { description: Current user } }
+      responses:
+        '200': { description: Current user }
+        '400':
+          description: Invalid or expired verification code
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/login/start:
     post:
       security: []
@@ -264,7 +285,14 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [email], properties: { email: { type: string, format: email } } } } }
-      responses: { '200': { description: Code sent }, '404': { description: User not found } }
+      responses:
+        '200':
+          description: Code sent
+          content: { application/json: { schema: { $ref: '#/components/schemas/CodeStartResponse' } } }
+        '404': { description: User not found }
+        '429':
+          description: Code resend cooldown
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/login/verify:
     post:
       security: []
@@ -272,7 +300,11 @@ paths:
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [email, code], properties: { email: { type: string }, code: { type: string } } } } }
-      responses: { '200': { description: Current user } }
+      responses:
+        '200': { description: Current user }
+        '400':
+          description: Invalid or expired verification code
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/logout:
     post:
       security: []

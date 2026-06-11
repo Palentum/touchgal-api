@@ -29,6 +29,11 @@ type verifyRequest struct {
 	Email string `json:"email"`
 	Code  string `json:"code"`
 }
+type codeStartResponse struct {
+	Sent                  bool `json:"sent"`
+	ExpiresInSeconds      int  `json:"expiresInSeconds"`
+	ResendCooldownSeconds int  `json:"resendCooldownSeconds"`
+}
 
 func (h *AuthHandler) RegisterStart(w http.ResponseWriter, r *http.Request) {
 	var req registerStartRequest
@@ -40,7 +45,7 @@ func (h *AuthHandler) RegisterStart(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	Success(w, http.StatusOK, map[string]any{"sent": true})
+	Success(w, http.StatusOK, h.codeStartResponse())
 }
 
 func (h *AuthHandler) RegisterVerify(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +73,15 @@ func (h *AuthHandler) LoginStart(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	Success(w, http.StatusOK, map[string]any{"sent": true})
+	Success(w, http.StatusOK, h.codeStartResponse())
+}
+
+func (h *AuthHandler) codeStartResponse() codeStartResponse {
+	return codeStartResponse{
+		Sent:                  true,
+		ExpiresInSeconds:      int(h.cfg.EmailCodeTTL().Seconds()),
+		ResendCooldownSeconds: int(h.cfg.EmailCooldown().Seconds()),
+	}
 }
 
 func (h *AuthHandler) LoginVerify(w http.ResponseWriter, r *http.Request) {

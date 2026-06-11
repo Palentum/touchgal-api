@@ -100,9 +100,11 @@ func classify(err error) (int, string, string) {
 	case errors.Is(err, model.ErrApplicationExists):
 		return http.StatusConflict, "CONFLICT", "Application already submitted"
 	case errors.Is(err, model.ErrCodeCooldown):
-		return http.StatusTooManyRequests, "RATE_LIMITED", "Please wait before requesting another code"
-	case errors.Is(err, model.ErrInvalidCode), errors.Is(err, model.ErrExpiredCode):
-		return http.StatusBadRequest, "BAD_REQUEST", "Invalid or expired verification code"
+		return http.StatusTooManyRequests, "CODE_COOLDOWN", "Please wait before requesting another code"
+	case errors.Is(err, model.ErrInvalidCode):
+		return http.StatusBadRequest, "INVALID_CODE", "Invalid verification code"
+	case errors.Is(err, model.ErrExpiredCode):
+		return http.StatusBadRequest, "EXPIRED_CODE", "Verification code has expired"
 	case errors.Is(err, model.ErrConflict):
 		return http.StatusConflict, "CONFLICT", "Resource already exists"
 	case errors.Is(err, model.ErrApplicationOpen):

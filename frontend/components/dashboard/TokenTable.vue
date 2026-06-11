@@ -19,7 +19,7 @@
               <th>最新使用时间</th>
             </template>
             <template v-else>
-              <th>状态</th>
+              <th class="text-center">状态</th>
               <th>限流</th>
               <th>创建日期</th>
               <th>上次使用</th>
@@ -38,8 +38,8 @@
               <td>{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '未使用' }}</td>
             </template>
             <template v-else>
-              <td><span class="tg-badge" :class="token.status === 'active' ? 'tg-badge-success' : 'tg-badge-error'">{{ statusText(token.status) }}</span></td>
-              <td>{{ token.minuteLimit }}/min · {{ token.dailyLimit }}/day</td>
+              <td class="text-center"><span class="tg-badge" :class="token.status === 'active' ? 'tg-badge-success' : 'tg-badge-error'">{{ statusText(token.status) }}</span></td>
+              <td>{{ token.minuteLimit }}/{{ token.dailyLimit }}</td>
               <td class="tg-muted">{{ formatDateTime(token.createdAt) }}</td>
               <td class="tg-muted">{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '未使用' }}</td>
             </template>

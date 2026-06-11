@@ -43,11 +43,12 @@ const dashboardItems = [
   { to: '/dashboard/console', label: 'API 调试台' }
 ]
 const showPending = computed(() => !auth.loaded || !auth.user || !access.checked.value)
+const hasApplicationAccess = computed(() => access.hasApplicationGateAccess(auth.user?.isAdmin === true))
 const items = computed(() => {
   if (showPending.value) {
     return []
   }
-  if (!access.hasApprovedApplication.value) {
+  if (!hasApplicationAccess.value) {
     return [applyItem]
   }
   return dashboardItems

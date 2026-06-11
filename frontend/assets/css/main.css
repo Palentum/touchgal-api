@@ -275,6 +275,18 @@ select:disabled {
   text-decoration: underline;
 }
 
+.tg-link-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tg-link-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .tg-actions {
   display: flex;
   flex-wrap: wrap;
@@ -294,6 +306,48 @@ select:disabled {
   font-weight: 500;
   line-height: 1;
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.tg-code-resend-btn {
+  width: 156px;
+}
+
+.tg-code-cooldown-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border-color: color-mix(in srgb, var(--tg-warning) 36%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--tg-warning) 14%, transparent), transparent 34%),
+    var(--tg-surface-card);
+  padding: 24px;
+}
+
+.tg-code-cooldown-mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--tg-warning) 18%, transparent);
+  color: color-mix(in srgb, var(--tg-warning) 65%, var(--tg-ink));
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.tg-code-cooldown-content {
+  display: grid;
+  gap: 4px;
+}
+
+.tg-code-cooldown-eyebrow {
+  color: color-mix(in srgb, var(--tg-warning) 65%, var(--tg-ink));
+}
+
+.tg-code-cooldown-cancel {
+  min-width: 72px;
 }
 
 .tg-btn-primary {
@@ -857,6 +911,15 @@ select:disabled {
   .tg-card-dark,
   .tg-card-coral {
     padding: 24px;
+  }
+
+  .tg-code-cooldown-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tg-code-cooldown-cancel {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .tg-dashboard-shell {

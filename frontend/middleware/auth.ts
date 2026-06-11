@@ -14,17 +14,19 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return redirect(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }
   if (to.path.startsWith('/dashboard')) {
+    const isAdmin = auth.user.isAdmin
     const ok = await access.ensureApplications(auth.user.id)
-    if (!ok) {
+    const hasApplicationAccess = access.hasApplicationGateAccess(isAdmin)
+    if (!ok && !isAdmin) {
       if (to.path !== '/dashboard/apply') {
         return redirect('/dashboard/apply')
       }
       return
     }
-    if (!access.hasApprovedApplication.value && to.path !== '/dashboard/apply') {
+    if (!hasApplicationAccess && to.path !== '/dashboard/apply') {
       return redirect('/dashboard/apply')
     }
-    if (access.hasApprovedApplication.value && to.path === '/dashboard/apply') {
+    if (hasApplicationAccess && to.path === '/dashboard/apply') {
       return redirect('/dashboard')
     }
   }

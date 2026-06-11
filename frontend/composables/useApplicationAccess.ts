@@ -4,6 +4,10 @@ import type { ApplicationItem } from '~/composables/useDashboard'
 const applicationsCacheTTL = 60 * 1000
 const approvedApplicationStatus = 'approved'
 
+export const hasApprovedApplicationAccess = (applications: readonly ApplicationItem[], isAdmin = false) => {
+  return isAdmin || applications.some((app) => app.status === approvedApplicationStatus)
+}
+
 type EnsureApplicationsOptions = {
   staleWhileRevalidate?: boolean
 }
@@ -34,7 +38,7 @@ export const useApplicationAccess = () => {
     return true
   }
 
-  const hasApprovedApplication = computed(() => applications.value.some((app) => app.status === approvedApplicationStatus))
+  const hasApplicationGateAccess = (isAdmin = false) => hasApprovedApplicationAccess(applications.value, isAdmin)
 
   const isFresh = () => loaded.value && Date.now() - fetchedAt.value < applicationsCacheTTL
 
@@ -134,5 +138,5 @@ export const useApplicationAccess = () => {
     userId.value = null
   }
 
-  return { applications, loaded, checked, loading, hasApprovedApplication, ensureApplications, refreshApplications, upsertApplication, invalidateApplications, resetApplications }
+  return { applications, loaded, checked, loading, hasApplicationGateAccess, ensureApplications, refreshApplications, upsertApplication, invalidateApplications, resetApplications }
 }

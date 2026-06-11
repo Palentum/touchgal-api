@@ -32,7 +32,7 @@ const sections = [
   { title: '快速开始', body: '1. 注册/登录开发者账号。\n2. 提交一次账号级 API 申请。\n3. 管理员 approved 后，该账户可创建有限数量的 active token。\n4. 使用 Authorization: Bearer <token> 调用 /v1。' },
   { title: '鉴权', body: 'Header 支持 Authorization: Bearer <api_token> 或 X-API-Token。登录 session 使用 HttpOnly Cookie，不存入 localStorage。' },
   { title: '限流', body: '每个 token 有独立 minute_limit 与 daily_limit；Redis 同时按 token、user、application 维度独立计数，账号级/应用级上限不会被多 token 放大。响应头包含 X-RateLimit-Limit-Minute、X-RateLimit-Remaining-Minute、X-RateLimit-Limit-Day、X-RateLimit-Remaining-Day。' },
-  { title: '错误码', body: 'BAD_REQUEST / UNAUTHORIZED / FORBIDDEN / CONFLICT / TOKEN_LIMIT_EXCEEDED / NOT_FOUND / RATE_LIMITED / INTERNAL_ERROR', code: '{\n  "success": false,\n  "error": {\n    "code": "UNAUTHORIZED",\n    "message": "Missing or invalid API token"\n  }\n}' },
+  { title: '错误码', body: 'BAD_REQUEST / UNAUTHORIZED / FORBIDDEN / CONFLICT / TOKEN_LIMIT_EXCEEDED / NOT_FOUND / RATE_LIMITED / CODE_COOLDOWN / INVALID_CODE / EXPIRED_CODE / INTERNAL_ERROR', code: '{\n  "success": false,\n  "error": {\n    "code": "UNAUTHORIZED",\n    "message": "Missing or invalid API token"\n  }\n}' },
   { title: 'GET /v1/health', body: '无需 token。返回服务状态和版本。' },
   { title: 'GET /v1/games/search', body: '参数 keyword 或 q 必填，至少 3 个字符；page 默认 1、最大 100，limit 默认 20、最大 50。默认仅返回 content_limit=sfw 且 deleted_at is null 的条目。', code: 'curl "https://api.example.com/v1/games/search?keyword=summer&page=1&limit=10" \\\n  -H "Authorization: Bearer tgal_live_xxx"' },
   { title: 'GET /v1/games/{uniqueId}', body: '返回条目详情、别名、标签、会社和评分聚合。不返回 source_patch_id、主站 user_id、评论或资源下载链接。', code: 'curl "https://api.example.com/v1/games/abcd1234" \\\n  -H "Authorization: Bearer tgal_live_xxx"' },
