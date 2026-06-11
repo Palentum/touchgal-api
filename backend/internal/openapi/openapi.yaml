@@ -81,7 +81,6 @@ components:
         expectedDailyRequests: { type: integer }
         usageScenario: { type: string }
         status: { type: string, enum: [pending, approved, rejected, revoked] }
-        reviewNote: { type: string }
         createdAt: { type: string, format: date-time }
         reviewedAt: { type: string, format: date-time }
     Token:

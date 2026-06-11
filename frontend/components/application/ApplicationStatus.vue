@@ -12,7 +12,6 @@
           </div>
           <span class="tg-badge" :class="badge(app.status)">{{ statusText(app.status) }}</span>
         </div>
-        <p v-if="app.reviewNote && app.reviewNote !== 'Reviewed'" class="tg-muted mt-4">{{ app.reviewNote }}</p>
       </div>
 
       <p v-if="applications.length === 0" class="tg-empty">暂无账号申请。</p>

@@ -12,7 +12,6 @@
           </div>
           <span class="tg-badge" :class="badge(shownApplication.status)">{{ statusText(shownApplication.status) }}</span>
         </div>
-        <p v-if="shownApplication.reviewNote && shownApplication.reviewNote !== 'Reviewed'" class="tg-muted mt-4">{{ shownApplication.reviewNote }}</p>
       </div>
 
       <div v-if="shownApplication.status === 'approved' || shownApplication.status === 'rejected'" class="tg-actions mt-6">

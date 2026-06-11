@@ -24,7 +24,6 @@ type Application struct {
 	Status                string     `json:"status"`
 	DefaultMinuteLimit    int        `json:"defaultMinuteLimit"`
 	DefaultDailyLimit     int        `json:"defaultDailyLimit"`
-	ReviewNote            string     `json:"reviewNote"`
 	ReviewedBy            *uuid.UUID `json:"reviewedBy,omitempty"`
 	ReviewedAt            *time.Time `json:"reviewedAt,omitempty"`
 	CreatedAt             time.Time  `json:"createdAt"`

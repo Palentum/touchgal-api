@@ -27,7 +27,7 @@ func (f *fakeApplicationStore) ListByUser(ctx context.Context, userID uuid.UUID)
 func (f *fakeApplicationStore) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error) {
 	return nil, nil
 }
-func (f *fakeApplicationStore) UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status, note string, minuteLimit, dailyLimit int) (*model.Application, error) {
+func (f *fakeApplicationStore) UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status string, minuteLimit, dailyLimit int) (*model.Application, error) {
 	return nil, nil
 }
 

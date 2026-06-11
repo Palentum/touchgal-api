@@ -14,7 +14,7 @@ type Store interface {
 	Create(ctx context.Context, userID uuid.UUID, input model.CreateApplicationInput, minuteLimit, dailyLimit int) (*model.Application, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Application, error)
 	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error)
-	UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status, note string, minuteLimit, dailyLimit int) (*model.Application, error)
+	UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status string, minuteLimit, dailyLimit int) (*model.Application, error)
 }
 
 type Service struct {
@@ -67,7 +67,7 @@ func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int)
 	return s.store.ListAdmin(ctx, status, page, limit)
 }
 
-func (s *Service) Review(ctx context.Context, id, adminID uuid.UUID, status, note string, minuteLimit, dailyLimit int) (*model.Application, error) {
+func (s *Service) Review(ctx context.Context, id, adminID uuid.UUID, status string, minuteLimit, dailyLimit int) (*model.Application, error) {
 	if status != model.ApplicationApproved && status != model.ApplicationRejected && status != model.ApplicationRevoked {
 		return nil, model.ErrInvalidInput
 	}
@@ -80,7 +80,7 @@ func (s *Service) Review(ctx context.Context, id, adminID uuid.UUID, status, not
 	if dailyLimit < minuteLimit {
 		return nil, model.ErrInvalidInput
 	}
-	return s.store.UpdateReview(ctx, id, adminID, status, strings.TrimSpace(note), minuteLimit, dailyLimit)
+	return s.store.UpdateReview(ctx, id, adminID, status, minuteLimit, dailyLimit)
 }
 
 func normalizePage(page, limit, maxLimit int) (int, int) {

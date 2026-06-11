@@ -6,7 +6,6 @@ export interface ApplicationItem {
   expectedDailyRequests: number
   usageScenario: string
   status: string
-  reviewNote: string
   createdAt: string
   reviewedAt?: string
   defaultMinuteLimit?: number

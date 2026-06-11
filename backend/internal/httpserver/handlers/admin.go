@@ -133,15 +133,14 @@ func (h *AdminHandler) reviewApplication(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var req struct {
-		MinuteLimit int    `json:"minuteLimit"`
-		DailyLimit  int    `json:"dailyLimit"`
-		ReviewNote  string `json:"reviewNote"`
+		MinuteLimit int `json:"minuteLimit"`
+		DailyLimit  int `json:"dailyLimit"`
 	}
 	if err := DecodeJSON(w, r, &req, applicationJSONBodyLimit); err != nil {
 		respondDecodeJSONError(w, err)
 		return
 	}
-	app, err := h.applications.Review(r.Context(), id, admin.ID, status, req.ReviewNote, req.MinuteLimit, req.DailyLimit)
+	app, err := h.applications.Review(r.Context(), id, admin.ID, status, req.MinuteLimit, req.DailyLimit)
 	if err != nil {
 		Error(w, err)
 		return
