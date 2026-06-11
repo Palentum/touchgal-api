@@ -9,7 +9,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const syncRunAdvisoryLockKey int64 = 0x5447414c53594e43 // "TGALSYNC"
+const (
+	syncRunAdvisoryLockKey  int64 = 0x5447414c53594e43 // "TGALSYNC"
+	syncRunLockCloseTimeout       = 5 * time.Second
+)
 
 type SyncRunLock struct {
 	conn    *pgxpool.Conn
@@ -56,17 +59,42 @@ func (l *SyncRunLock) Release(ctx context.Context) error {
 	}
 	conn := l.conn
 	l.conn = nil
-	defer conn.Release()
-	unlockCtx, cancel := timeoutContext(ctx, l.timeout)
+	return releaseSyncRunLockConn(ctx, conn, l.timeout)
+}
+
+type syncRunLockReleaser interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Release()
+	Hijack() *pgx.Conn
+}
+
+func releaseSyncRunLockConn(ctx context.Context, conn syncRunLockReleaser, timeout time.Duration) error {
+	if conn == nil {
+		return nil
+	}
+	unlockCtx, cancel := timeoutContext(ctx, timeout)
 	defer cancel()
 	var unlocked bool
 	if err := conn.QueryRow(unlockCtx, `SELECT pg_advisory_unlock($1)`, syncRunAdvisoryLockKey).Scan(&unlocked); err != nil {
+		destroySyncRunLockConn(conn)
 		return err
 	}
 	if !unlocked {
+		destroySyncRunLockConn(conn)
 		return errors.New("sync advisory lock was not held")
 	}
+	conn.Release()
 	return nil
+}
+
+func destroySyncRunLockConn(conn syncRunLockReleaser) {
+	hijacked := conn.Hijack()
+	if hijacked == nil {
+		return
+	}
+	closeCtx, cancel := context.WithTimeout(context.Background(), syncRunLockCloseTimeout)
+	defer cancel()
+	_ = hijacked.Close(closeCtx)
 }
 
 func timeoutContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

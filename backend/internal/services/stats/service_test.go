@@ -136,3 +136,30 @@ func TestDashboardCacheDoesNotGrowPastMaxEntries(t *testing.T) {
 		t.Fatal("cache must keep accepting new entries after reaching capacity")
 	}
 }
+
+func TestDashboardCacheEntryRefreshDoesNotEvictExistingKey(t *testing.T) {
+	target := newDashboardCacheKey(uuid.New(), 30, nil)
+	sentinel := newDashboardCacheKey(uuid.New(), 30, nil)
+	cache := make(map[dashboardCacheKey]dashboardCacheEntry, dashboardCacheMaxEntries)
+	entry := dashboardCacheEntry{expiresAt: time.Now().Add(time.Minute)}
+	cache[target] = entry
+	cache[sentinel] = entry
+	for len(cache) < dashboardCacheMaxEntries {
+		cache[newDashboardCacheKey(uuid.New(), 30, nil)] = entry
+	}
+
+	cacheDashboardEntryLocked(cache, target, dashboardCacheEntry{
+		data:      model.StatsDashboard{Summary: model.StatsSummary{TotalRequests: 99}},
+		expiresAt: entry.expiresAt,
+	})
+
+	if len(cache) != dashboardCacheMaxEntries {
+		t.Fatalf("expected cache size to remain capped, got %d", len(cache))
+	}
+	if _, ok := cache[sentinel]; !ok {
+		t.Fatal("refreshing an existing key must not evict another entry")
+	}
+	if cache[target].data.Summary.TotalRequests != 99 {
+		t.Fatalf("expected target entry to be refreshed, got %#v", cache[target].data)
+	}
+}
