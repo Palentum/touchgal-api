@@ -53,6 +53,7 @@ cp backend/.env.example backend/.env
 - `MAIL_SEND_TIMEOUT_SECONDS`：SMTP/Postal 单次发信超时，默认 10 秒，避免邮件服务卡顿长期阻塞发码请求。
 - `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
+- `TURNSTILE_SECRET_KEY`：Cloudflare Turnstile secret key；生产 `APP_ENV=production` 必须配置，开发留空时后端跳过人机验证。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
 - `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_TOKEN_AUTH_CACHE_MAX_ENTRIES` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、token auth 短缓存及容量上限、`last_used_at` 写入节流与单账号 active token 数量上限。
 - `API_REQUEST_LOG_QUEUE_SIZE` / `API_REQUEST_LOG_BATCH_SIZE` / `API_REQUEST_LOG_FLUSH_INTERVAL` / `API_REQUEST_LOG_RETENTION_DAYS`：`/v1` request log 有界队列、批量写入间隔与 raw log 保留天数；dashboard 统计读取聚合表。
@@ -64,6 +65,10 @@ cp backend/.env.example backend/.env
 ```bash
 cp frontend/.env.example frontend/.env
 ```
+前端关键变量：
+
+- `NUXT_PUBLIC_TURNSTILE_SITE_KEY`：Cloudflare Turnstile site key；生产必须配置，开发留空时前端不渲染验证组件。
+
 
 ## 本地启动
 
@@ -133,7 +138,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 
 ## 邮箱驱动配置
 
-通过 `MAIL_DRIVER` 选择邮箱验证码驱动：`smtp` 使用 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`；`postal` 使用 `POSTAL_API_URL`、`POSTAL_API_KEY`，并复用 `SMTP_FROM`、`SMTP_FROM_NAME` 作为发件人。SMTP 与 Postal 单次发信都受 `MAIL_SEND_TIMEOUT_SECONDS` 限制。`POSTAL_API_URL` 必须使用 `https://`，可填 Postal 根地址或完整 `/api/v1/send/message` 地址。`log` 会将验证码写入结构化日志。开发环境未配置 SMTP 时，后端仍会回退到日志驱动；生产应选择并配置真实邮件驱动。
+通过 `MAIL_DRIVER` 选择邮箱验证码驱动：`smtp` 使用 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`；`postal` 使用 `POSTAL_API_URL`、`POSTAL_API_KEY`，并复用 `SMTP_FROM`、`SMTP_FROM_NAME` 作为发件人。SMTP 与 Postal 单次发信都受 `MAIL_SEND_TIMEOUT_SECONDS` 限制。`POSTAL_API_URL` 必须使用 `https://`，可填 Postal 根地址或完整 `/api/v1/send/message` 地址。`log` 会将验证码写入结构化日志。生产发码接口会在发送验证码前校验 Turnstile。开发环境未配置 SMTP 时，后端仍会回退到日志驱动；生产应选择并配置真实邮件驱动。
 
 ## API token 申请流程
 
@@ -190,7 +195,7 @@ curl "https://api.example.com/v1/me" \
 
 - 登录 session 只通过 HttpOnly Cookie 保存，前端不写 localStorage。
 - API token 明文只显示一次，日志不得记录明文 token。
-- 邮箱验证码只存 hash，并有 TTL、冷却和最大尝试次数。
+- 邮箱验证码发送前校验 Turnstile，Turnstile token 不落库、不写日志；验证码只存 hash，并有 TTL、冷却和最大尝试次数。
 - 管理接口必须 `users.is_admin=true`。
 - 公开 API 默认只返回 SFW 条目。
 - 响应错误不暴露数据库结构。

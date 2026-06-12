@@ -13,6 +13,7 @@ import (
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
 	"github.com/touchgal/developer/backend/internal/services/email"
+	"github.com/touchgal/developer/backend/internal/services/turnstile"
 )
 
 type UserStore interface {
@@ -34,12 +35,13 @@ type CodeSessionStore interface {
 }
 
 type Service struct {
-	cfg     config.Config
-	users   UserStore
-	codes   CodeSessionStore
-	redis   *redis.Client
-	mailer  email.Mailer
-	nowFunc func() time.Time
+	cfg           config.Config
+	users         UserStore
+	codes         CodeSessionStore
+	redis         *redis.Client
+	mailer        email.Mailer
+	humanVerifier turnstile.Verifier
+	nowFunc       func() time.Time
 }
 
 type VerifyResult struct {
@@ -55,7 +57,15 @@ type cachedSessionUser struct {
 }
 
 func NewService(cfg config.Config, users UserStore, codes CodeSessionStore, redisClient *redis.Client, mailer email.Mailer) *Service {
-	return &Service{cfg: cfg, users: users, codes: codes, redis: redisClient, mailer: mailer, nowFunc: time.Now}
+	return &Service{
+		cfg:           cfg,
+		users:         users,
+		codes:         codes,
+		redis:         redisClient,
+		mailer:        mailer,
+		humanVerifier: turnstile.New(cfg.TurnstileSecretKey),
+		nowFunc:       time.Now,
+	}
 }
 
 func NormalizeEmail(raw string) (string, error) {
@@ -70,7 +80,14 @@ func NormalizeEmail(raw string) (string, error) {
 	return email, nil
 }
 
-func (s *Service) RequestRegisterCode(ctx context.Context, rawEmail, displayName, ip string) error {
+func (s *Service) verifyHuman(ctx context.Context, token, ip string) error {
+	if s.humanVerifier == nil {
+		return nil
+	}
+	return s.humanVerifier.Verify(ctx, token, ip)
+}
+
+func (s *Service) RequestRegisterCode(ctx context.Context, rawEmail, displayName, ip, turnstileToken string) error {
 	emailAddr, err := NormalizeEmail(rawEmail)
 	if err != nil {
 		return err
@@ -78,6 +95,9 @@ func (s *Service) RequestRegisterCode(ctx context.Context, rawEmail, displayName
 	displayName = strings.TrimSpace(displayName)
 	if displayName == "" || len(displayName) > 80 {
 		return model.ErrInvalidInput
+	}
+	if err := s.verifyHuman(ctx, turnstileToken, ip); err != nil {
+		return err
 	}
 	if _, err := s.users.GetByEmail(ctx, emailAddr); err == nil {
 		return model.ErrConflict
@@ -93,9 +113,12 @@ func (s *Service) RequestRegisterCode(ctx context.Context, rawEmail, displayName
 	return s.issueCode(ctx, "register", emailAddr, ip)
 }
 
-func (s *Service) RequestLoginCode(ctx context.Context, rawEmail, ip string) error {
+func (s *Service) RequestLoginCode(ctx context.Context, rawEmail, ip, turnstileToken string) error {
 	emailAddr, err := NormalizeEmail(rawEmail)
 	if err != nil {
+		return err
+	}
+	if err := s.verifyHuman(ctx, turnstileToken, ip); err != nil {
 		return err
 	}
 	if _, err := s.users.GetByEmail(ctx, emailAddr); err != nil {

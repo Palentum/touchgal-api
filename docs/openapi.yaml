@@ -29,7 +29,7 @@ components:
         error:
           type: object
           properties:
-            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, CODE_COOLDOWN, INVALID_CODE, EXPIRED_CODE, NOT_READY, INTERNAL_ERROR] }
+            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, CODE_COOLDOWN, INVALID_CODE, EXPIRED_CODE, TURNSTILE_FAILED, TURNSTILE_UNAVAILABLE, NOT_READY, INTERNAL_ERROR] }
             message: { type: string }
     HealthResponse:
       type: object
@@ -258,13 +258,19 @@ paths:
       summary: Start email-code registration
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [email, displayName], properties: { email: { type: string, format: email }, displayName: { type: string } } } } }
+        content: { application/json: { schema: { type: object, required: [email, displayName, turnstileToken], properties: { email: { type: string, format: email }, displayName: { type: string }, turnstileToken: { type: string, minLength: 1, maxLength: 2048, description: Cloudflare Turnstile response token } } } } }
       responses:
         '200':
           description: Code sent
           content: { application/json: { schema: { $ref: '#/components/schemas/CodeStartResponse' } } }
         '429':
           description: Code resend cooldown
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '400':
+          description: Turnstile failed
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '503':
+          description: Turnstile unavailable
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/register/verify:
     post:
@@ -284,7 +290,7 @@ paths:
       summary: Start email-code login
       requestBody:
         required: true
-        content: { application/json: { schema: { type: object, required: [email], properties: { email: { type: string, format: email } } } } }
+        content: { application/json: { schema: { type: object, required: [email, turnstileToken], properties: { email: { type: string, format: email }, turnstileToken: { type: string, minLength: 1, maxLength: 2048, description: Cloudflare Turnstile response token } } } } }
       responses:
         '200':
           description: Code sent
@@ -292,6 +298,12 @@ paths:
         '404': { description: User not found }
         '429':
           description: Code resend cooldown
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '400':
+          description: Turnstile failed
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '503':
+          description: Turnstile unavailable
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/login/verify:
     post:

@@ -946,3 +946,15 @@ select:disabled {
     padding-block: 28px 56px;
   }
 }
+.tg-turnstile {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--tg-hairline);
+  border-radius: 10px;
+  background: rgba(204, 120, 92, 0.06);
+}
+
+.tg-turnstile-widget {
+  min-height: 65px;
+}

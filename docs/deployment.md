@@ -1,6 +1,6 @@
 # Deployment
 
-1. 创建 `backend/.env` 与 `frontend/.env`。
+1. 创建 `backend/.env` 与 `frontend/.env`；生产必须在后端配置 `TURNSTILE_SECRET_KEY`，并在前端配置 `NUXT_PUBLIC_TURNSTILE_SITE_KEY`。
 2. 确认主机 PostgreSQL、Redis 已启动，并在 `backend/.env` 配置 `DATABASE_DSN`、`REDIS_ADDR`。
    按实际 QPS 调整 `DB_*`、`SYNC_DB_*`、`SOURCE_DB_*` 连接池与 timeout，保持 sync 使用独立 target/source pool；同时调整 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_DIAL_TIMEOUT`、`REDIS_READ_TIMEOUT`、`REDIS_WRITE_TIMEOUT`、`REDIS_POOL_TIMEOUT`，避免高并发 `/v1` 请求在 Redis pool wait 或慢 Redis I/O 上堆积；同时调整 `HTTP_READ_HEADER_TIMEOUT`、`HTTP_READ_TIMEOUT`、`HTTP_WRITE_TIMEOUT`、`HTTP_IDLE_TIMEOUT`、`HTTP_MAX_HEADER_BYTES` 与 nginx `client_max_body_size`/body timeout，避免慢客户端或超大请求体占用连接、goroutine、内存；`HTTP_WRITE_TIMEOUT` 必须大于正数 `DB_QUERY_TIMEOUT` 加 `HTTP_READ_TIMEOUT`，让后端仍能返回数据库超时错误；并调整 `API_REQUEST_LOG_QUEUE_SIZE`、`API_REQUEST_LOG_BATCH_SIZE`、`API_REQUEST_LOG_FLUSH_INTERVAL`、`API_REQUEST_LOG_RETENTION_DAYS`，避免 raw request log 无界增长。
    可选诊断端点通过 `ENABLE_PPROF`、`ENABLE_METRICS` 与 `OBSERVABILITY_ADDR` 控制，默认关闭。启用时只允许绑定 localhost、loopback 或 private 管理地址，并通过 SSH tunnel、kubectl port-forward 或内网管理面访问 `/debug/pprof/*`、`/debug/pprof/trace`、`/debug/vars`；不要经公网 Ingress 暴露。

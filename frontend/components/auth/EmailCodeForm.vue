@@ -38,22 +38,33 @@
       </label>
 
       <div class="tg-actions">
-        <button class="tg-btn tg-btn-secondary tg-code-resend-btn" type="button" :disabled="loading || resendRemaining > 0" @click="sendCode">
+        <button class="tg-btn tg-btn-secondary tg-code-resend-btn" type="button" :disabled="resendDisabled" @click="sendCode">
           {{ resendButtonText }}
         </button>
         <button class="tg-link tg-link-button" type="button" :disabled="loading" @click="editEmail">修改邮箱</button>
       </div>
     </div>
 
+    <AuthTurnstileWidget
+      v-if="showTurnstile"
+      v-model="turnstileToken"
+      :site-key="turnstileSiteKey"
+      :reset-key="turnstileResetKey"
+      @error="handleTurnstileError"
+    />
+    <p v-if="turnstileMessage" class="tg-field-note" aria-live="polite">{{ turnstileMessage }}</p>
+
     <p v-if="message && !cooldownOnly" :class="error ? 'tg-message-error' : 'tg-message-ok'" aria-live="polite">{{ message }}</p>
 
-    <button v-if="!cooldownOnly" class="tg-btn tg-btn-primary" type="submit" :disabled="loading">
+    <button v-if="!cooldownOnly" class="tg-btn tg-btn-primary" type="submit" :disabled="primaryDisabled">
       {{ loading ? '处理中...' : step === 'email' ? '发送验证码' : '完成验证' }}
     </button>
   </form>
 </template>
 
 <script setup lang="ts">
+import AuthTurnstileWidget from '~/components/auth/TurnstileWidget.vue'
+
 type CodeStartData = {
   sent: boolean
   expiresInSeconds?: number
@@ -62,6 +73,8 @@ type CodeStartData = {
 
 const props = defineProps<{ mode: 'login' | 'register' }>()
 const emit = defineEmits<{ verified: [] }>()
+const runtimeConfig = useRuntimeConfig()
+const turnstileSiteKey = String(runtimeConfig.public.turnstileSiteKey || '')
 const { apiFetch } = useApi()
 const auth = useAuthStore()
 const email = ref('')
@@ -75,6 +88,9 @@ const cooldownOnly = ref(false)
 const now = ref(Date.now())
 const codeExpiresAt = ref<number | null>(null)
 const resendAvailableAt = ref<number | null>(null)
+const turnstileToken = ref('')
+const turnstileResetKey = ref(0)
+const turnstileMessage = ref('')
 
 const fallbackCodeTTLSeconds = 10 * 60
 const fallbackResendCooldownSeconds = 60
@@ -90,6 +106,10 @@ const secondsUntil = (timestamp: number | null) => {
 
 const codeRemaining = computed(() => secondsUntil(codeExpiresAt.value))
 const resendRemaining = computed(() => secondsUntil(resendAvailableAt.value))
+const turnstileEnabled = computed(() => turnstileSiteKey.length > 0)
+const showTurnstile = computed(() => turnstileEnabled.value && !cooldownOnly.value && (step.value === 'email' || resendRemaining.value === 0))
+const primaryDisabled = computed(() => loading.value || (step.value === 'email' && turnstileEnabled.value && !turnstileToken.value))
+const resendDisabled = computed(() => loading.value || resendRemaining.value > 0 || (turnstileEnabled.value && !turnstileToken.value))
 
 const codeTimingText = computed(() => {
   if (codeExpiresAt.value && codeRemaining.value <= 0) {
@@ -153,6 +173,16 @@ const applyCooldownOnly = () => {
   startTimer()
 }
 
+const resetTurnstile = () => {
+  turnstileToken.value = ''
+  turnstileMessage.value = ''
+  turnstileResetKey.value += 1
+}
+
+const handleTurnstileError = (message: string) => {
+  turnstileMessage.value = message
+}
+
 const formatDuration = (totalSeconds: number) => {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
@@ -163,23 +193,44 @@ const formatDuration = (totalSeconds: number) => {
 }
 
 const sendCode = async () => {
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    error.value = true
+    message.value = '请先完成人机验证。'
+    return
+  }
+
   loading.value = true
   message.value = ''
   error.value = false
   try {
     const path = props.mode === 'register' ? '/auth/register/start' : '/auth/login/start'
-    const body = props.mode === 'register' ? { email: email.value, displayName: displayName.value } : { email: email.value }
+    const body = props.mode === 'register'
+      ? { email: email.value, displayName: displayName.value, turnstileToken: turnstileToken.value }
+      : { email: email.value, turnstileToken: turnstileToken.value }
     const response = await apiFetch<CodeStartData>(path, { method: 'POST', body })
     code.value = ''
     step.value = 'code'
     cooldownOnly.value = false
     applyCodeTiming(response.success ? response.data : undefined)
   } catch (err) {
-    if (apiErrorCode(err) === 'ACCOUNT_DISABLED') {
+    const code = apiErrorCode(err)
+    if (code === 'TURNSTILE_FAILED') {
+      cooldownOnly.value = false
+      error.value = true
+      message.value = '人机验证失败，请重新完成验证。'
+      return
+    }
+    if (code === 'TURNSTILE_UNAVAILABLE') {
+      cooldownOnly.value = false
+      error.value = true
+      message.value = '人机验证服务暂时不可用，请稍后重试。'
+      return
+    }
+    if (code === 'ACCOUNT_DISABLED') {
       await redirectAccountDisabled()
       return
     }
-    if (apiErrorCode(err) === 'CODE_COOLDOWN' || apiErrorCode(err) === 'RATE_LIMITED') {
+    if (code === 'CODE_COOLDOWN' || code === 'RATE_LIMITED') {
       step.value = 'code'
       applyCooldownOnly()
       cooldownOnly.value = true
@@ -191,6 +242,9 @@ const sendCode = async () => {
     error.value = true
     message.value = apiErrorMessage(err) || '发送失败，请检查邮箱或稍后重试。'
   } finally {
+    if (turnstileEnabled.value) {
+      resetTurnstile()
+    }
     loading.value = false
   }
 }
@@ -237,6 +291,7 @@ const editEmail = () => {
   error.value = false
   codeExpiresAt.value = null
   resendAvailableAt.value = null
+  resetTurnstile()
   stopTimer()
 }
 

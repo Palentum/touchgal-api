@@ -33,7 +33,7 @@ func TestRequestLoginCodeAllowsDisabledUser(t *testing.T) {
 		nowFunc: time.Now,
 	}
 
-	if err := svc.RequestLoginCode(context.Background(), "dev@example.com", "127.0.0.1"); err != nil {
+	if err := svc.RequestLoginCode(context.Background(), "dev@example.com", "127.0.0.1", "test-turnstile-token"); err != nil {
 		t.Fatalf("expected disabled user to receive login code, got %v", err)
 	}
 	if codes.insertedPurpose != "login" || codes.insertedEmail != "dev@example.com" {
@@ -63,7 +63,7 @@ func TestRequestLoginCodeDoesNotCacheUnusedCodeHash(t *testing.T) {
 		nowFunc: time.Now,
 	}
 
-	if err := svc.RequestLoginCode(context.Background(), "dev@example.com", "127.0.0.1"); err != nil {
+	if err := svc.RequestLoginCode(context.Background(), "dev@example.com", "127.0.0.1", "test-turnstile-token"); err != nil {
 		t.Fatalf("request login code: %v", err)
 	}
 	for _, key := range server.Keys() {

@@ -19,11 +19,13 @@ func NewAuthHandler(cfg config.Config, svc *auth.Service) *AuthHandler {
 }
 
 type registerStartRequest struct {
-	Email       string `json:"email"`
-	DisplayName string `json:"displayName"`
+	Email          string `json:"email"`
+	DisplayName    string `json:"displayName"`
+	TurnstileToken string `json:"turnstileToken"`
 }
 type emailRequest struct {
-	Email string `json:"email"`
+	Email          string `json:"email"`
+	TurnstileToken string `json:"turnstileToken"`
 }
 type verifyRequest struct {
 	Email string `json:"email"`
@@ -41,7 +43,7 @@ func (h *AuthHandler) RegisterStart(w http.ResponseWriter, r *http.Request) {
 		respondDecodeJSONError(w, err)
 		return
 	}
-	if err := h.svc.RequestRegisterCode(r.Context(), req.Email, req.DisplayName, middleware.ClientIP(r)); err != nil {
+	if err := h.svc.RequestRegisterCode(r.Context(), req.Email, req.DisplayName, middleware.ClientIP(r), req.TurnstileToken); err != nil {
 		Error(w, err)
 		return
 	}
@@ -69,7 +71,7 @@ func (h *AuthHandler) LoginStart(w http.ResponseWriter, r *http.Request) {
 		respondDecodeJSONError(w, err)
 		return
 	}
-	if err := h.svc.RequestLoginCode(r.Context(), req.Email, middleware.ClientIP(r)); err != nil {
+	if err := h.svc.RequestLoginCode(r.Context(), req.Email, middleware.ClientIP(r), req.TurnstileToken); err != nil {
 		Error(w, err)
 		return
 	}

@@ -85,6 +85,10 @@ func classify(err error) (int, string, string) {
 	switch {
 	case errors.Is(err, model.ErrInvalidInput):
 		return http.StatusBadRequest, "BAD_REQUEST", "Invalid request parameters"
+	case errors.Is(err, model.ErrTurnstileFailed):
+		return http.StatusBadRequest, "TURNSTILE_FAILED", "Human verification failed"
+	case errors.Is(err, model.ErrTurnstileUnavailable):
+		return http.StatusServiceUnavailable, "TURNSTILE_UNAVAILABLE", "Human verification is temporarily unavailable"
 	case errors.Is(err, model.ErrUnauthorized):
 		return http.StatusUnauthorized, "UNAUTHORIZED", "Missing or invalid credentials"
 	case errors.Is(err, model.ErrAccountDisabled):

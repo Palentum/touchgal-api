@@ -160,6 +160,7 @@ API schema 或路由变更时，必须同时更新：
 - [ ] 是否仍只暴露 clean DB 中的公开元数据。
 - [ ] 是否没有把主站内部 id 或敏感主站表字段加入公开响应。
 - [ ] 是否没有记录 plaintext API token、OTP、session token、DSN、pepper。
+- [ ] 发码 start endpoints 是否未绕过 Turnstile 校验，且未记录 Turnstile token。
 - [ ] 是否保持 Cookie 登录而非前端存储 session。
 - [ ] 是否保持 token hash + pepper 校验。
 - [ ] 是否保持管理员路由 `RequireUser` + `RequireAdmin`。

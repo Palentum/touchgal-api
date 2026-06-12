@@ -236,6 +236,33 @@ func TestValidateMailSendTimeoutPositive(t *testing.T) {
 	}
 }
 
+func TestLoadTurnstileSecret(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("TURNSTILE_SECRET_KEY", "secret")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected config to load: %v", err)
+	}
+	if cfg.TurnstileSecretKey != "secret" {
+		t.Fatalf("TurnstileSecretKey = %q, want secret", cfg.TurnstileSecretKey)
+	}
+}
+
+func TestValidateProductionRequiresTurnstileSecret(t *testing.T) {
+	cfg := validConfig()
+	cfg.AppEnv = "production"
+	cfg.TurnstileSecretKey = ""
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected production Turnstile secret error")
+	}
+
+	cfg.TurnstileSecretKey = "secret"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected production config with Turnstile secret to validate: %v", err)
+	}
+}
+
 func TestValidateRejectsUnknownLogLevel(t *testing.T) {
 	cfg := validConfig()
 	cfg.LogLevel = "verbose"

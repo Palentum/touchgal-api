@@ -90,6 +90,7 @@ type Config struct {
 	EmailCodeTTLMinutes           int
 	EmailCodeResendCooldownSecs   int
 	EmailCodeMaxAttempts          int
+	TurnstileSecretKey            string
 	APITokenPepper                string
 	APITokenPrefix                string
 	DefaultTokenMinuteLimit       int
@@ -222,6 +223,7 @@ func Load() (Config, error) {
 		EmailCodeTTLMinutes:           envInt("EMAIL_CODE_TTL_MINUTES", 10),
 		EmailCodeResendCooldownSecs:   envInt("EMAIL_CODE_RESEND_COOLDOWN_SECONDS", 60),
 		EmailCodeMaxAttempts:          envInt("EMAIL_CODE_MAX_ATTEMPTS", 5),
+		TurnstileSecretKey:            env("TURNSTILE_SECRET_KEY", ""),
 		APITokenPepper:                env("API_TOKEN_PEPPER", "please-change-this-long-random-secret"),
 		APITokenPrefix:                env("API_TOKEN_PREFIX", "tgal_live"),
 		DefaultTokenMinuteLimit:       envInt("DEFAULT_TOKEN_MINUTE_LIMIT", 60),
@@ -384,6 +386,9 @@ func (c Config) Validate() error {
 	}
 	if c.APITokenPepper == "" {
 		return errors.New("API_TOKEN_PEPPER is required")
+	}
+	if c.IsProduction() && strings.TrimSpace(c.TurnstileSecretKey) == "" {
+		return errors.New("TURNSTILE_SECRET_KEY is required when APP_ENV=production")
 	}
 	if _, err := logging.ParseLevel(c.LogLevel); err != nil {
 		return err
