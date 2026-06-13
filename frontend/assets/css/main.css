@@ -773,7 +773,7 @@ select:disabled {
   font-weight: 500;
 }
 
-.tg-sidebar-link.router-link-active,
+.tg-sidebar-link.router-link-exact-active,
 .tg-sidebar-link:hover {
   background: var(--tg-surface-dark-elevated);
   color: var(--tg-on-dark);

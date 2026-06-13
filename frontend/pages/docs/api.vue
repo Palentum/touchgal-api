@@ -1,44 +1,206 @@
 <template>
-  <article class="tg-doc-article">
+  <NuxtPage v-if="!isApiRoot" />
+  <section v-else class="tg-dashboard-stack">
     <header class="tg-card-coral">
       <p class="tg-eyebrow" style="color: var(--tg-on-primary);">TouchGal API Docs</p>
       <h1 class="tg-display-lg">TouchGal API 文档</h1>
-      <p style="margin-top: 20px; max-width: 680px; line-height: 1.7;">
-        稳定、脱敏、可限流的 Galgame 条目 API。业务接口需要 API token，health 除外。
+      <p style="margin-top: 20px; max-width: 760px; line-height: 1.7;">
+        稳定、脱敏、可限流的 Galgame 元数据 API。公开业务接口需要 API token；健康检查与就绪检查无需 token。
       </p>
     </header>
 
-    <section v-for="section in sections" :key="section.title" class="tg-card-outline">
-      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between;">
-        <h2 class="tg-title-lg">{{ section.title }}</h2>
-        <span v-if="section.code" class="tg-badge tg-badge-coral">Example</span>
-      </div>
-      <p class="tg-muted" style="margin-top: 14px; white-space: pre-line; line-height: 1.75;">{{ section.body }}</p>
-
-      <div v-if="section.code" class="tg-code-window" style="margin-top: 18px;">
-        <div class="tg-code-window-bar">
-          <span class="tg-window-dots" aria-hidden="true"><span /><span /><span /></span>
-          <span>{{ section.title }}</span>
+    <section class="tg-card-outline">
+      <h2 class="tg-title-lg">快速开始</h2>
+      <div class="tg-doc-steps">
+        <div v-for="step in quickStartSteps" :key="step.title" class="tg-doc-step">
+          <span>{{ step.index }}</span>
+          <div>
+            <h3 class="tg-title-sm">{{ step.title }}</h3>
+            <p class="tg-muted">{{ step.body }}</p>
+          </div>
         </div>
-        <pre><code>{{ section.code }}</code></pre>
       </div>
     </section>
-  </article>
+
+    <section class="tg-card-dark">
+      <div class="tg-doc-overview-head">
+        <div>
+          <p class="tg-eyebrow">Endpoints</p>
+          <h2 class="tg-title-lg">接口目录</h2>
+        </div>
+        <span class="tg-badge tg-badge-coral">{{ apiEndpointDocs.length }} endpoints</span>
+      </div>
+      <div class="tg-doc-endpoint-grid">
+        <NuxtLink v-for="doc in apiEndpointDocs" :key="doc.slug" :to="`/docs/api/${doc.slug}`" class="tg-doc-endpoint-card">
+          <span class="tg-badge" :class="doc.auth.includes('无需') ? 'tg-badge-success' : 'tg-badge-warning'">{{ doc.method }}</span>
+          <h3 class="tg-title-md">{{ doc.navLabel }}</h3>
+          <p>{{ doc.path }}</p>
+          <small>{{ doc.introduction }}</small>
+        </NuxtLink>
+      </div>
+    </section>
+
+    <section class="tg-grid-2">
+      <div class="tg-card-outline">
+        <h2 class="tg-title-lg">鉴权</h2>
+        <p class="tg-muted tg-doc-text">
+          `/v1/games/*` 与 `/v1/me` 支持 `Authorization: Bearer &lt;api_token&gt;` 或 `X-API-Token`。API token 由开发者门户生成，明文只展示一次；前端页面不要把 token 存入 localStorage 或暴露给不可信浏览器环境。
+        </p>
+      </div>
+      <div class="tg-card-outline">
+        <h2 class="tg-title-lg">限流</h2>
+        <p class="tg-muted tg-doc-text">
+          token 认证接口会按 token、账号、应用三维独立计数。响应头包含 `X-RateLimit-Limit-Minute`、`X-RateLimit-Remaining-Minute`、`X-RateLimit-Limit-Day`、`X-RateLimit-Remaining-Day`。
+        </p>
+      </div>
+    </section>
+
+    <section class="tg-card-outline">
+      <h2 class="tg-title-lg">响应约定</h2>
+      <p class="tg-muted tg-doc-text">所有 JSON 响应都使用统一 envelope。成功响应为 `success: true`；失败响应为 `success: false` 并返回稳定错误码。</p>
+      <div class="tg-grid-2 tg-doc-response-grid">
+        <div class="tg-code-window">
+          <div class="tg-code-window-bar">
+            <span class="tg-window-dots" aria-hidden="true"><span /><span /><span /></span>
+            <span>success</span>
+          </div>
+          <pre><code>{
+  "success": true,
+  "data": {}
+}</code></pre>
+        </div>
+        <div class="tg-code-window">
+          <div class="tg-code-window-bar">
+            <span class="tg-window-dots" aria-hidden="true"><span /><span /><span /></span>
+            <span>error</span>
+          </div>
+          <pre><code>{
+  "success": false,
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Invalid request parameters"
+  }
+}</code></pre>
+        </div>
+      </div>
+    </section>
+  </section>
 </template>
 
 <script setup lang="ts">
+import { apiEndpointDocs } from '~/composables/apiDocs'
+
 definePageMeta({ layout: 'docs' })
-const sections = [
-  { title: '快速开始', body: '1. 注册/登录开发者账号。\n2. 提交一次账号级 API 申请。\n3. 管理员 approved 后，该账户可创建有限数量的 active token。\n4. 使用 Authorization: Bearer <token> 调用 /v1。' },
-  { title: '鉴权', body: 'Header 支持 Authorization: Bearer <api_token> 或 X-API-Token。登录 session 使用 HttpOnly Cookie，不存入 localStorage。' },
-  { title: '限流', body: '每个 token 有独立 minute_limit 与 daily_limit；Redis 同时按 token、user、application 维度独立计数，账号级/应用级上限不会被多 token 放大。响应头包含 X-RateLimit-Limit-Minute、X-RateLimit-Remaining-Minute、X-RateLimit-Limit-Day、X-RateLimit-Remaining-Day。' },
-  { title: '错误码', body: 'BAD_REQUEST / UNAUTHORIZED / FORBIDDEN / CONFLICT / TOKEN_LIMIT_EXCEEDED / NOT_FOUND / RATE_LIMITED / CODE_COOLDOWN / INVALID_CODE / EXPIRED_CODE / INTERNAL_ERROR', code: '{\n  "success": false,\n  "error": {\n    "code": "UNAUTHORIZED",\n    "message": "Missing or invalid API token"\n  }\n}' },
-  { title: 'GET /v1/health', body: '无需 token。返回服务状态和版本。' },
-  { title: 'GET /v1/games/search', body: '参数 keyword 或 q 必填，至少 3 个字符；page 默认 1、最大 100，limit 默认 20、最大 50。默认仅返回 content_limit=sfw 且 deleted_at is null 的条目。', code: 'curl "https://api.example.com/v1/games/search?keyword=summer&page=1&limit=10" \\\n  -H "Authorization: Bearer tgal_live_xxx"' },
-  { title: 'GET /v1/games/{uniqueId}', body: '返回条目详情、别名、标签、会社和评分聚合。不返回 source_patch_id、主站 user_id、评论或资源下载链接。', code: 'curl "https://api.example.com/v1/games/abcd1234" \\\n  -H "Authorization: Bearer tgal_live_xxx"' },
-  { title: 'GET /v1/me', body: 'Token 自检，返回 tokenPrefix、applicationId、applicationStatus、minuteLimit、dailyLimit。', code: 'curl "https://api.example.com/v1/me" \\\n  -H "Authorization: Bearer tgal_live_xxx"' },
-  { title: 'TypeScript fetch 示例', body: '前端或服务端均可使用 fetch。不要把 token 暴露给不可信浏览器环境。', code: "const res = await fetch('https://api.example.com/v1/games/search?keyword=summer', {\n  headers: { Authorization: 'Bearer tgal_live_xxx' }\n})\nconst json = await res.json()" },
-  { title: 'Go net/http 示例', body: '服务端调用示例。', code: 'req, _ := http.NewRequest("GET", "https://api.example.com/v1/games/abcd1234", nil)\nreq.Header.Set("Authorization", "Bearer tgal_live_xxx")\nresp, err := http.DefaultClient.Do(req)' },
-  { title: '字段说明与版本策略', body: 'uniqueId 为公开 8 字符 ID；publishTime=source_created_at；releaseDate=released；updatedAt=source_updated_at；resourceUpdateTime=resource_updated_at。当前版本前缀 /v1，破坏性变化会升级到 /v2。' }
+
+const route = useRoute()
+const isApiRoot = computed(() => route.path.replace(/\/$/, '') === '/docs/api')
+
+useHead(() => (isApiRoot.value ? { title: 'TouchGal API 文档' } : {}))
+
+const quickStartSteps = [
+  { index: '01', title: '注册开发者账号', body: '通过邮箱验证码登录开发者门户；登录态只使用 HttpOnly Cookie。' },
+  { index: '02', title: '提交 API 申请', body: '在开发者门户提交账号级应用申请，等待管理员 approved。' },
+  { index: '03', title: '创建 API token', body: '审批通过后创建 tgal_live token。明文只在创建响应中返回一次。' },
+  { index: '04', title: '调用 /v1 接口', body: '使用 Authorization Bearer 或 X-API-Token 调用业务接口，并处理 400 / 401 / 404 / 429 等状态。' }
 ]
 </script>
+
+<style scoped>
+.tg-doc-steps {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.tg-doc-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.tg-doc-step > span {
+  display: inline-flex;
+  min-width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--tg-primary);
+  color: var(--tg-on-primary);
+  font-family: var(--tg-font-display);
+  font-size: 15px;
+}
+
+.tg-doc-step p {
+  margin: 6px 0 0;
+  line-height: 1.65;
+}
+
+.tg-doc-overview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tg-doc-endpoint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.tg-doc-endpoint-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(250, 249, 245, 0.14);
+  border-radius: 14px;
+  background: rgba(250, 249, 245, 0.06);
+  color: var(--tg-on-dark);
+  padding: 18px;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.tg-doc-endpoint-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(204, 120, 92, 0.58);
+  background: rgba(250, 249, 245, 0.1);
+}
+
+.tg-doc-endpoint-card .tg-badge {
+  justify-self: start;
+}
+
+.tg-doc-endpoint-card p,
+.tg-doc-endpoint-card small {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tg-doc-endpoint-card p {
+  color: var(--tg-primary);
+  font-family: var(--tg-font-code);
+  font-size: 13px;
+}
+
+.tg-doc-endpoint-card small {
+  color: var(--tg-on-dark-soft);
+  line-height: 1.55;
+}
+
+.tg-doc-text {
+  margin-top: 14px;
+  line-height: 1.75;
+}
+
+.tg-doc-response-grid {
+  margin-top: 20px;
+}
+
+@media (max-width: 767px) {
+  .tg-doc-endpoint-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
