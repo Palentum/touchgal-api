@@ -231,12 +231,45 @@ func TestAuthenticateDeletesInactiveTokenRecord(t *testing.T) {
 	}
 }
 
+func TestAuthenticateRejectsTokenAfterUserDisabledAndCacheInvalidated(t *testing.T) {
+	raw := validRawToken()
+	tokenID := uuid.New()
+	userID := uuid.New()
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
+		Token: model.APIToken{
+			ID:        tokenID,
+			UserID:    userID,
+			Status:    model.TokenActive,
+			TokenHash: HashAPIToken(raw, "pepper"),
+		},
+		ApplicationStatus: model.ApplicationApproved,
+		UserStatus:        model.UserStatusActive,
+	}}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
+		t.Fatalf("authenticate active user: %v", err)
+	}
+
+	store.auth.UserStatus = model.UserStatusDisabled
+	svc.InvalidateUser(userID)
+
+	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected disabled user token unauthorized after cache invalidation, got %v", err)
+	}
+	if store.deletedID != uuid.Nil {
+		t.Fatal("disabled user auth must not delete the token record")
+	}
+	if store.authLookups != 2 {
+		t.Fatalf("expected cache miss after user invalidation, got %d lookups", store.authLookups)
+	}
+}
+
 func TestAuthenticateDeletesExpiredTokenRecord(t *testing.T) {
 	cfg := authConfig()
 	raw := validRawToken()
 	tokenID := uuid.New()
 	expiredAt := time.Now().Add(-time.Second)
-	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), ExpiresAt: &expiredAt}, ApplicationStatus: model.ApplicationApproved}}
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), ExpiresAt: &expiredAt}, ApplicationStatus: model.ApplicationApproved, UserStatus: model.UserStatusActive}}
 	svc := NewService(cfg, store, fakeTokenAppStore{})
 	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
 		t.Fatalf("expected expired token unauthorized, got %v", err)
@@ -263,6 +296,7 @@ func TestAuthenticateCachesValidTokenAndDoesNotUpdateLastUsed(t *testing.T) {
 	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
 		Token:             model.APIToken{ID: tokenID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), MinuteLimit: 10, DailyLimit: 100},
 		ApplicationStatus: model.ApplicationApproved,
+		UserStatus:        model.UserStatusActive,
 	}}
 	svc := NewService(authConfig(), store, fakeTokenAppStore{})
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
@@ -296,6 +330,7 @@ func TestAuthenticateBoundsAuthCacheEntries(t *testing.T) {
 				DailyLimit:    100,
 			},
 			ApplicationStatus: model.ApplicationApproved,
+			UserStatus:        model.UserStatusActive,
 		}
 		if _, err := svc.Authenticate(context.Background(), raw); err != nil {
 			t.Fatalf("authenticate %d: %v", i, err)
@@ -319,6 +354,7 @@ func TestDeleteMineInvalidatesCachedToken(t *testing.T) {
 	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
 		Token:             model.APIToken{ID: tokenID, UserID: userID, ApplicationID: uuid.New(), Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), MinuteLimit: 10, DailyLimit: 100},
 		ApplicationStatus: model.ApplicationApproved,
+		UserStatus:        model.UserStatusActive,
 	}}
 	svc := NewService(authConfig(), store, fakeTokenAppStore{})
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
@@ -344,6 +380,7 @@ func TestInvalidateUserAndApplicationEvictCachedTokens(t *testing.T) {
 	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
 		Token:             model.APIToken{ID: tokenID, UserID: userID, ApplicationID: applicationID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), MinuteLimit: 10, DailyLimit: 100},
 		ApplicationStatus: model.ApplicationApproved,
+		UserStatus:        model.UserStatusActive,
 	}}
 	svc := NewService(authConfig(), store, fakeTokenAppStore{})
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {

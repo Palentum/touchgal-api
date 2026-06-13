@@ -79,6 +79,32 @@ func (r tokenRow) Scan(dest ...any) error {
 	return nil
 }
 
+type tokenAuthInfoRow struct {
+	info model.TokenAuthInfo
+	err  error
+}
+
+func (r tokenAuthInfoRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	if len(dest) != 21 {
+		return errors.New("unexpected token auth scan destination count")
+	}
+	if err := (tokenRow{token: r.info.Token}).Scan(dest[:13]...); err != nil {
+		return err
+	}
+	*(dest[13].(*string)) = r.info.ApplicationStatus
+	*(dest[14].(*uuid.UUID)) = r.info.ApplicationID
+	*(dest[15].(*uuid.UUID)) = r.info.UserID
+	*(dest[16].(*string)) = r.info.UserStatus
+	*(dest[17].(*int)) = r.info.UserMinuteLimit
+	*(dest[18].(*int)) = r.info.UserDailyLimit
+	*(dest[19].(*int)) = r.info.ApplicationMinuteLimit
+	*(dest[20].(*int)) = r.info.ApplicationDailyLimit
+	return nil
+}
+
 type tokenCreateBeginner struct {
 	tx *tokenCreateTx
 }
@@ -191,6 +217,54 @@ func TestTokenRepoCreateRequiresTransactionCapableQueryer(t *testing.T) {
 	_, err := repo.Create(context.Background(), model.APIToken{ID: uuid.New(), UserID: uuid.New()}, 1)
 	if !errors.Is(err, errTokenCreateRequiresTransaction) {
 		t.Fatalf("expected transaction-capable queryer error, got %v", err)
+	}
+}
+
+func TestTokenRepoGetByHashWithApplicationIncludesUserStatus(t *testing.T) {
+	tokenID := uuid.New()
+	userID := uuid.New()
+	applicationID := uuid.New()
+	now := time.Now()
+	queryer := &queryRowOnlyQueryer{row: tokenAuthInfoRow{info: model.TokenAuthInfo{
+		Token: model.APIToken{
+			ID:            tokenID,
+			UserID:        userID,
+			ApplicationID: applicationID,
+			Name:          "prod",
+			TokenPrefix:   "tgal_live_abcd",
+			TokenHash:     "hash",
+			Status:        model.TokenActive,
+			MinuteLimit:   60,
+			DailyLimit:    1000,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		ApplicationStatus:      model.ApplicationApproved,
+		ApplicationID:          applicationID,
+		UserID:                 userID,
+		UserStatus:             model.UserStatusActive,
+		UserMinuteLimit:        30,
+		UserDailyLimit:         900,
+		ApplicationMinuteLimit: 50,
+		ApplicationDailyLimit:  1000,
+	}}}
+	repo := NewTokenRepo(queryer)
+
+	info, err := repo.GetByHashWithApplication(context.Background(), "hash")
+	if err != nil {
+		t.Fatalf("get token auth info: %v", err)
+	}
+	if info.UserStatus != model.UserStatusActive {
+		t.Fatalf("expected user status active, got %q", info.UserStatus)
+	}
+	if info.UserID != userID || info.ApplicationID != applicationID || info.Token.ID != tokenID {
+		t.Fatalf("unexpected token auth info: %#v", info)
+	}
+	if !strings.Contains(queryer.sql, "u.status") {
+		t.Fatalf("token auth query must include user status: %q", queryer.sql)
+	}
+	if len(queryer.args) != 1 || queryer.args[0] != "hash" {
+		t.Fatalf("unexpected auth lookup args: %#v", queryer.args)
 	}
 }
 

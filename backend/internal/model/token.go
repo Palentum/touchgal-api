@@ -28,6 +28,7 @@ type TokenAuthInfo struct {
 	Token                  APIToken
 	ApplicationStatus      string
 	UserID                 uuid.UUID
+	UserStatus             string
 	UserMinuteLimit        int
 	UserDailyLimit         int
 	ApplicationID          uuid.UUID

@@ -126,12 +126,12 @@ func (r *TokenRepo) GetByHashWithApplication(ctx context.Context, tokenHash stri
 	info := &model.TokenAuthInfo{}
 	err := r.db.QueryRow(ctx, `
 		SELECT t.id, t.user_id, t.application_id, t.name, t.token_prefix, t.token_hash, t.status, t.minute_limit, t.daily_limit, t.last_used_at, t.expires_at, t.created_at, t.updated_at,
-		       a.status, a.id, u.id, u.minute_limit, u.daily_limit, a.default_minute_limit, a.default_daily_limit
+		       a.status, a.id, u.id, u.status, u.minute_limit, u.daily_limit, a.default_minute_limit, a.default_daily_limit
 		FROM api_tokens t
 		JOIN api_applications a ON a.id = t.application_id AND a.user_id = t.user_id
 		JOIN users u ON u.id = t.user_id
 		WHERE t.token_hash = $1`, tokenHash,
-	).Scan(&info.Token.ID, &info.Token.UserID, &info.Token.ApplicationID, &info.Token.Name, &info.Token.TokenPrefix, &info.Token.TokenHash, &info.Token.Status, &info.Token.MinuteLimit, &info.Token.DailyLimit, &info.Token.LastUsedAt, &info.Token.ExpiresAt, &info.Token.CreatedAt, &info.Token.UpdatedAt, &info.ApplicationStatus, &info.ApplicationID, &info.UserID, &info.UserMinuteLimit, &info.UserDailyLimit, &info.ApplicationMinuteLimit, &info.ApplicationDailyLimit)
+	).Scan(&info.Token.ID, &info.Token.UserID, &info.Token.ApplicationID, &info.Token.Name, &info.Token.TokenPrefix, &info.Token.TokenHash, &info.Token.Status, &info.Token.MinuteLimit, &info.Token.DailyLimit, &info.Token.LastUsedAt, &info.Token.ExpiresAt, &info.Token.CreatedAt, &info.Token.UpdatedAt, &info.ApplicationStatus, &info.ApplicationID, &info.UserID, &info.UserStatus, &info.UserMinuteLimit, &info.UserDailyLimit, &info.ApplicationMinuteLimit, &info.ApplicationDailyLimit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}

@@ -248,6 +248,9 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (*model.TokenAut
 		_ = s.tokens.DeleteByID(ctx, info.Token.ID)
 		return nil, model.ErrUnauthorized
 	}
+	if info.UserStatus != model.UserStatusActive {
+		return nil, model.ErrUnauthorized
+	}
 	if info.ApplicationStatus != model.ApplicationApproved {
 		return nil, model.ErrUnauthorized
 	}
