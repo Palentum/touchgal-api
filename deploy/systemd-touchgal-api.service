@@ -5,6 +5,8 @@ After=network.target
 [Service]
 WorkingDirectory=/opt/touchgal-developer/backend
 EnvironmentFile=/opt/touchgal-developer/backend/.env
+User=touchgal-api
+Group=touchgal-api
 ExecStart=/usr/local/bin/touchgal-api
 Restart=always
 RestartSec=5
@@ -12,6 +14,25 @@ MemoryMax=512M
 CPUQuota=100%
 TasksMax=256
 LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

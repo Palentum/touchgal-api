@@ -4,6 +4,14 @@ services:
       context: ../backend
     env_file:
       - ../backend/.env
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -24,6 +32,14 @@ services:
       context: ../frontend
     env_file:
       - ../frontend/.env
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     ports:
       - "3000:3000"

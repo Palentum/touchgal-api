@@ -20,4 +20,5 @@ ENV NODE_ENV=production
 RUN apk add --no-cache wget
 COPY --from=build /app/.output ./.output
 EXPOSE 3000
+USER node
 CMD ["node", ".output/server/index.mjs"]

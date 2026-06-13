@@ -169,6 +169,7 @@ API schema 或路由变更时，必须同时更新：
 - [ ] 是否保持 `/v1` token auth、request log、token/user/application 三维 rate limit middleware。
 - [ ] 是否保持全局安全响应头，并让 `/auth/*`、已登录 portal API 与 `/admin/*` 返回 `Cache-Control: no-store`。
 - [ ] 是否同步 OpenAPI 双份文件。
+- [ ] 部署示例是否保留非 root 用户、read-only rootfs、drop capabilities/no-new-privileges、Kubernetes `securityContext` 与 systemd sandboxing。
 - [ ] 是否运行了直接覆盖改动的测试/类型检查。
 
 - 生产配置必须使用非默认且至少 32 字节的 `SESSION_SECRET` 与 `API_TOKEN_PEPPER`，并设置 `SESSION_COOKIE_SECURE=true`；配置校验应在启动时拒绝这些错误。

@@ -8,7 +8,7 @@
 4. 只在独立 sync worker 的 env 中配置主库只读账号 `SOURCE_DATABASE_DSN`；API env 默认不需要 source DB 凭据。
    生产环境默认用 `backend/cmd/sync`、systemd timer 或 Kubernetes CronJob 独立跑同步，并保持 API `ENABLE_SYNC_WORKER=false`。Kubernetes CronJob 必须配置 `concurrencyPolicy: Forbid`；服务层仍使用 PostgreSQL advisory lock 兜底，防止 API 手动触发、API 内置 scheduler 与独立 worker 跨进程并发写 clean DB。仅本地调试或小数据量部署可启用 API 进程内 `ENABLE_SYNC_WORKER=true`，此时才把 `SOURCE_DATABASE_DSN` 配给 API 进程。
    API readiness 使用 `/v1/ready`，只检查 clean PostgreSQL 与 Redis，不连接 source DB；Compose 示例用该端点做 backend healthcheck，并让 frontend 等待 `service_healthy`。
-   Compose、systemd 与 Kubernetes 示例都包含默认 CPU/memory/task 限制；生产应按实例规格和同步批量大小调整，而不是移除限制。
+   Compose、systemd 与 Kubernetes 示例都包含默认 CPU/memory/task 限制和最小权限沙箱：容器以非 root 用户运行、使用 read-only rootfs、drop capabilities、no-new-privileges；CronJob 设置 `runAsNonRoot`、`readOnlyRootFilesystem`、`seccompProfile`；systemd service 需预先创建 `touchgal-api` 系统用户/组，并启用 `NoNewPrivileges`、`ProtectSystem`、`PrivateTmp` 等 sandboxing。生产应按实例规格和同步批量大小调整资源限制，而不是移除限制或沙箱。
 5. 执行 `make migrate-up`。
 6. 执行 `make sync-full` 初始化 clean DB。
 7. 启动 `docker compose -f deploy/docker-compose.yml up --build`。

@@ -9,10 +9,28 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+            fsGroup: 10001
+            fsGroupChangePolicy: OnRootMismatch
           containers:
             - name: sync
               image: touchgal-developer-backend:latest
               command: ["touchgal-sync", "--mode=incremental"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
               resources:
                 requests:
                   cpu: 100m
@@ -23,6 +41,11 @@ spec:
               envFrom:
                 - secretRef:
                     name: touchgal-developer-backend-env
+          volumes:
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Mi
       activeDeadlineSeconds: 3600
       backoffLimit: 2
       ttlSecondsAfterFinished: 86400
