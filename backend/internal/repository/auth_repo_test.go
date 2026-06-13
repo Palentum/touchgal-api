@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -72,11 +73,40 @@ func TestAuthRepoTouchSessionLastSeenUsesCutoff(t *testing.T) {
 	}
 }
 
+func TestAuthRepoConsumeCodeRequiresOneUpdatedRow(t *testing.T) {
+	codeID := uuid.New()
+
+	t.Run("consumed", func(t *testing.T) {
+		queryer := &authSessionQueryer{commandTag: pgconn.NewCommandTag("UPDATE 1")}
+		if err := NewAuthRepo(queryer).ConsumeCode(context.Background(), codeID); err != nil {
+			t.Fatalf("consume code: %v", err)
+		}
+		if queryer.execCalls != 1 {
+			t.Fatalf("expected one consume update, got %d", queryer.execCalls)
+		}
+		if !strings.Contains(queryer.execSQL, "consumed_at IS NULL") {
+			t.Fatalf("consume update must guard unconsumed rows: %s", queryer.execSQL)
+		}
+		if queryer.execArgs[0] != codeID {
+			t.Fatalf("unexpected consume args: %#v", queryer.execArgs)
+		}
+	})
+
+	t.Run("already consumed", func(t *testing.T) {
+		queryer := &authSessionQueryer{commandTag: pgconn.NewCommandTag("UPDATE 0")}
+		err := NewAuthRepo(queryer).ConsumeCode(context.Background(), codeID)
+		if !errors.Is(err, model.ErrInvalidCode) {
+			t.Fatalf("expected invalid code error, got %v", err)
+		}
+	})
+}
+
 type authSessionQueryer struct {
 	sql             string
 	execSQL         string
 	execArgs        []any
 	execCalls       int
+	commandTag      pgconn.CommandTag
 	row             pgx.Row
 	touchedLastSeen bool
 }
@@ -86,7 +116,7 @@ func (q *authSessionQueryer) Exec(ctx context.Context, sql string, arguments ...
 	q.execArgs = arguments
 	q.execCalls++
 	q.touchedLastSeen = strings.Contains(sql, "last_seen_at")
-	return pgconn.CommandTag{}, nil
+	return q.commandTag, nil
 }
 
 func (q *authSessionQueryer) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {

@@ -46,8 +46,14 @@ func (r *AuthRepo) IncrementCodeAttempts(ctx context.Context, id uuid.UUID) erro
 }
 
 func (r *AuthRepo) ConsumeCode(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `UPDATE email_verification_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL`, id)
-	return err
+	tag, err := r.db.Exec(ctx, `UPDATE email_verification_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return model.ErrInvalidCode
+	}
+	return nil
 }
 
 func (r *AuthRepo) CreateSession(ctx context.Context, userID uuid.UUID, sessionHash, userAgent, ip string, expiresAt time.Time) (*model.Session, error) {
