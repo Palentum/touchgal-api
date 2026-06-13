@@ -1,6 +1,6 @@
 # TouchGal API Agent Development Guide
 
-面向本仓库维护者和 AI agent 的项目专用开发指南。它补充 `AGENTS.md`、`README.md`、OpenAPI 与源码约定，重点记录改动时不能破坏的边界和推荐流程。
+面向本仓库维护者和 AI agent 的项目专用开发指南，补充 `AGENTS.md`、`README.md`、OpenAPI 与源码约定，重点记录改动时不能破坏的边界和推荐流程。
 
 ## 不可变项目边界
 
@@ -91,7 +91,7 @@ Context7 查询的 `pgx/v5` 文档要点：
 - `DecodeJSON` 会用 `http.MaxBytesReader` 限制请求体并拒绝额外 JSON/trailing bytes；新增 JSON handler 必须按 endpoint 选择 `smallJSONBodyLimit` 或 `applicationJSONBodyLimit`，不要直接读取无界 `r.Body`。
 - 成功响应固定为 `{ "success": true, "data": ... }`。
 - 失败响应固定为 `{ "success": false, "error": { "code", "message" } }`。
-- 不把 DB 结构、SQL 错误、token、OTP、DSN、pepper 输出给客户端或日志。
+- 不把 DB 结构、SQL 错误、token、OTP、DSN、pepper 输出到客户端响应或日志中。
 
 ## 同步改动流程
 
@@ -145,8 +145,6 @@ API schema 或路由变更时，必须同时更新：
 - repository 改动：优先保持 SQL 小而直接；需要事务时用 `Queryer`/`NewWithQueryer` 注入。
 - 前端改动：运行 `cd frontend && pnpm typecheck`；修改 Nuxt config、route structure 或 SSR-sensitive code 时运行 `pnpm build`。
 - 全量检查：`make test` 等价于 `cd backend && go test ./...` 加 `cd frontend && pnpm typecheck`。
-
-
 
 ## 供应链安全验证
 
