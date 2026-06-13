@@ -185,6 +185,17 @@ curl "https://api.example.com/v1/me" \
 }
 ```
 
+## 供应链安全检查
+
+`.github/workflows/supply-chain-security.yml` 在 PR、`main` push、每周计划任务和手动触发时运行只读检查：
+
+- `govulncheck ./...` 扫描 Go 后端可达漏洞。
+- `pnpm install --frozen-lockfile --ignore-scripts` 后运行 `pnpm audit --audit-level high` 与 `pnpm audit signatures`。
+- `pnpm licenses list --json` 输出前端 license inventory 摘要，并上传完整 JSON artifact。
+- 构建 backend/frontend Docker 镜像，并用 digest-pinned Trivy 镜像扫描 `HIGH,CRITICAL` 且已有修复的漏洞。
+
+这些检查不自动修复依赖、不写回 lockfile、不需要写权限 token；workflow 中第三方 GitHub Actions 使用 commit SHA pin，Trivy 使用 digest pin；高危 transitive 依赖应通过显式 `pnpm-workspace.yaml` `overrides` 或常规依赖升级处理。
+
 ## 部署建议
 
 - `deploy/docker-compose.yml` 只编排 backend/frontend；PostgreSQL、Redis 使用主机服务。

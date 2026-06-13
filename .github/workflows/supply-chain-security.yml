@@ -1,0 +1,137 @@
+name: Supply Chain Security
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GOVULNCHECK_VERSION: v1.3.0
+  TRIVY_IMAGE: aquasec/trivy:0.71.0@sha256:016eae51fdcf989332a5404af7e8f625cd5d95d7c0907a221d080a996f556500
+
+jobs:
+  go-vulnerabilities:
+    name: Go vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run govulncheck
+        working-directory: backend
+        run: go run golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} ./...
+
+  frontend-dependencies:
+    name: Frontend dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependency metadata without scripts
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Run pnpm audit
+        working-directory: frontend
+        run: pnpm audit --audit-level high
+
+      - name: Verify registry signatures
+        working-directory: frontend
+        run: pnpm audit signatures
+
+      - name: Print license inventory
+        working-directory: frontend
+        run: |
+          pnpm licenses list --json > "$RUNNER_TEMP/frontend-licenses.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+
+          const inventory = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/frontend-licenses.json`, 'utf8'))
+          let totalPackages = 0
+          const rows = Object.entries(inventory)
+            .map(([license, packages]) => {
+              totalPackages += packages.length
+              return { license, count: packages.length }
+            })
+            .sort((a, b) => a.license.localeCompare(b.license))
+
+          console.log(`Frontend license inventory packages: ${totalPackages}`)
+          console.table(rows)
+          NODE
+
+      - name: Upload license inventory
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-license-inventory
+          path: ${{ runner.temp }}/frontend-licenses.json
+          if-no-files-found: error
+
+  container-images:
+    name: Docker image vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build backend image
+        run: docker build --pull -f backend/Dockerfile -t touchgal-api-backend:ci backend
+
+      - name: Build frontend image
+        run: docker build --pull -f frontend/Dockerfile -t touchgal-api-frontend:ci frontend
+
+      - name: Scan backend image with Trivy
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            ${TRIVY_IMAGE} image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --no-progress \
+            --severity HIGH,CRITICAL \
+            touchgal-api-backend:ci
+
+      - name: Scan frontend image with Trivy
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            ${TRIVY_IMAGE} image \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --no-progress \
+            --severity HIGH,CRITICAL \
+            touchgal-api-frontend:ci

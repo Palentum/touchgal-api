@@ -147,6 +147,15 @@ API schema 或路由变更时，必须同时更新：
 - 全量检查：`make test` 等价于 `cd backend && go test ./...` 加 `cd frontend && pnpm typecheck`。
 
 
+
+## 供应链安全验证
+
+- `.github/workflows/supply-chain-security.yml` 是只读 PR gate：`permissions: contents: read`，checkout 禁用 credential persistence，第三方 GitHub Actions 使用 commit SHA pin，不自动修复依赖，不写回 lockfile。
+- Go 依赖漏洞扫描使用 `govulncheck ./...`，版本由 workflow 中的 `GOVULNCHECK_VERSION` 固定。
+- 前端依赖扫描使用 `pnpm install --frozen-lockfile --ignore-scripts`、`pnpm audit --audit-level high`、`pnpm audit signatures` 与 `pnpm licenses list --json` license inventory artifact。
+- Docker image 扫描构建 backend/frontend 镜像，再用 workflow 中 digest-pinned `TRIVY_IMAGE` 检查 `HIGH,CRITICAL` 且已有修复的漏洞。
+- 新增高危 transitive 前端漏洞时，优先常规升级；需要强制收敛时只在 `frontend/pnpm-workspace.yaml` 添加精确 `overrides`，并保留 `pnpm-lock.yaml` 与 manifest 同步。
+
 ## 性能验证流程
 
 - Go 基准：`make bench`；真实 Redis 限流压测需显式设置 `REDIS_BENCH_ADDR`，否则自动跳过。
@@ -171,6 +180,7 @@ API schema 或路由变更时，必须同时更新：
 - [ ] 是否同步 OpenAPI 双份文件。
 - [ ] 部署示例是否保留非 root 用户、read-only rootfs、drop capabilities/no-new-privileges、Kubernetes `securityContext` 与 systemd sandboxing。
 - [ ] 是否运行了直接覆盖改动的测试/类型检查。
+- [ ] 若改动依赖、Dockerfile、CI 或供应链策略，是否运行/更新了供应链安全验证并保留只读 CI 语义。
 
 - 生产配置必须使用非默认且至少 32 字节的 `SESSION_SECRET` 与 `API_TOKEN_PEPPER`，并设置 `SESSION_COOKIE_SECURE=true`；配置校验应在启动时拒绝这些错误。
 - 邮件验证码驱动安全边界：`MAIL_DRIVER=log` 只能用于 `APP_ENV=development` 的本地调试；非开发环境必须使用真实 SMTP 或 Postal 配置，生产配置缺失应启动失败而不是回退日志驱动。
