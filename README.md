@@ -44,7 +44,7 @@ cp backend/.env.example backend/.env
 - `DATABASE_DSN`：本项目 clean DB，指向主机上的 PostgreSQL。
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`；默认只配置给独立 sync worker，API 进程在 `ENABLE_SYNC_WORKER=false` 时不需要该凭据。
 - `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；sync 使用独立 target/source pool、分页读取和短事务 batch commit，避免 full sync 占用 API pool 或形成单个长事务。
-- `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流与 token auth 跨实例撤销版本。
+- `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、发码限流、session cache、API token 限流与 token auth 跨实例撤销版本。
 - `REDIS_POOL_SIZE` / `REDIS_MIN_IDLE_CONNS` / `REDIS_*_TIMEOUT`：go-redis 连接池与 dial/read/write/pool wait timeout；timeout 默认 `0` 会由本项目转换为固定安全值（5s/3s/3s/4s），避免依赖 go-redis 版本默认语义，高 QPS 部署按实例容量和 `/v1` 峰值并发调优。
 - `SESSION_SECRET` / `SESSION_COOKIE_SECURE` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、Secure Cookie 开关、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。生产会拒绝默认或短于 32 字节的 `SESSION_SECRET`，并强制 `SESSION_COOKIE_SECURE=true`。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
@@ -54,6 +54,7 @@ cp backend/.env.example backend/.env
 - `SMTP_*`：SMTP 驱动配置；生产 `MAIL_DRIVER=smtp` 必须配置 `SMTP_HOST` 与 `SMTP_FROM`，不会回退日志驱动。
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置；生产 `MAIL_DRIVER=postal` 缺失这些配置会启动失败。
 - `TURNSTILE_SECRET_KEY`：Cloudflare Turnstile secret key；生产 `APP_ENV=production` 必须配置，开发留空时后端跳过人机验证。
+- `AUTH_CODE_IP_*` / `AUTH_CODE_EMAIL_*` / `AUTH_CODE_IP_EMAIL_*`：`/auth/*/start` 发码前 Redis 限流，分别约束同一 IP、同一邮箱、同一 IP+邮箱组合。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`；生产会拒绝默认或短于 32 字节的值。
 - `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_TOKEN_AUTH_CACHE_MAX_ENTRIES` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、带 Redis 撤销版本校验的 token auth 短缓存及容量上限、`last_used_at` 写入节流与单账号 active token 数量上限。
 - `API_REQUEST_LOG_QUEUE_SIZE` / `API_REQUEST_LOG_BATCH_SIZE` / `API_REQUEST_LOG_FLUSH_INTERVAL` / `API_REQUEST_LOG_RETENTION_DAYS`：`/v1` request log 有界队列、批量写入间隔与 raw log 保留天数；dashboard 统计读取聚合表。
@@ -195,11 +196,11 @@ curl "https://api.example.com/v1/me" \
 
 - 登录 session 只通过 HttpOnly Cookie 保存，前端不写 localStorage。
 - API token 明文只显示一次，日志不得记录明文 token。
-- 邮箱验证码发送前校验 Turnstile，Turnstile token 不落库、不写日志；验证码只存 hash，并有 TTL、冷却和最大尝试次数。
+- 邮箱验证码发送前先经过 `/auth/*/start` IP Redis 限流；Turnstile 校验通过后再按 email、IP+email Redis 限流。Turnstile token 不落库、不写日志；验证码只存 hash，并有 TTL、冷却和最大尝试次数。
 - 管理接口必须 `users.is_admin=true`。
 - 公开 API 默认只返回 SFW 条目。
 - 响应错误不暴露数据库结构。
 - 主机 PostgreSQL/Redis 只监听可信接口，并通过 PostgreSQL 用户权限、Redis 密码或本机防火墙限制访问；容器通过 `host.docker.internal` 连接主机服务时不应暴露无认证 Redis 到公网。
-- `/v1` pre-auth IP 限流只信任来自 loopback/private/link-local peer 的 `X-Forwarded-For` / `X-Real-IP`；生产应让后端只暴露给可信反向代理或内网入口。
+- `/auth/*/start` 与 `/v1` pre-auth IP 限流只信任来自 loopback/private/link-local peer 的 `X-Forwarded-For` / `X-Real-IP`；生产应让后端只暴露给可信反向代理或内网入口。
 - `/v1` Redis 限流同时按 token、user、application 独立计数，账号级/应用级上限不会被多 token 放大。
 - clean DB 不包含主项目 user/email/password/IP/role/session/token/resource link。

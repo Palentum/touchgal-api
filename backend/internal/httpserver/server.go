@@ -38,6 +38,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r.Use(middleware.Recover(logger))
 	r.Use(middleware.CORS(cfg))
 	sessionAuth := middleware.SessionAuth(cfg, services.Auth)
+	authCodeIPRateLimit := middleware.AuthCodeIPRateLimit(redisClient, cfg.AuthCodeIPMinuteLimit, cfg.AuthCodeIPDailyLimit)
 
 	health := handlers.NewHealthHandler(services.ReadinessDB, redisClient)
 	docs := handlers.DocsHandler{}
@@ -54,9 +55,9 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r.Get("/v1/ready", health.Ready)
 
 	r.Route("/auth", func(r chi.Router) {
-		r.Post("/register/start", authHandler.RegisterStart)
+		r.With(authCodeIPRateLimit).Post("/register/start", authHandler.RegisterStart)
 		r.Post("/register/verify", authHandler.RegisterVerify)
-		r.Post("/login/start", authHandler.LoginStart)
+		r.With(authCodeIPRateLimit).Post("/login/start", authHandler.LoginStart)
 		r.Post("/login/verify", authHandler.LoginVerify)
 		r.Post("/logout", authHandler.Logout)
 		r.With(sessionAuth).Get("/me", authHandler.Me)

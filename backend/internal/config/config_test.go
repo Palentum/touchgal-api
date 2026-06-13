@@ -429,6 +429,42 @@ func TestLoadTokenLimitDefaultsAndEnv(t *testing.T) {
 	}
 }
 
+func TestLoadAuthCodeRateLimitDefaultsAndEnv(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, key := range []string{
+		"AUTH_CODE_IP_MINUTE_LIMIT",
+		"AUTH_CODE_IP_DAILY_LIMIT",
+		"AUTH_CODE_EMAIL_MINUTE_LIMIT",
+		"AUTH_CODE_EMAIL_DAILY_LIMIT",
+		"AUTH_CODE_IP_EMAIL_MINUTE_LIMIT",
+		"AUTH_CODE_IP_EMAIL_DAILY_LIMIT",
+	} {
+		t.Setenv(key, "")
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("expected default config to load: %v", err)
+	}
+	if cfg.AuthCodeIPMinuteLimit != DefaultAuthCodeIPMinuteLimit || cfg.AuthCodeIPDailyLimit != DefaultAuthCodeIPDailyLimit || cfg.AuthCodeEmailMinuteLimit != DefaultAuthCodeEmailMinuteLimit || cfg.AuthCodeEmailDailyLimit != DefaultAuthCodeEmailDailyLimit || cfg.AuthCodeIPEmailMinuteLimit != DefaultAuthCodeIPEmailMinuteLimit || cfg.AuthCodeIPEmailDailyLimit != DefaultAuthCodeIPEmailDailyLimit {
+		t.Fatalf("unexpected auth code rate-limit defaults: %+v", cfg)
+	}
+
+	t.Setenv("AUTH_CODE_IP_MINUTE_LIMIT", "11")
+	t.Setenv("AUTH_CODE_IP_DAILY_LIMIT", "111")
+	t.Setenv("AUTH_CODE_EMAIL_MINUTE_LIMIT", "2")
+	t.Setenv("AUTH_CODE_EMAIL_DAILY_LIMIT", "22")
+	t.Setenv("AUTH_CODE_IP_EMAIL_MINUTE_LIMIT", "3")
+	t.Setenv("AUTH_CODE_IP_EMAIL_DAILY_LIMIT", "33")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("expected env config to load: %v", err)
+	}
+	if cfg.AuthCodeIPMinuteLimit != 11 || cfg.AuthCodeIPDailyLimit != 111 || cfg.AuthCodeEmailMinuteLimit != 2 || cfg.AuthCodeEmailDailyLimit != 22 || cfg.AuthCodeIPEmailMinuteLimit != 3 || cfg.AuthCodeIPEmailDailyLimit != 33 {
+		t.Fatalf("unexpected auth code rate-limit env config: %+v", cfg)
+	}
+}
+
 func TestLoadTokenAuthCacheMaxEntries(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("API_TOKEN_AUTH_CACHE_MAX_ENTRIES", "")
@@ -592,6 +628,12 @@ func validConfig() Config {
 		SessionSecret:                     "0123456789abcdef0123456789abcdef",
 		APITokenPepper:                    "abcdef0123456789abcdef0123456789",
 		EmailCodeMaxAttempts:              1,
+		AuthCodeIPMinuteLimit:             1,
+		AuthCodeIPDailyLimit:              1,
+		AuthCodeEmailMinuteLimit:          1,
+		AuthCodeEmailDailyLimit:           1,
+		AuthCodeIPEmailMinuteLimit:        1,
+		AuthCodeIPEmailDailyLimit:         1,
 		DefaultTokenMinuteLimit:           1,
 		DefaultTokenDailyLimit:            1,
 		APIPreAuthIPMinuteLimit:           1,

@@ -49,6 +49,33 @@ func TestAPIPreAuthRateLimitBlocksBeforeNext(t *testing.T) {
 		t.Fatalf("next handler called %d times", called)
 	}
 }
+
+func TestAuthCodeIPRateLimitBlocksBeforeNext(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+	called := 0
+	handler := AuthCodeIPRateLimit(client, 1, 10)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	request := func() int {
+		req := httptest.NewRequest(http.MethodPost, "/auth/login/start", nil)
+		req.RemoteAddr = "203.0.113.10:12345"
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		return res.Code
+	}
+	if code := request(); code != http.StatusNoContent {
+		t.Fatalf("first request got %d", code)
+	}
+	if code := request(); code != http.StatusTooManyRequests {
+		t.Fatalf("second request got %d", code)
+	}
+	if called != 1 {
+		t.Fatalf("next handler called %d times", called)
+	}
+}
 func TestRateLimitExpirySetOnlyWhenBucketCreated(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})

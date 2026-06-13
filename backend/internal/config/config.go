@@ -20,6 +20,12 @@ const (
 	MailDriverLog                      = "log"
 	DefaultMaxActiveTokensPerUser      = 10
 	DefaultAPITokenAuthCacheMaxEntries = 4096
+	DefaultAuthCodeIPMinuteLimit       = 20
+	DefaultAuthCodeIPDailyLimit        = 200
+	DefaultAuthCodeEmailMinuteLimit    = 3
+	DefaultAuthCodeEmailDailyLimit     = 20
+	DefaultAuthCodeIPEmailMinuteLimit  = 3
+	DefaultAuthCodeIPEmailDailyLimit   = 10
 
 	defaultSessionSecret     = "please-change-this-64-byte-secret"
 	defaultAPITokenPepper    = "please-change-this-long-random-secret"
@@ -95,6 +101,12 @@ type Config struct {
 	EmailCodeTTLMinutes           int
 	EmailCodeResendCooldownSecs   int
 	EmailCodeMaxAttempts          int
+	AuthCodeIPMinuteLimit         int
+	AuthCodeIPDailyLimit          int
+	AuthCodeEmailMinuteLimit      int
+	AuthCodeEmailDailyLimit       int
+	AuthCodeIPEmailMinuteLimit    int
+	AuthCodeIPEmailDailyLimit     int
 	TurnstileSecretKey            string
 	APITokenPepper                string
 	APITokenPrefix                string
@@ -228,6 +240,12 @@ func Load() (Config, error) {
 		EmailCodeTTLMinutes:           envInt("EMAIL_CODE_TTL_MINUTES", 10),
 		EmailCodeResendCooldownSecs:   envInt("EMAIL_CODE_RESEND_COOLDOWN_SECONDS", 60),
 		EmailCodeMaxAttempts:          envInt("EMAIL_CODE_MAX_ATTEMPTS", 5),
+		AuthCodeIPMinuteLimit:         envInt("AUTH_CODE_IP_MINUTE_LIMIT", DefaultAuthCodeIPMinuteLimit),
+		AuthCodeIPDailyLimit:          envInt("AUTH_CODE_IP_DAILY_LIMIT", DefaultAuthCodeIPDailyLimit),
+		AuthCodeEmailMinuteLimit:      envInt("AUTH_CODE_EMAIL_MINUTE_LIMIT", DefaultAuthCodeEmailMinuteLimit),
+		AuthCodeEmailDailyLimit:       envInt("AUTH_CODE_EMAIL_DAILY_LIMIT", DefaultAuthCodeEmailDailyLimit),
+		AuthCodeIPEmailMinuteLimit:    envInt("AUTH_CODE_IP_EMAIL_MINUTE_LIMIT", DefaultAuthCodeIPEmailMinuteLimit),
+		AuthCodeIPEmailDailyLimit:     envInt("AUTH_CODE_IP_EMAIL_DAILY_LIMIT", DefaultAuthCodeIPEmailDailyLimit),
 		TurnstileSecretKey:            env("TURNSTILE_SECRET_KEY", ""),
 		APITokenPepper:                env("API_TOKEN_PEPPER", defaultAPITokenPepper),
 		APITokenPrefix:                env("API_TOKEN_PREFIX", "tgal_live"),
@@ -456,6 +474,9 @@ func (c Config) Validate() error {
 	}
 	if c.EmailCodeMaxAttempts <= 0 {
 		return errors.New("EMAIL_CODE_MAX_ATTEMPTS must be positive")
+	}
+	if c.AuthCodeIPMinuteLimit <= 0 || c.AuthCodeIPDailyLimit <= 0 || c.AuthCodeEmailMinuteLimit <= 0 || c.AuthCodeEmailDailyLimit <= 0 || c.AuthCodeIPEmailMinuteLimit <= 0 || c.AuthCodeIPEmailDailyLimit <= 0 {
+		return errors.New("auth code rate limits must be positive")
 	}
 	if c.DefaultTokenMinuteLimit <= 0 || c.DefaultTokenDailyLimit <= 0 {
 		return errors.New("token limits must be positive")

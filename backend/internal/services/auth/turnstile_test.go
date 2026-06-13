@@ -67,8 +67,8 @@ func TestRequestLoginCodeStopsWhenTurnstileFails(t *testing.T) {
 		t.Fatalf("side effects: insertCalls=%d sendCalls=%d", codes.insertCalls, mailer.sendCalls)
 	}
 	for _, key := range server.Keys() {
-		if strings.HasPrefix(key, "email_code_cooldown:") {
-			t.Fatalf("unexpected cooldown key %q", key)
+		if strings.HasPrefix(key, "email_code_cooldown:") || strings.HasPrefix(key, "auth_code_ratelimit:") {
+			t.Fatalf("unexpected Redis side-effect key %q", key)
 		}
 	}
 }
@@ -110,6 +110,10 @@ func newTurnstileTestService(redisClient *redis.Client, users UserStore, codes C
 			EmailCodeTTLMinutes:         10,
 			EmailCodeResendCooldownSecs: 60,
 			EmailCodeMaxAttempts:        5,
+			AuthCodeEmailMinuteLimit:    10,
+			AuthCodeEmailDailyLimit:     100,
+			AuthCodeIPEmailMinuteLimit:  10,
+			AuthCodeIPEmailDailyLimit:   100,
 		},
 		users:         users,
 		codes:         codes,

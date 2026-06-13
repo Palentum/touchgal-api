@@ -55,6 +55,27 @@ func APIPreAuthRateLimit(redisClient *redis.Client, minuteLimit, dailyLimit int)
 	}
 }
 
+func AuthCodeIPRateLimit(redisClient *redis.Client, minuteLimit, dailyLimit int) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := ClientIP(r)
+			if ip == "" {
+				ip = "unknown"
+			}
+			minuteCount, dayCount, err := incrementLimits(r.Context(), redisClient, "auth_code_ip", ip)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+				return
+			}
+			if minuteCount > minuteLimit || dayCount > dailyLimit {
+				writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func APIRateLimit(redisClient *redis.Client) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

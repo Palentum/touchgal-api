@@ -58,12 +58,13 @@ TouchGal main PostgreSQL (read-only)
 Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter 组织 REST API，并在 route group 上施加局部 middleware。本项目采用：
 
 - 全局 middleware：`RequestIDMiddleware` -> `Recover` -> `CORS`；不要把 `SessionAuth` 挂成全局 middleware。
-- Cookie 登录路由：`/auth`，其中 `GET /auth/me` 单独使用 `SessionAuth`。
+- Cookie 登录路由：`/auth`，其中 `GET /auth/me` 单独使用 `SessionAuth`；`/auth/register/start` 与 `/auth/login/start` 必须挂 `AuthCodeIPRateLimit`。
 - 已登录 portal API：`r.Group(... SessionAuth -> RequireUser ...)`。
 - 管理 API：`/admin` + `SessionAuth` + `RequireUser` + `RequireAdmin`。
 - Public API：`/v1` + `APIPreAuthRateLimit` + `APITokenAuth` + `APIRateLimit` + `APILastUsed` + `APIRequestLog`。
 
 - `/v1` Redis 限流必须同时按 token、user、application 维度独立计数；不要只取 `Effective*Limit` 后按 token key 计数，否则多 token 会放大账号上限。
+- 发码 start endpoints 必须保留路由级 IP 限流；Turnstile 成功后必须保留 email、IP+email 维度限流。登录不存在邮箱、注册已存在邮箱必须返回同一成功响应，不得暴露账号存在性。
 - API token auth 可以继续使用短进程内缓存，但每个 cache hit 必须校验 Redis 共享撤销版本；token 删除、用户状态/限流变更、application review/revoke 后必须 bump 该版本，避免多实例 TTL 窗口继续授权。
 - Redis client pool/timeout 配置来自 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_DIAL_TIMEOUT`、`REDIS_READ_TIMEOUT`、`REDIS_WRITE_TIMEOUT`、`REDIS_POOL_TIMEOUT`；timeout 值为 `0` 时由本项目转换为固定安全默认值（5s/3s/3s/4s），不要依赖 go-redis 版本默认语义；高 QPS `/v1` 调优应改配置，不要在 middleware 内创建额外 Redis client。
 - `/v1` request logging 只允许通过 `services/requestlog.Writer` 的有界队列批量写入；不要在 middleware 中为每个请求启动 goroutine 或同步写 DB。Dashboard 统计应读取 `api_usage_*` 聚合表，raw `api_request_logs` 只短期保留用于排查，聚合明细按 dashboard 最大查询窗口清理。
@@ -161,7 +162,7 @@ API schema 或路由变更时，必须同时更新：
 - [ ] 是否仍只暴露 clean DB 中的公开元数据。
 - [ ] 是否没有把主站内部 id 或敏感主站表字段加入公开响应。
 - [ ] 是否没有记录 plaintext API token、OTP、session token、DSN、pepper。
-- [ ] 发码 start endpoints 是否未绕过 Turnstile 校验，且未记录 Turnstile token。
+- [ ] 发码 start endpoints 是否保留 IP/email/IP+email 限流、未绕过 Turnstile 校验、未泄露账号存在性，且未记录 Turnstile token。
 - [ ] 是否保持 Cookie 登录而非前端存储 session。
 - [ ] 是否保持 token hash + pepper 校验。
 - [ ] 是否保持管理员路由 `RequireUser` + `RequireAdmin`。

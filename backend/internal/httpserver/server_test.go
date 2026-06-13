@@ -4,10 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
@@ -88,6 +91,45 @@ func TestSessionAuthRunsOnAuthMe(t *testing.T) {
 	}
 	if store.lookups != 1 {
 		t.Fatalf("/auth/me must perform one session lookup, got %d", store.lookups)
+	}
+}
+
+func TestAuthStartRoutesUseIPRateLimit(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "login", path: "/auth/login/start", body: `{"email":"not-an-email","turnstileToken":""}`},
+		{name: "register", path: "/auth/register/start", body: `{"email":"not-an-email","displayName":"Dev","turnstileToken":""}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			redisServer := miniredis.RunT(t)
+			redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+			defer redisClient.Close()
+
+			cfg := routerTestConfig()
+			cfg.AuthCodeIPMinuteLimit = 1
+			cfg.AuthCodeIPDailyLimit = 10
+			router := NewRouter(cfg, Services{Auth: auth.NewService(cfg, nil, nil, redisClient, nil)}, &repository.Repositories{}, redisClient, zerolog.Nop())
+
+			request := func() int {
+				req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+				req.RemoteAddr = "203.0.113.10:12345"
+				res := httptest.NewRecorder()
+				router.ServeHTTP(res, req)
+				return res.Code
+			}
+
+			if code := request(); code != http.StatusBadRequest {
+				t.Fatalf("first request must reach auth handler and fail input validation, got %d", code)
+			}
+			if code := request(); code != http.StatusTooManyRequests {
+				t.Fatalf("second request must be blocked by auth IP rate limit, got %d", code)
+			}
+		})
 	}
 }
 

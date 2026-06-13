@@ -28,7 +28,7 @@
     <div v-else-if="step === 'code'" class="tg-card-outline tg-form">
       <div>
         <p class="tg-eyebrow">Email Verification</p>
-        <p class="tg-title-sm">验证码已发送至 {{ email }}</p>
+        <p class="tg-title-sm">如果该邮箱可用于当前流程，验证码会发送至 {{ email }}</p>
         <p class="tg-field-note mt-2">{{ codeTimingText }}</p>
       </div>
 

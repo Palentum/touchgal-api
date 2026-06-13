@@ -98,7 +98,7 @@ func classify(err error) (int, string, string) {
 	case errors.Is(err, model.ErrNotFound):
 		return http.StatusNotFound, "NOT_FOUND", "Resource not found"
 	case errors.Is(err, model.ErrRateLimited):
-		return http.StatusTooManyRequests, "RATE_LIMITED", "API rate limit exceeded"
+		return http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests"
 	case errors.Is(err, model.ErrTokenLimitExceeded):
 		return http.StatusConflict, "TOKEN_LIMIT_EXCEEDED", "API token limit exceeded"
 	case errors.Is(err, model.ErrApplicationExists):

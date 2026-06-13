@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -99,13 +101,18 @@ func (s *Service) RequestRegisterCode(ctx context.Context, rawEmail, displayName
 	if err := s.verifyHuman(ctx, turnstileToken, ip); err != nil {
 		return err
 	}
-	if _, err := s.users.GetByEmail(ctx, emailAddr); err == nil {
-		return model.ErrConflict
-	} else if !errors.Is(err, model.ErrNotFound) {
+	if err := s.enforceCodeStartSubjectRateLimits(ctx, "register", emailAddr, ip); err != nil {
+		return err
+	}
+	_, err = s.users.GetByEmail(ctx, emailAddr)
+	if err != nil && !errors.Is(err, model.ErrNotFound) {
 		return err
 	}
 	if err := s.setCooldown(ctx, "register", emailAddr); err != nil {
 		return err
+	}
+	if err == nil {
+		return nil
 	}
 	if err := s.redis.Set(ctx, "email_code_display:register:"+emailAddr, displayName, s.cfg.EmailCodeTTL()).Err(); err != nil {
 		return err
@@ -121,11 +128,18 @@ func (s *Service) RequestLoginCode(ctx context.Context, rawEmail, ip, turnstileT
 	if err := s.verifyHuman(ctx, turnstileToken, ip); err != nil {
 		return err
 	}
-	if _, err := s.users.GetByEmail(ctx, emailAddr); err != nil {
+	if err := s.enforceCodeStartSubjectRateLimits(ctx, "login", emailAddr, ip); err != nil {
+		return err
+	}
+	_, err = s.users.GetByEmail(ctx, emailAddr)
+	if err != nil && !errors.Is(err, model.ErrNotFound) {
 		return err
 	}
 	if err := s.setCooldown(ctx, "login", emailAddr); err != nil {
 		return err
+	}
+	if errors.Is(err, model.ErrNotFound) {
+		return nil
 	}
 	return s.issueCode(ctx, "login", emailAddr, ip)
 }
@@ -371,6 +385,132 @@ func (s *Service) setCooldown(ctx context.Context, purpose, emailAddr string) er
 		return model.ErrCodeCooldown
 	}
 	return nil
+}
+
+type codeStartRateLimitCheck struct {
+	scope       string
+	subject     string
+	minuteLimit int
+	dayLimit    int
+}
+
+type codeStartRateLimitCount struct {
+	minuteCount int
+	dayCount    int
+}
+
+var codeStartRateLimitCounterScript = redis.NewScript(`
+local checkCount = tonumber(ARGV[1])
+local minuteTTL = tonumber(ARGV[2])
+local dayTTL = tonumber(ARGV[3])
+local counts = {}
+for i = 1, checkCount do
+	local minuteIndex = (i - 1) * 2 + 1
+	local dayIndex = minuteIndex + 1
+	local minuteCount = redis.call("INCR", KEYS[minuteIndex])
+	if minuteCount == 1 then
+		redis.call("EXPIRE", KEYS[minuteIndex], minuteTTL)
+	end
+	local dayCount = redis.call("INCR", KEYS[dayIndex])
+	if dayCount == 1 then
+		redis.call("EXPIRE", KEYS[dayIndex], dayTTL)
+	end
+	counts[minuteIndex] = minuteCount
+	counts[dayIndex] = dayCount
+end
+return counts
+`)
+
+func (s *Service) enforceCodeStartSubjectRateLimits(ctx context.Context, purpose, emailAddr, ip string) error {
+	var checks [2]codeStartRateLimitCheck
+	n := 0
+	if s.cfg.AuthCodeEmailMinuteLimit > 0 && s.cfg.AuthCodeEmailDailyLimit > 0 {
+		checks[n] = codeStartRateLimitCheck{
+			scope:       "email",
+			subject:     emailAddr,
+			minuteLimit: s.cfg.AuthCodeEmailMinuteLimit,
+			dayLimit:    s.cfg.AuthCodeEmailDailyLimit,
+		}
+		n++
+	}
+	if s.cfg.AuthCodeIPEmailMinuteLimit > 0 && s.cfg.AuthCodeIPEmailDailyLimit > 0 {
+		if ip == "" {
+			ip = "unknown"
+		}
+		checks[n] = codeStartRateLimitCheck{
+			scope:       "ip_email",
+			subject:     ip + ":" + emailAddr,
+			minuteLimit: s.cfg.AuthCodeIPEmailMinuteLimit,
+			dayLimit:    s.cfg.AuthCodeIPEmailDailyLimit,
+		}
+		n++
+	}
+	if n == 0 {
+		return nil
+	}
+	counts, err := incrementCodeStartRateLimitChecks(ctx, s.redis, s.nowFunc(), checks[:n])
+	if err != nil {
+		return err
+	}
+	for i := 0; i < n; i++ {
+		if counts[i].minuteCount > checks[i].minuteLimit || counts[i].dayCount > checks[i].dayLimit {
+			return model.ErrRateLimited
+		}
+	}
+	return nil
+}
+
+func incrementCodeStartRateLimitChecks(ctx context.Context, client *redis.Client, now time.Time, checks []codeStartRateLimitCheck) ([2]codeStartRateLimitCount, error) {
+	minuteBucket := now.UTC().Format("200601021504")
+	dayBucket := now.UTC().Format("20060102")
+	keys := make([]string, 0, len(checks)*2)
+	for i := range checks {
+		keys = append(keys,
+			"auth_code_ratelimit:"+checks[i].scope+":"+checks[i].subject+":minute:"+minuteBucket,
+			"auth_code_ratelimit:"+checks[i].scope+":"+checks[i].subject+":day:"+dayBucket,
+		)
+	}
+	values, err := codeStartRateLimitCounterScript.Run(ctx, client, keys, len(checks), int((2 * time.Minute).Seconds()), int((48 * time.Hour).Seconds())).Result()
+	if err != nil {
+		return [2]codeStartRateLimitCount{}, err
+	}
+	rawCounts, ok := values.([]interface{})
+	if !ok {
+		return [2]codeStartRateLimitCount{}, fmt.Errorf("unexpected auth code rate limit counter result %T", values)
+	}
+	if len(rawCounts) != len(checks)*2 {
+		return [2]codeStartRateLimitCount{}, fmt.Errorf("unexpected auth code rate limit counter result length %d", len(rawCounts))
+	}
+	var counts [2]codeStartRateLimitCount
+	for i := range checks {
+		minuteCount, err := codeStartRateLimitRedisInt(rawCounts[i*2])
+		if err != nil {
+			return [2]codeStartRateLimitCount{}, err
+		}
+		dayCount, err := codeStartRateLimitRedisInt(rawCounts[i*2+1])
+		if err != nil {
+			return [2]codeStartRateLimitCount{}, err
+		}
+		counts[i] = codeStartRateLimitCount{minuteCount: minuteCount, dayCount: dayCount}
+	}
+	return counts, nil
+}
+
+func codeStartRateLimitRedisInt(value any) (int, error) {
+	switch typed := value.(type) {
+	case int64:
+		return int(typed), nil
+	case int:
+		return typed, nil
+	case string:
+		parsed, err := strconv.Atoi(typed)
+		if err != nil {
+			return 0, err
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("unexpected Redis integer type %T", value)
+	}
 }
 
 func (s *Service) verifyCode(ctx context.Context, purpose, emailAddr, code string) error {

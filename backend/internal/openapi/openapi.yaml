@@ -160,7 +160,7 @@ components:
           type: object
           required: [sent, expiresInSeconds, resendCooldownSeconds]
           properties:
-            sent: { type: boolean, const: true }
+            sent: { type: boolean, const: true, description: Request accepted. A code is sent only when the email is eligible for this auth flow. }
             expiresInSeconds: { type: integer, minimum: 1, example: 600 }
             resendCooldownSeconds: { type: integer, minimum: 1, example: 60 }
   headers:
@@ -261,10 +261,10 @@ paths:
         content: { application/json: { schema: { type: object, required: [email, displayName, turnstileToken], properties: { email: { type: string, format: email }, displayName: { type: string }, turnstileToken: { type: string, minLength: 1, maxLength: 2048, description: Cloudflare Turnstile response token } } } } }
       responses:
         '200':
-          description: Code sent
+          description: Request accepted. A code is sent only when the email is not already registered.
           content: { application/json: { schema: { $ref: '#/components/schemas/CodeStartResponse' } } }
         '429':
-          description: Code resend cooldown
+          description: Code resend cooldown or auth start rate limit
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '400':
           description: Turnstile failed
@@ -293,11 +293,10 @@ paths:
         content: { application/json: { schema: { type: object, required: [email, turnstileToken], properties: { email: { type: string, format: email }, turnstileToken: { type: string, minLength: 1, maxLength: 2048, description: Cloudflare Turnstile response token } } } } }
       responses:
         '200':
-          description: Code sent
+          description: Request accepted. A code is sent only when the email belongs to an existing account.
           content: { application/json: { schema: { $ref: '#/components/schemas/CodeStartResponse' } } }
-        '404': { description: User not found }
         '429':
-          description: Code resend cooldown
+          description: Code resend cooldown or auth start rate limit
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '400':
           description: Turnstile failed
