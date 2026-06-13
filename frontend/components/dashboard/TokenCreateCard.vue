@@ -2,7 +2,7 @@
   <div class="tg-card-dark">
     <p class="tg-eyebrow">Create Token</p>
     <h2 class="tg-title-lg">创建 API Token</h2>
-    <p class="tg-muted mt-3">账号申请通过后可创建有限数量的 API token；管理员默认具备创建权限。明文 token 只显示一次。</p>
+    <p class="tg-muted mt-3">列表内是你的全部 API Token，API Token 仅在创建时可见可复制，请妥善保存。不要与他人共享你的 API Token，或将其暴露在浏览器或其他客户端代码中。为了保护你的帐户安全，我们可能会自动禁用我们发现已公开泄露的 API Token。</p>
 
     <div v-if="!canCreateToken" class="tg-card-outline mt-6">
       <p class="tg-title-sm">{{ hasApplication ? '账号申请尚未通过，暂不能创建 token。' : '请先提交账号级 API 申请。' }}</p>
@@ -10,7 +10,7 @@
     </div>
 
     <div v-else class="mt-6">
-      <button type="button" class="tg-btn tg-btn-primary" @click="openCreateDialog">生成 token</button>
+      <button type="button" class="tg-btn tg-btn-primary" @click="openCreateDialog">生成 Token</button>
     </div>
 
     <div v-if="showCreateDialog" class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="create-token-title">

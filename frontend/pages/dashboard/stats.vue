@@ -4,7 +4,7 @@
       <div>
         <p class="tg-eyebrow">Analysis</p>
         <h1 class="tg-display-md">请求统计</h1>
-        <p class="tg-lead">按时间窗口与 token 查看调用质量、来源与 endpoint 表现。</p>
+        <p class="tg-lead">按时间范围和 Token 查询请求趋势与来源。</p>
       </div>
 
       <div class="tg-actions">
@@ -20,7 +20,7 @@
         <label class="tg-label">
           Token
           <select v-model="tokenId" class="tg-select">
-            <option value="">全部 token</option>
+            <option value="">全部 Token</option>
             <option v-for="token in tokens" :key="token.id" :value="token.id">{{ token.name }}</option>
           </select>
         </label>
@@ -31,7 +31,7 @@
 
     <div class="tg-grid-2">
       <div class="tg-card">
-        <h2 class="tg-title-lg">请求趋势 / 成功失败</h2>
+        <h2 class="tg-title-lg">请求趋势</h2>
         <div ref="trendChartHost" class="tg-chart-box mt-4">
           <LazyDashboardRequestTrendChart v-if="trendChartVisible" :data="trendData" />
           <div v-else class="flex min-h-[320px] items-center justify-center text-sm text-[var(--tg-muted)]">

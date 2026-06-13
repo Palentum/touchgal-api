@@ -2,16 +2,16 @@
   <div class="tg-card-dark">
     <div class="tg-card-outline tg-form-grid">
       <label class="tg-label md:col-span-2">
-        API token
-        <input v-model="apiToken" class="tg-input" placeholder="tgal_live_xxx">
+        API Token
+        <input v-model="apiToken" class="tg-input">
       </label>
 
       <label class="tg-label">
         接口
         <select v-model="endpoint" class="tg-select">
-          <option value="search">搜索</option>
-          <option value="detail">详情</option>
-          <option value="me">Token 自检</option>
+          <option value="search">/v1/games/search</option>
+          <option value="detail">/v1/games/{uniqueId}</option>
+          <option value="me">/v1/me</option>
         </select>
       </label>
 

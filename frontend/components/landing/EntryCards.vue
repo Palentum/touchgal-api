@@ -6,7 +6,7 @@
           <span class="tg-badge tg-badge-coral">TouchGal Docs</span>
           <h2 class="tg-display-sm" style="margin-top: 24px;">主项目技术文档</h2>
           <p class="tg-lead">
-            了解 TouchGal 主项目架构、部署和贡献方式。本 API 只读取公开元数据，并写入独立脱敏库。
+            了解 TouchGal 主项目架构、部署和贡献方式。
           </p>
           <span class="tg-link" style="margin-top: 28px; display: inline-flex;">进入主项目文档 →</span>
         </a>

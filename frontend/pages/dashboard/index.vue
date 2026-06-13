@@ -9,20 +9,20 @@
 
     <div class="tg-grid-2 tg-dashboard-equal-row">
       <div class="tg-card tg-quick-entry-card">
-        <p class="tg-eyebrow">快捷入口</p>
+        <p class="tg-eyebrow">Entries</p>
         <h2 class="tg-title-lg">快捷入口</h2>
-        <p class="tg-muted mt-3">从这里进入 token、统计与 API 调试台。</p>
+        <p class="tg-muted mt-3">从这里快捷进入Token 管理、请求统计和 API 调试台。</p>
         <div class="tg-actions tg-quick-entry-actions">
-          <NuxtLink class="tg-btn tg-btn-primary" to="/dashboard/tokens">生成 token</NuxtLink>
-          <NuxtLink class="tg-btn tg-btn-secondary" to="/dashboard/stats">查看统计</NuxtLink>
+          <NuxtLink class="tg-btn tg-btn-primary" to="/dashboard/tokens">Token 管理</NuxtLink>
+          <NuxtLink class="tg-btn tg-btn-secondary" to="/dashboard/stats">请求统计</NuxtLink>
           <NuxtLink class="tg-btn tg-btn-secondary" to="/dashboard/console">API 调试台</NuxtLink>
         </div>
       </div>
 
       <div class="tg-card">
-        <p class="tg-eyebrow">账户限额</p>
+        <p class="tg-eyebrow">Limits</p>
         <h2 class="tg-title-lg">账户限额</h2>
-        <p class="tg-muted mt-3">账号级上限按账号总请求量计数，不会被多个 API token 放大。</p>
+        <p class="tg-muted mt-3">账户限额以账户为主体计算，账户限额会自动重置。</p>
         <div class="tg-actions mt-6">
           <div class="tg-limit-pill">
             <p class="tg-stat-label">每分钟请求</p>

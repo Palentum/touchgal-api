@@ -3,7 +3,7 @@
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <p class="tg-eyebrow">Endpoint Call Statistics</p>
-        <h2 class="tg-title-lg">Endpoint 调用统计</h2>
+        <h2 class="tg-title-lg">端点调用统计</h2>
       </div>
       <span class="tg-badge">{{ data.length }} 条路由</span>
     </div>
@@ -27,7 +27,7 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="data.length === 0" class="tg-empty">暂无 endpoint 统计。</p>
+      <p v-if="data.length === 0" class="tg-empty">暂无端点统计。</p>
     </div>
   </div>
 </template>

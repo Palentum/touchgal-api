@@ -1,9 +1,9 @@
 <template>
   <section class="tg-dashboard-stack">
     <div>
-      <p class="tg-eyebrow">API Tokens Management</p>
+      <p class="tg-eyebrow">Token Management</p>
       <h1 class="tg-display-md">Token 管理</h1>
-      <p class="tg-lead">创建、复制、重命名和删除 token。</p>
+      <p class="tg-lead">创建、复制、重命名和删除 Token。</p>
     </div>
 
     <DashboardTokenCreateCard :applications="apps" @created="load" />
