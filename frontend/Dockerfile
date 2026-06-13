@@ -17,7 +17,15 @@ RUN corepack enable && pnpm build
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache wget
+RUN apk upgrade --no-cache && \
+    apk add --no-cache wget && \
+    rm -rf \
+      /opt/yarn-v* \
+      /usr/local/bin/npm \
+      /usr/local/bin/npx \
+      /usr/local/bin/yarn \
+      /usr/local/bin/yarnpkg \
+      /usr/local/lib/node_modules/npm
 COPY --from=build /app/.output ./.output
 EXPOSE 3000
 USER node

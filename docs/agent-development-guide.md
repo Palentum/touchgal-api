@@ -156,6 +156,8 @@ API schema 或路由变更时，必须同时更新：
 - Docker image 扫描构建 backend/frontend 镜像，再用 workflow 中 digest-pinned `TRIVY_IMAGE` 检查 `HIGH,CRITICAL` 且已有修复的漏洞。
 - 新增高危 transitive 前端漏洞时，优先常规升级；需要强制收敛时只在 `frontend/pnpm-workspace.yaml` 添加精确 `overrides`，并保留 `pnpm-lock.yaml` 与 manifest 同步。
 
+- Runtime Docker 镜像必须在构建时刷新 Alpine 包，避免上游镜像 tag 滞后时继续携带已修复的安全漏洞。前端生产镜像不得保留捆绑的包管理器（`npm`/`yarn`），因为 Nuxt 输出运行时只需要 `node`。
+
 ## 性能验证流程
 
 - Go 基准：`make bench`；真实 Redis 限流压测需显式设置 `REDIS_BENCH_ADDR`，否则自动跳过。
