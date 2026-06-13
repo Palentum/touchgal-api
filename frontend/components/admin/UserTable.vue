@@ -8,7 +8,7 @@
       <span class="tg-badge tg-badge-coral">{{ props.users.length }} 个</span>
     </div>
 
-    <div class="tg-table-wrap mt-6">
+    <div class="tg-table-wrap mt-6" data-mobile-cards="true">
       <table class="tg-table tg-user-table">
         <thead>
           <tr>
@@ -23,21 +23,21 @@
         </thead>
         <tbody>
           <tr v-for="user in props.users" :key="user.id">
-            <td>
+            <td data-label="账号">
               <p class="tg-title-sm">{{ user.displayName || '未设置昵称' }}</p>
               <p class="tg-muted mt-1">{{ user.email }}</p>
             </td>
-            <td class="text-center">
+            <td class="text-center" data-label="状态">
               <span class="tg-badge" :class="statusBadgeClass(user.status)">{{ statusText(user.status) }}</span>
             </td>
-            <td class="text-center">
+            <td class="text-center" data-label="权限">
               <span class="tg-badge" :class="user.isAdmin ? 'tg-badge-warning' : ''">{{ user.isAdmin ? '管理员' : '开发者' }}</span>
             </td>
-            <td class="tg-muted">{{ user.minuteLimit }}/{{ user.dailyLimit }}</td>
-            <td class="tg-muted">{{ formatDateTime(user.lastLoginAt) }}</td>
-            <td class="tg-muted">{{ formatDateTime(user.createdAt) }}</td>
-            <td>
-              <div class="flex flex-wrap justify-end gap-2">
+            <td class="tg-muted" data-label="限流">{{ user.minuteLimit }}/{{ user.dailyLimit }}</td>
+            <td class="tg-muted" data-label="最近登录">{{ formatDateTime(user.lastLoginAt) }}</td>
+            <td class="tg-muted" data-label="创建时间">{{ formatDateTime(user.createdAt) }}</td>
+            <td data-label="操作">
+              <div class="flex flex-wrap justify-end gap-1 sm:gap-2">
                 <button
                   type="button"
                   class="tg-icon-btn"
@@ -93,7 +93,7 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="props.users.length === 0" class="tg-empty">暂无符合条件的用户。</p>
+      <p v-if="props.users.length === 0" class="tg-empty" data-label="">暂无符合条件的用户。</p>
     </div>
   </div>
 </template>

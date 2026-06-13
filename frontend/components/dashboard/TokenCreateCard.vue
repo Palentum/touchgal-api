@@ -13,8 +13,8 @@
       <button type="button" class="tg-btn tg-btn-primary" @click="openCreateDialog">生成 token</button>
     </div>
 
-    <div v-if="showCreateDialog" class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="create-token-title">
-      <form class="tg-card w-full max-w-md" @submit.prevent="create">
+    <div v-if="showCreateDialog" class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="create-token-title">
+      <form class="tg-dialog-panel tg-card w-full max-w-md" @submit.prevent="create">
         <p class="tg-eyebrow">Create Token</p>
         <h2 id="create-token-title" class="tg-title-lg">输入 API Token 名称</h2>
         <label class="tg-label mt-6" for="new-token-name">API Token 名称</label>
@@ -152,4 +152,15 @@ const create = async () => {
 .tg-token-copy-btn:hover {
   background: rgba(250, 249, 245, 0.16);
 }
+@media (max-width: 420px) {
+  .tg-token-code {
+    padding-right: 48px;
+  }
+
+  .tg-token-copy-btn {
+    top: 10px;
+    right: 10px;
+  }
+}
+
 </style>

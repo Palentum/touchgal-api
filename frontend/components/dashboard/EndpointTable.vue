@@ -8,7 +8,7 @@
       <span class="tg-badge">{{ data.length }} 条路由</span>
     </div>
 
-    <div class="tg-table-wrap mt-6">
+    <div class="tg-table-wrap mt-6" data-mobile-cards="true">
       <table class="tg-table">
         <thead>
           <tr>
@@ -20,10 +20,10 @@
         </thead>
         <tbody>
           <tr v-for="item in data" :key="item.route">
-            <td class="font-mono">{{ item.route }}</td>
-            <td>{{ item.requests }}</td>
-            <td>{{ item.avgLatencyMs }}ms</td>
-            <td>{{ (item.errorRate * 100).toFixed(2) }}%</td>
+            <td class="font-mono" data-label="Route">{{ item.route }}</td>
+            <td data-label="请求">{{ item.requests }}</td>
+            <td data-label="平均耗时">{{ item.avgLatencyMs }}ms</td>
+            <td data-label="错误率">{{ (item.errorRate * 100).toFixed(2) }}%</td>
           </tr>
         </tbody>
       </table>

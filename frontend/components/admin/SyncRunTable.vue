@@ -7,7 +7,7 @@
       </div>
       <span class="tg-badge tg-badge-coral">{{ runs.length }} 次运行</span>
     </div>
-    <div class="tg-table-wrap">
+    <div class="tg-table-wrap" data-mobile-cards="true">
       <table class="tg-table">
         <thead>
           <tr>
@@ -21,17 +21,17 @@
         </thead>
         <tbody>
           <tr v-for="run in runs" :key="run.id">
-            <td>{{ modeText(run.mode) }}</td>
-            <td class="text-center">
+            <td data-label="模式">{{ modeText(run.mode) }}</td>
+            <td class="text-center" data-label="状态">
               <span class="tg-badge" :class="statusBadgeClass(run.status)">{{ run.status }}</span>
             </td>
-            <td>{{ run.gamesUpserted }}</td>
-            <td>{{ run.gamesDeleted }}</td>
-            <td class="max-w-md truncate">{{ run.errorMessage || '—' }}</td>
-            <td>{{ formatDateTime(run.startedAt) }}</td>
+            <td data-label="写入/更新">{{ run.gamesUpserted }}</td>
+            <td data-label="删除">{{ run.gamesDeleted }}</td>
+            <td class="max-w-md truncate" data-label="错误">{{ run.errorMessage || '—' }}</td>
+            <td data-label="时间">{{ formatDateTime(run.startedAt) }}</td>
           </tr>
           <tr v-if="runs.length === 0">
-            <td class="tg-empty" colspan="6">暂无同步记录。</td>
+            <td class="tg-empty" colspan="6" data-label="">暂无同步记录。</td>
           </tr>
         </tbody>
       </table>

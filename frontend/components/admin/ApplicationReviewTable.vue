@@ -1,5 +1,5 @@
 <template>
-  <div class="tg-table-wrap">
+  <div class="tg-table-wrap" data-mobile-cards="true">
     <table class="tg-table tg-application-review-table">
       <thead>
         <tr>
@@ -10,14 +10,14 @@
       </thead>
       <tbody>
         <tr v-for="app in applications" :key="app.id">
-          <td>
+          <td data-label="项目">
             <p class="tg-title-sm">{{ app.projectName || app.applicantName }}</p>
             <p class="tg-muted mt-1">{{ app.projectUrl || '未填写项目地址' }}</p>
           </td>
-          <td class="text-center">
+          <td class="text-center" data-label="状态">
             <span class="tg-badge" :class="statusBadgeClass(app.status)">{{ statusText(app.status) }}</span>
           </td>
-          <td>
+          <td data-label="操作">
             <div class="flex justify-end">
               <button
                 type="button"
@@ -38,7 +38,7 @@
           </td>
         </tr>
         <tr v-if="applications.length === 0">
-          <td class="tg-empty" colspan="3">暂无待展示的申请。</td>
+          <td class="tg-empty" colspan="3" data-label="">暂无待展示的申请。</td>
         </tr>
       </tbody>
     </table>

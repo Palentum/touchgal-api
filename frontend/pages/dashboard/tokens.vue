@@ -8,8 +8,8 @@
 
     <DashboardTokenCreateCard :applications="apps" @created="load" />
     <DashboardTokenTable :tokens="tokens" :can-edit="true" @edit="openEditToken" @delete="openDeleteToken" />
-    <div v-if="editingToken" class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="edit-token-title">
-      <form class="tg-card w-full max-w-md" @submit.prevent="saveTokenName">
+    <div v-if="editingToken" class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="edit-token-title">
+      <form class="tg-dialog-panel tg-card w-full max-w-md" @submit.prevent="saveTokenName">
         <p class="tg-eyebrow">编辑 Token</p>
         <h2 id="edit-token-title" class="tg-title-lg">修改 token 名称</h2>
         <label class="tg-label mt-6" for="token-name">名称</label>
@@ -21,8 +21,8 @@
         </div>
       </form>
     </div>
-    <div v-if="deletingToken" class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="delete-token-title">
-      <div class="tg-card w-full max-w-md">
+    <div v-if="deletingToken" class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-labelledby="delete-token-title">
+      <div class="tg-dialog-panel tg-card w-full max-w-md">
         <p class="tg-eyebrow">删除 Token</p>
         <h2 id="delete-token-title" class="tg-title-lg">确认删除这个 token？</h2>
         <p class="tg-muted mt-4">删除后 <span class="font-semibold text-[var(--tg-body-strong)]">{{ deletingToken.name }}</span> 将立即失效，使用该 token 的 API 请求会被拒绝。</p>

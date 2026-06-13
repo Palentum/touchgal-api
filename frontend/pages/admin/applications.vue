@@ -15,13 +15,13 @@
 
     <div
       v-if="selectedApplication"
-      class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
+      class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="review-application-title"
       @click.self="closeReviewDialog"
     >
-      <form class="tg-card w-full max-w-2xl" @submit.prevent="submitReview('approve')">
+      <form class="tg-dialog-panel tg-card w-full max-w-2xl" @submit.prevent="submitReview('approve')">
         <p class="tg-eyebrow">处理申请</p>
         <h2 id="review-application-title" class="tg-title-lg">审核开发者项目</h2>
 

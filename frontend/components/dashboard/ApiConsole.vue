@@ -92,6 +92,7 @@ const send = async () => {
 <style scoped>
 .tg-console-action-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
 }
@@ -99,7 +100,20 @@ const send = async () => {
 .tg-console-status {
   display: flex;
   width: fit-content;
-  margin-left: auto;
+}
+
+@media (max-width: 767px) {
+  .tg-console-action-row .tg-btn,
+  .tg-console-status {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (min-width: 768px) {
+  .tg-console-status {
+    margin-left: auto;
+  }
 }
 
 .tg-console-code-window {

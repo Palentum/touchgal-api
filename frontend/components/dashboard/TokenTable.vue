@@ -8,7 +8,7 @@
       <span class="tg-badge tg-badge-coral">{{ props.tokens.length }} 个</span>
     </div>
 
-    <div class="tg-table-wrap mt-6">
+    <div class="tg-table-wrap mt-6" data-mobile-cards="true">
       <table class="tg-table" :class="{ 'tg-token-table-strong': props.canEdit }">
         <thead>
           <tr>
@@ -29,22 +29,22 @@
         </thead>
         <tbody>
           <tr v-for="token in props.tokens" :key="token.id">
-            <td class="font-semibold">{{ token.name }}</td>
+            <td class="font-semibold" data-label="名称">{{ token.name }}</td>
             <template v-if="props.canEdit">
-              <td>
+              <td data-label="Token">
                 <code class="rounded-full border border-[var(--tg-hairline)] bg-[var(--tg-surface-soft)] px-3 py-1 text-xs font-semibold text-[var(--tg-body-strong)]">{{ maskedToken(token.tokenPrefix) }}</code>
               </td>
-              <td>{{ formatDateTime(token.createdAt) }}</td>
-              <td>{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '未使用' }}</td>
+              <td data-label="创建时间">{{ formatDateTime(token.createdAt) }}</td>
+              <td data-label="最新使用时间">{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '未使用' }}</td>
             </template>
             <template v-else>
-              <td class="text-center"><span class="tg-badge" :class="token.status === 'active' ? 'tg-badge-success' : 'tg-badge-error'">{{ statusText(token.status) }}</span></td>
-              <td>{{ token.minuteLimit }}/{{ token.dailyLimit }}</td>
-              <td class="tg-muted">{{ formatDateTime(token.createdAt) }}</td>
-              <td class="tg-muted">{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '未使用' }}</td>
+              <td class="text-center" data-label="状态"><span class="tg-badge" :class="token.status === 'active' ? 'tg-badge-success' : 'tg-badge-error'">{{ statusText(token.status) }}</span></td>
+              <td data-label="限流">{{ token.minuteLimit }}/{{ token.dailyLimit }}</td>
+              <td class="tg-muted" data-label="创建日期">{{ formatDateTime(token.createdAt) }}</td>
+              <td class="tg-muted" data-label="上次使用">{{ token.lastUsedAt ? formatDateTime(token.lastUsedAt) : '未使用' }}</td>
             </template>
-            <td>
-              <div class="flex justify-end gap-2">
+            <td data-label="操作">
+              <div class="flex justify-end gap-1 sm:gap-2">
                 <button
                   v-if="props.canEdit"
                   type="button"

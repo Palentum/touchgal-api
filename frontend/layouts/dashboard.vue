@@ -1,13 +1,19 @@
 <template>
   <div class="tg-dashboard-shell">
-    <aside class="tg-dashboard-sidebar">
-      <NuxtLink to="/" class="tg-brand tg-brand-on-dark">
-        <img class="tg-logo" src="/logo.webp" width="32" height="32" alt="" aria-hidden="true">
-        <span>TouchGAL API</span>
-      </NuxtLink>
+    <aside class="tg-dashboard-sidebar" :class="{ 'tg-sidebar-open': navOpen }">
+      <div class="tg-dashboard-sidebar-head">
+        <NuxtLink to="/" class="tg-brand tg-brand-on-dark" @click="navOpen = false">
+          <img class="tg-logo" src="/logo.webp" width="32" height="32" alt="" aria-hidden="true">
+          <span>TouchGAL API</span>
+        </NuxtLink>
+
+        <button class="tg-icon-btn tg-mobile-toggle" type="button" :aria-expanded="navOpen" aria-label="打开控制台导航" @click="navOpen = !navOpen">
+          {{ navOpen ? '×' : '☰' }}
+        </button>
+      </div>
 
       <nav v-if="!showPending" class="tg-sidebar-nav" aria-label="控制台导航">
-        <NuxtLink v-for="item in items" :key="item.to" :to="item.to" class="tg-sidebar-link">
+        <NuxtLink v-for="item in items" :key="item.to" :to="item.to" class="tg-sidebar-link" @click="navOpen = false">
           {{ item.label }}
         </NuxtLink>
       </nav>
@@ -33,6 +39,9 @@
 
 <script setup lang="ts">
 const auth = useAuthStore()
+const route = useRoute()
+const navOpen = ref(false)
+
 const access = useApplicationAccess()
 
 const applyItem = { to: '/dashboard/apply', label: '账号申请' }
@@ -54,7 +63,12 @@ const items = computed(() => {
   return dashboardItems
 })
 const logout = async () => {
+  navOpen.value = false
   await auth.logout()
   await navigateTo('/auth/login')
 }
+
+watch(() => route.fullPath, () => {
+  navOpen.value = false
+})
 </script>

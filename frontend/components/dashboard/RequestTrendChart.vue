@@ -1,7 +1,7 @@
 <template>
   <ClientOnly>
     <div class="tg-chart-box">
-      <VChart class="h-full min-h-[320px] w-full" :option="option" autoresize />
+      <VChart class="h-full min-h-[260px] w-full md:min-h-[320px]" :option="option" autoresize />
     </div>
   </ClientOnly>
 </template>

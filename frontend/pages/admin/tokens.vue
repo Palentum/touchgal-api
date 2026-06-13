@@ -8,13 +8,13 @@
     <DashboardTokenTable :tokens="tokens" @delete="openDeleteToken" />
     <div
       v-if="deletingToken"
-      class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
+      class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-admin-token-title"
       @click.self="closeDeleteToken"
     >
-      <div class="tg-card w-full max-w-md">
+      <div class="tg-dialog-panel tg-card w-full max-w-md">
         <p class="tg-eyebrow">删除 Token</p>
         <h2 id="delete-admin-token-title" class="tg-title-lg">确认删除这个 token？</h2>
         <p class="tg-muted mt-4">

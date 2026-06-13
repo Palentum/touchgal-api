@@ -7,12 +7,12 @@
         <p class="tg-muted mt-3">检索开发者账号，编辑资料、限流、状态或删除用户。</p>
       </div>
 
-      <form class="flex flex-wrap items-end gap-3" @submit.prevent="applyFilters">
-        <label class="tg-label tg-label-on-dark min-w-[240px]">
+      <form class="flex w-full flex-wrap items-end gap-3 sm:w-auto" @submit.prevent="applyFilters">
+        <label class="tg-label tg-label-on-dark w-full min-w-0 sm:w-auto sm:min-w-[240px]">
           搜索用户
           <input v-model="search" class="tg-input" type="search" name="q" placeholder="邮箱或昵称">
         </label>
-        <label class="tg-label tg-label-on-dark min-w-[160px]">
+        <label class="tg-label tg-label-on-dark w-full min-w-0 sm:w-auto sm:min-w-[160px]">
           状态
           <select v-model="status" class="tg-select" name="status">
             <option value="all">全部</option>
@@ -20,7 +20,7 @@
             <option value="disabled">已停用</option>
           </select>
         </label>
-        <button class="tg-btn tg-btn-cream" type="submit" :disabled="loading">筛选</button>
+        <button class="tg-btn tg-btn-cream w-full sm:w-auto" type="submit" :disabled="loading">筛选</button>
       </form>
     </div>
 
@@ -37,13 +37,13 @@
 
     <div
       v-if="editingUser"
-      class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
+      class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-user-title"
       @click.self="closeEditUser"
     >
-      <form class="tg-card w-full max-w-xl" @submit.prevent="saveUser">
+      <form class="tg-dialog-panel tg-card w-full max-w-xl" @submit.prevent="saveUser">
         <p class="tg-eyebrow">编辑用户</p>
         <h2 id="edit-user-title" class="tg-title-lg">修改 {{ editingUser.displayName || editingUser.email }}</h2>
         <div class="mt-6 grid gap-4 md:grid-cols-2">
@@ -75,13 +75,13 @@
 
     <div
       v-if="deletingUser"
-      class="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
+      class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-user-title"
       @click.self="closeDeleteUser"
     >
-      <div class="tg-card w-full max-w-md">
+      <div class="tg-dialog-panel tg-card w-full max-w-md">
         <p class="tg-eyebrow">删除用户</p>
         <h2 id="delete-user-title" class="tg-title-lg">确认删除这个用户？</h2>
         <p class="tg-muted mt-4">
