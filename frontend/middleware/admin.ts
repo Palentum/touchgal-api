@@ -1,3 +1,5 @@
+import { sanitizePostLoginRedirect } from '~/utils/redirect'
+
 export default defineNuxtRouteMiddleware(async (to) => {
   const nuxtApp = useNuxtApp()
   const auth = useAuthStore()
@@ -10,7 +12,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return redirect('/account-disabled')
   }
   if (!auth.user) {
-    return redirect(`/auth/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    const target = sanitizePostLoginRedirect(to.fullPath)
+    return redirect(`/auth/login?redirect=${encodeURIComponent(target)}`)
   }
   if (!auth.user.isAdmin) {
     return redirect('/dashboard')

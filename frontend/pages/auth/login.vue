@@ -16,6 +16,8 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizePostLoginRedirect } from '~/utils/redirect'
+
 definePageMeta({
   middleware: async () => {
     if (import.meta.server) {
@@ -37,6 +39,6 @@ definePageMeta({
 
 const route = useRoute()
 const done = async () => {
-  await navigateTo(String(route.query.redirect || '/dashboard'))
+  await navigateTo(sanitizePostLoginRedirect(route.query.redirect))
 }
 </script>
