@@ -3,12 +3,12 @@ package repository
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/touchgal/developer/backend/internal/model"
 )
 
@@ -258,111 +258,233 @@ func (r *StatsRepo) DeleteRequestLogRollupsBefore(ctx context.Context, before ti
 	return deleted, err
 }
 
+const dashboardAllTokensSQL = `
+	WITH daily_rollups AS (
+		SELECT date, total_requests, success_requests, error_requests, total_latency_ms
+		FROM api_usage_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+	),
+	origin_rollups AS (
+		SELECT origin, referer_host, requests
+		FROM api_usage_origin_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+	),
+	ip_rollups AS (
+		SELECT ip
+		FROM api_usage_ip_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+	),
+	route_rollups AS (
+		SELECT route, requests, error_requests, total_latency_ms
+		FROM api_usage_route_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+	),
+	summary_daily AS (
+		SELECT coalesce(sum(total_requests), 0)::int AS total_requests,
+		       coalesce(sum(success_requests), 0)::int AS success_requests,
+		       coalesce(sum(error_requests), 0)::int AS error_requests,
+		       CASE
+			       WHEN coalesce(sum(total_requests), 0) = 0 THEN 0
+			       ELSE (coalesce(sum(total_latency_ms), 0) / sum(total_requests))::int
+		       END AS avg_latency_ms
+		FROM daily_rollups
+	),
+	summary_origins AS (
+		SELECT count(DISTINCT nullif(origin, ''))::int AS unique_origins
+		FROM origin_rollups
+	),
+	summary_ips AS (
+		SELECT count(DISTINCT ip)::int AS unique_ips
+		FROM ip_rollups
+	),
+	trend_rows AS (
+		SELECT date,
+		       to_char(date, 'YYYY-MM-DD') AS day,
+		       coalesce(sum(total_requests), 0)::int AS total_requests,
+		       coalesce(sum(success_requests), 0)::int AS success_requests,
+		       coalesce(sum(error_requests), 0)::int AS error_requests
+		FROM daily_rollups
+		GROUP BY date
+		ORDER BY date
+	),
+	source_rows AS (
+		SELECT coalesce(nullif(origin, ''), 'unknown') AS origin,
+		       coalesce(nullif(referer_host, ''), 'unknown') AS referer_host,
+		       coalesce(sum(requests), 0)::int AS requests
+		FROM origin_rollups
+		GROUP BY origin, referer_host
+		ORDER BY requests DESC, origin, referer_host
+		LIMIT 20
+	),
+	endpoint_rows AS (
+		SELECT route,
+		       coalesce(sum(requests), 0)::int AS requests,
+		       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(total_latency_ms), 0) / sum(requests))::int END AS avg_latency_ms,
+		       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(error_requests), 0)::float / sum(requests)::float) END AS error_rate
+		FROM route_rollups
+		GROUP BY route
+		ORDER BY requests DESC, route
+		LIMIT 50
+	)
+	SELECT summary_daily.total_requests,
+	       summary_daily.success_requests,
+	       summary_daily.error_requests,
+	       summary_daily.avg_latency_ms,
+	       summary_origins.unique_origins,
+	       summary_ips.unique_ips,
+	       coalesce((
+		       SELECT jsonb_agg(jsonb_build_object(
+			       'date', day,
+			       'totalRequests', total_requests,
+			       'successRequests', success_requests,
+			       'errorRequests', error_requests
+		       ) ORDER BY date)
+		       FROM trend_rows
+	       ), '[]'::jsonb),
+	       coalesce((
+		       SELECT jsonb_agg(jsonb_build_object(
+			       'origin', origin,
+			       'refererHost', referer_host,
+			       'requests', requests
+		       ) ORDER BY requests DESC, origin, referer_host)
+		       FROM source_rows
+	       ), '[]'::jsonb),
+	       coalesce((
+		       SELECT jsonb_agg(jsonb_build_object(
+			       'route', route,
+			       'requests', requests,
+			       'avgLatencyMs', avg_latency_ms,
+			       'errorRate', error_rate
+		       ) ORDER BY requests DESC, route)
+		       FROM endpoint_rows
+	       ), '[]'::jsonb)
+	FROM summary_daily, summary_origins, summary_ips`
+
+const dashboardSingleTokenSQL = `
+	WITH daily_rollups AS (
+		SELECT date, total_requests, success_requests, error_requests, total_latency_ms
+		FROM api_usage_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+		  AND token_id = $3
+	),
+	origin_rollups AS (
+		SELECT origin, referer_host, requests
+		FROM api_usage_origin_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+		  AND token_id = $3
+	),
+	ip_rollups AS (
+		SELECT ip
+		FROM api_usage_ip_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+		  AND token_id = $3
+	),
+	route_rollups AS (
+		SELECT route, requests, error_requests, total_latency_ms
+		FROM api_usage_route_daily
+		WHERE user_id = $1
+		  AND date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date
+		  AND token_id = $3
+	),
+	summary_daily AS (
+		SELECT coalesce(sum(total_requests), 0)::int AS total_requests,
+		       coalesce(sum(success_requests), 0)::int AS success_requests,
+		       coalesce(sum(error_requests), 0)::int AS error_requests,
+		       CASE
+			       WHEN coalesce(sum(total_requests), 0) = 0 THEN 0
+			       ELSE (coalesce(sum(total_latency_ms), 0) / sum(total_requests))::int
+		       END AS avg_latency_ms
+		FROM daily_rollups
+	),
+	summary_origins AS (
+		SELECT count(DISTINCT nullif(origin, ''))::int AS unique_origins
+		FROM origin_rollups
+	),
+	summary_ips AS (
+		SELECT count(DISTINCT ip)::int AS unique_ips
+		FROM ip_rollups
+	),
+	trend_rows AS (
+		SELECT date,
+		       to_char(date, 'YYYY-MM-DD') AS day,
+		       coalesce(sum(total_requests), 0)::int AS total_requests,
+		       coalesce(sum(success_requests), 0)::int AS success_requests,
+		       coalesce(sum(error_requests), 0)::int AS error_requests
+		FROM daily_rollups
+		GROUP BY date
+		ORDER BY date
+	),
+	source_rows AS (
+		SELECT coalesce(nullif(origin, ''), 'unknown') AS origin,
+		       coalesce(nullif(referer_host, ''), 'unknown') AS referer_host,
+		       coalesce(sum(requests), 0)::int AS requests
+		FROM origin_rollups
+		GROUP BY origin, referer_host
+		ORDER BY requests DESC, origin, referer_host
+		LIMIT 20
+	),
+	endpoint_rows AS (
+		SELECT route,
+		       coalesce(sum(requests), 0)::int AS requests,
+		       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(total_latency_ms), 0) / sum(requests))::int END AS avg_latency_ms,
+		       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(error_requests), 0)::float / sum(requests)::float) END AS error_rate
+		FROM route_rollups
+		GROUP BY route
+		ORDER BY requests DESC, route
+		LIMIT 50
+	)
+	SELECT summary_daily.total_requests,
+	       summary_daily.success_requests,
+	       summary_daily.error_requests,
+	       summary_daily.avg_latency_ms,
+	       summary_origins.unique_origins,
+	       summary_ips.unique_ips,
+	       coalesce((
+		       SELECT jsonb_agg(jsonb_build_object(
+			       'date', day,
+			       'totalRequests', total_requests,
+			       'successRequests', success_requests,
+			       'errorRequests', error_requests
+		       ) ORDER BY date)
+		       FROM trend_rows
+	       ), '[]'::jsonb),
+	       coalesce((
+		       SELECT jsonb_agg(jsonb_build_object(
+			       'origin', origin,
+			       'refererHost', referer_host,
+			       'requests', requests
+		       ) ORDER BY requests DESC, origin, referer_host)
+		       FROM source_rows
+	       ), '[]'::jsonb),
+	       coalesce((
+		       SELECT jsonb_agg(jsonb_build_object(
+			       'route', route,
+			       'requests', requests,
+			       'avgLatencyMs', avg_latency_ms,
+			       'errorRate', error_rate
+		       ) ORDER BY requests DESC, route)
+		       FROM endpoint_rows
+	       ), '[]'::jsonb)
+	FROM summary_daily, summary_origins, summary_ips`
+
 func (r *StatsRepo) Dashboard(ctx context.Context, userID uuid.UUID, days int, tokenID *uuid.UUID) (model.StatsDashboard, error) {
-	where, args := statsAggregateWhere(userID, days, tokenID)
+	if tokenID == nil {
+		return scanStatsDashboardRow(r.db.QueryRow(ctx, dashboardAllTokensSQL, userID, days))
+	}
+	return scanStatsDashboardRow(r.db.QueryRow(ctx, dashboardSingleTokenSQL, userID, days, *tokenID))
+}
+
+func scanStatsDashboardRow(row pgx.Row) (model.StatsDashboard, error) {
 	var dashboard model.StatsDashboard
 	var trendJSON, sourcesJSON, endpointsJSON []byte
-	err := r.db.QueryRow(ctx, fmt.Sprintf(`
-		WITH daily_rollups AS (
-			SELECT date, total_requests, success_requests, error_requests, total_latency_ms
-			FROM api_usage_daily
-			WHERE %s
-		),
-		origin_rollups AS (
-			SELECT origin, referer_host, requests
-			FROM api_usage_origin_daily
-			WHERE %s
-		),
-		ip_rollups AS (
-			SELECT ip
-			FROM api_usage_ip_daily
-			WHERE %s
-		),
-		route_rollups AS (
-			SELECT route, requests, error_requests, total_latency_ms
-			FROM api_usage_route_daily
-			WHERE %s
-		),
-		summary_daily AS (
-			SELECT coalesce(sum(total_requests), 0)::int AS total_requests,
-			       coalesce(sum(success_requests), 0)::int AS success_requests,
-			       coalesce(sum(error_requests), 0)::int AS error_requests,
-			       CASE
-				       WHEN coalesce(sum(total_requests), 0) = 0 THEN 0
-				       ELSE (coalesce(sum(total_latency_ms), 0) / sum(total_requests))::int
-			       END AS avg_latency_ms
-			FROM daily_rollups
-		),
-		summary_origins AS (
-			SELECT count(DISTINCT nullif(origin, ''))::int AS unique_origins
-			FROM origin_rollups
-		),
-		summary_ips AS (
-			SELECT count(DISTINCT ip)::int AS unique_ips
-			FROM ip_rollups
-		),
-		trend_rows AS (
-			SELECT date,
-			       to_char(date, 'YYYY-MM-DD') AS day,
-			       coalesce(sum(total_requests), 0)::int AS total_requests,
-			       coalesce(sum(success_requests), 0)::int AS success_requests,
-			       coalesce(sum(error_requests), 0)::int AS error_requests
-			FROM daily_rollups
-			GROUP BY date
-			ORDER BY date
-		),
-		source_rows AS (
-			SELECT coalesce(nullif(origin, ''), 'unknown') AS origin,
-			       coalesce(nullif(referer_host, ''), 'unknown') AS referer_host,
-			       coalesce(sum(requests), 0)::int AS requests
-			FROM origin_rollups
-			GROUP BY origin, referer_host
-			ORDER BY requests DESC, origin, referer_host
-			LIMIT 20
-		),
-		endpoint_rows AS (
-			SELECT route,
-			       coalesce(sum(requests), 0)::int AS requests,
-			       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(total_latency_ms), 0) / sum(requests))::int END AS avg_latency_ms,
-			       CASE WHEN coalesce(sum(requests), 0) = 0 THEN 0 ELSE (coalesce(sum(error_requests), 0)::float / sum(requests)::float) END AS error_rate
-			FROM route_rollups
-			GROUP BY route
-			ORDER BY requests DESC, route
-			LIMIT 50
-		)
-		SELECT summary_daily.total_requests,
-		       summary_daily.success_requests,
-		       summary_daily.error_requests,
-		       summary_daily.avg_latency_ms,
-		       summary_origins.unique_origins,
-		       summary_ips.unique_ips,
-		       coalesce((
-			       SELECT jsonb_agg(jsonb_build_object(
-				       'date', day,
-				       'totalRequests', total_requests,
-				       'successRequests', success_requests,
-				       'errorRequests', error_requests
-			       ) ORDER BY date)
-			       FROM trend_rows
-		       ), '[]'::jsonb),
-		       coalesce((
-			       SELECT jsonb_agg(jsonb_build_object(
-				       'origin', origin,
-				       'refererHost', referer_host,
-				       'requests', requests
-			       ) ORDER BY requests DESC, origin, referer_host)
-			       FROM source_rows
-		       ), '[]'::jsonb),
-		       coalesce((
-			       SELECT jsonb_agg(jsonb_build_object(
-				       'route', route,
-				       'requests', requests,
-				       'avgLatencyMs', avg_latency_ms,
-				       'errorRate', error_rate
-			       ) ORDER BY requests DESC, route)
-			       FROM endpoint_rows
-		       ), '[]'::jsonb)
-		FROM summary_daily, summary_origins, summary_ips`, where, where, where, where), args...).Scan(
+	err := row.Scan(
 		&dashboard.Summary.TotalRequests,
 		&dashboard.Summary.SuccessRequests,
 		&dashboard.Summary.ErrorRequests,
@@ -386,12 +508,4 @@ func (r *StatsRepo) Dashboard(ctx context.Context, userID uuid.UUID, days int, t
 		return model.StatsDashboard{}, err
 	}
 	return dashboard, nil
-}
-
-func statsAggregateWhere(userID uuid.UUID, days int, tokenID *uuid.UUID) (string, []any) {
-	dateFilter := "date >= (CURRENT_DATE - (($2::int - 1) * INTERVAL '1 day'))::date"
-	if tokenID == nil {
-		return "user_id = $1 AND " + dateFilter, []any{userID, days}
-	}
-	return "user_id = $1 AND " + dateFilter + " AND token_id = $3", []any{userID, days, *tokenID}
 }

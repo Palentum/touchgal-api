@@ -119,7 +119,10 @@ func (r *TokenRepo) CountActive(ctx context.Context) (int, error) {
 }
 
 func (r *TokenRepo) GetByIDForUser(ctx context.Context, id, userID uuid.UUID) (*model.APIToken, error) {
-	return r.get(ctx, `WHERE id = $1 AND user_id = $2`, id, userID)
+	return scanTokenRow(r.db.QueryRow(ctx, `
+		SELECT id, user_id, application_id, name, token_prefix, token_hash, status, minute_limit, daily_limit, last_used_at, expires_at, created_at, updated_at
+		FROM api_tokens
+		WHERE id = $1 AND user_id = $2`, id, userID))
 }
 
 func (r *TokenRepo) GetByHashWithApplication(ctx context.Context, tokenHash string) (*model.TokenAuthInfo, error) {
@@ -180,11 +183,9 @@ func (r *TokenRepo) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-func (r *TokenRepo) get(ctx context.Context, where string, args ...any) (*model.APIToken, error) {
+func scanTokenRow(row pgx.Row) (*model.APIToken, error) {
 	token := &model.APIToken{}
-	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, application_id, name, token_prefix, token_hash, status, minute_limit, daily_limit, last_used_at, expires_at, created_at, updated_at
-		FROM api_tokens `+where, args...).Scan(&token.ID, &token.UserID, &token.ApplicationID, &token.Name, &token.TokenPrefix, &token.TokenHash, &token.Status, &token.MinuteLimit, &token.DailyLimit, &token.LastUsedAt, &token.ExpiresAt, &token.CreatedAt, &token.UpdatedAt)
+	err := row.Scan(&token.ID, &token.UserID, &token.ApplicationID, &token.Name, &token.TokenPrefix, &token.TokenHash, &token.Status, &token.MinuteLimit, &token.DailyLimit, &token.LastUsedAt, &token.ExpiresAt, &token.CreatedAt, &token.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}

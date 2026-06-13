@@ -106,6 +106,27 @@ func TestStatsRepoDashboardReadsAggregatesNotRawLogs(t *testing.T) {
 	if len(queryer.rowArgs) != 2 || queryer.rowArgs[0] != userID || queryer.rowArgs[1] != 30 {
 		t.Fatalf("dashboard args got %#v", queryer.rowArgs)
 	}
+	if strings.Contains(queryer.rowSQL, "%s") || strings.Contains(sql, "token_id = $3") {
+		t.Fatalf("all-token dashboard SQL must stay static and avoid token filter: %s", queryer.rowSQL)
+	}
+}
+
+func TestStatsRepoDashboardBindsOptionalTokenFilter(t *testing.T) {
+	queryer := &recordingStatsQueryer{row: statsDashboardRow{}}
+	repo := NewStatsRepo(queryer)
+	userID := uuid.New()
+	tokenID := uuid.New()
+
+	if _, err := repo.Dashboard(context.Background(), userID, 30, &tokenID); err != nil {
+		t.Fatalf("dashboard: %v", err)
+	}
+	if len(queryer.rowArgs) != 3 || queryer.rowArgs[0] != userID || queryer.rowArgs[1] != 30 || queryer.rowArgs[2] != tokenID {
+		t.Fatalf("dashboard args got %#v", queryer.rowArgs)
+	}
+	sql := strings.ToLower(queryer.rowSQL)
+	if !strings.Contains(sql, "token_id = $3") || strings.Contains(sql, "scope.token_id is null or") {
+		t.Fatalf("dashboard SQL must use the fixed token-filter query: %s", queryer.rowSQL)
+	}
 }
 
 func TestStatsRepoDeletesRollupRowsByDate(t *testing.T) {

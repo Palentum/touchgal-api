@@ -34,15 +34,26 @@ func (r *ApplicationRepo) Create(ctx context.Context, userID uuid.UUID, input mo
 }
 
 func (r *ApplicationRepo) GetByIDForUser(ctx context.Context, id, userID uuid.UUID) (*model.Application, error) {
-	return r.get(ctx, `WHERE id = $1 AND user_id = $2`, id, userID)
+	return scanApplicationRow(r.db.QueryRow(ctx, `
+		SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, reviewed_by, reviewed_at, created_at, updated_at
+		FROM api_applications
+		WHERE id = $1 AND user_id = $2`, id, userID))
 }
 
 func (r *ApplicationRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Application, error) {
-	return r.get(ctx, `WHERE id = $1`, id)
+	return scanApplicationRow(r.db.QueryRow(ctx, `
+		SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, reviewed_by, reviewed_at, created_at, updated_at
+		FROM api_applications
+		WHERE id = $1`, id))
 }
 
 func (r *ApplicationRepo) GetApprovedByUser(ctx context.Context, userID uuid.UUID) (*model.Application, error) {
-	return r.get(ctx, `WHERE user_id = $1 AND status = 'approved' ORDER BY reviewed_at DESC NULLS LAST, created_at DESC LIMIT 1`, userID)
+	return scanApplicationRow(r.db.QueryRow(ctx, `
+		SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, reviewed_by, reviewed_at, created_at, updated_at
+		FROM api_applications
+		WHERE user_id = $1 AND status = 'approved'
+		ORDER BY reviewed_at DESC NULLS LAST, created_at DESC
+		LIMIT 1`, userID))
 }
 
 func (r *ApplicationRepo) EnsureAdminApproved(ctx context.Context, userID uuid.UUID, minuteLimit, dailyLimit int) (*model.Application, error) {
@@ -109,11 +120,9 @@ func (r *ApplicationRepo) UpdateReview(ctx context.Context, id, reviewer uuid.UU
 	return app, err
 }
 
-func (r *ApplicationRepo) get(ctx context.Context, where string, args ...any) (*model.Application, error) {
+func scanApplicationRow(row pgx.Row) (*model.Application, error) {
 	app := &model.Application{}
-	err := r.db.QueryRow(ctx, `
-		SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, reviewed_by, reviewed_at, created_at, updated_at
-		FROM api_applications `+where, args...).Scan(&app.ID, &app.UserID, &app.ApplicantName, &app.ProjectName, &app.ProjectURL, &app.ExpectedDailyRequests, &app.UsageScenario, &app.Status, &app.DefaultMinuteLimit, &app.DefaultDailyLimit, &app.ReviewedBy, &app.ReviewedAt, &app.CreatedAt, &app.UpdatedAt)
+	err := row.Scan(&app.ID, &app.UserID, &app.ApplicantName, &app.ProjectName, &app.ProjectURL, &app.ExpectedDailyRequests, &app.UsageScenario, &app.Status, &app.DefaultMinuteLimit, &app.DefaultDailyLimit, &app.ReviewedBy, &app.ReviewedAt, &app.CreatedAt, &app.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
