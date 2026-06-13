@@ -219,7 +219,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     slug: 'games-search',
     navLabel: '搜索条目',
     name: '搜索游戏条目',
-    introduction: '按关键词搜索 clean DB 中未删除且 SFW 的公开 Galgame 条目。',
+    introduction: '按关键词搜索 clean DB 中未删除的公开 Galgame 条目。默认只返回 SFW；传入 `allowNsfw=true` 时会同时返回 SFW 与 NSFW 条目。',
     method: 'GET',
     path: '/v1/games/search',
     auth: '需要有效的 `tgal_live` API token。',
@@ -252,15 +252,22 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
         required: false,
         type: 'integer, 1-50',
         description: '每页数量。默认 20；小于 1 或非整数按 20 处理；超过 50 会按 50 裁剪。'
-      }
+      },
+      {
+        name: 'allowNsfw',
+        location: 'Query',
+        required: false,
+        type: 'boolean, default false',
+        description: '是否允许返回 NSFW 条目。默认 false，仅返回 SFW；设为 true 时返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
+      },
     ],
-    requestExample: `curl "https://api.example.com/v1/games/search?keyword=summer&page=1&limit=10" \\
+    requestExample: `curl "https://api.example.com/v1/games/search?keyword=summer&page=1&limit=10&allowNsfw=true" \\
   -H "Authorization: Bearer tgal_live_xxx"`,
     statuses: [
       {
         code: 200,
         title: 'OK',
-        description: '返回匹配条目列表与分页信息。搜索列表只包含名称与公开 uniqueId，详情请继续调用条目详情接口。',
+        description: '返回匹配条目列表与分页信息。默认结果只包含 SFW；显式 `allowNsfw=true` 时包含 SFW 与 NSFW。搜索列表只包含名称与公开 uniqueId，详情请继续调用条目详情接口。',
         example: `{
   "success": true,
   "data": {
@@ -291,7 +298,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       {
         code: 400,
         title: 'Bad request',
-        description: '关键词缺失、长度不在 3-100 字符、不是有效 UTF-8，或 page 超过 100。',
+        description: '关键词缺失、长度不在 3-100 字符、不是有效 UTF-8、page 超过 100，或 allowNsfw 不是 true/false。',
         example: `{
   "success": false,
   "error": {
@@ -310,7 +317,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     slug: 'game-detail',
     navLabel: '条目详情',
     name: '获取游戏条目详情',
-    introduction: '按公开 uniqueId 返回游戏详情、别名、标签、会社与评分聚合。响应不包含内部来源 ID、主站用户、评论或资源下载链接。',
+    introduction: '按公开 uniqueId 返回游戏详情、别名、标签、会社与评分聚合。默认只返回 SFW；传入 `allowNsfw=true` 时允许返回 NSFW。响应不包含内部来源 ID、主站用户、评论或资源下载链接。',
     method: 'GET',
     path: '/v1/games/{uniqueId}',
     auth: '需要有效的 `tgal_live` API token。',
@@ -322,9 +329,16 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
         required: true,
         type: 'string, 8 alphanumeric chars',
         description: '公开 8 位条目 ID，仅允许英文大小写字母与数字。'
-      }
+      },
+      {
+        name: 'allowNsfw',
+        location: 'Query',
+        required: false,
+        type: 'boolean, default false',
+        description: '是否允许返回 NSFW 条目。默认 false，NSFW 条目会按未找到处理；设为 true 时允许返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
+      },
     ],
-    requestExample: `curl "https://api.example.com/v1/games/abcd1234" \\
+    requestExample: `curl "https://api.example.com/v1/games/abcd1234?allowNsfw=true" \\
   -H "Authorization: Bearer tgal_live_xxx"`,
     statuses: [
       {
@@ -391,7 +405,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       {
         code: 400,
         title: 'Bad request',
-        description: 'uniqueId 不是 8 位，或包含非英文大小写字母/数字字符。',
+        description: 'uniqueId 不是 8 位、包含非英文大小写字母/数字字符，或 allowNsfw 不是 true/false。',
         example: `{
   "success": false,
   "error": {
@@ -405,7 +419,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       {
         code: 404,
         title: 'Not found',
-        description: '未找到该公开 uniqueId，或对应条目已删除/不可公开。',
+        description: '未找到该公开 uniqueId、对应条目已删除/不可公开，或目标是 NSFW 且本次请求未设置 `allowNsfw=true`。',
         example: `{
   "success": false,
   "error": {

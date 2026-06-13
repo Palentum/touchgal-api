@@ -10,8 +10,8 @@ import (
 )
 
 type GameStore interface {
-	Search(ctx context.Context, keyword string, page, limit int) (model.GameSearchResult, error)
-	Detail(ctx context.Context, uniqueID, touchgalSiteURL string) (*model.GameDetail, error)
+	Search(ctx context.Context, keyword string, page, limit int, allowNsfw bool) (model.GameSearchResult, error)
+	Detail(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (*model.GameDetail, error)
 }
 
 type Service struct {
@@ -28,6 +28,19 @@ const (
 	defaultSearchLimit    = 20
 	maxSearchLimit        = 50
 )
+
+func ParseAllowNsfw(raw string) (bool, error) {
+	switch raw {
+	case "":
+		return false, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, model.ErrInvalidInput
+	}
+}
 
 func NormalizeSearch(keyword string, page, limit int) (string, int, int, error) {
 	keyword = strings.TrimSpace(keyword)
@@ -65,17 +78,17 @@ func ValidateUniqueID(uniqueID string) error {
 	return nil
 }
 
-func (s *Service) Search(ctx context.Context, keyword string, page, limit int) (model.GameSearchResult, error) {
+func (s *Service) Search(ctx context.Context, keyword string, page, limit int, allowNsfw bool) (model.GameSearchResult, error) {
 	keyword, page, limit, err := NormalizeSearch(keyword, page, limit)
 	if err != nil {
 		return model.GameSearchResult{}, err
 	}
-	return s.games.Search(ctx, keyword, page, limit)
+	return s.games.Search(ctx, keyword, page, limit, allowNsfw)
 }
 
-func (s *Service) Detail(ctx context.Context, uniqueID string) (*model.GameDetail, error) {
+func (s *Service) Detail(ctx context.Context, uniqueID string, allowNsfw bool) (*model.GameDetail, error) {
 	if err := ValidateUniqueID(uniqueID); err != nil {
 		return nil, err
 	}
-	return s.games.Detail(ctx, uniqueID, s.cfg.TouchGalSiteURL)
+	return s.games.Detail(ctx, uniqueID, s.cfg.TouchGalSiteURL, allowNsfw)
 }

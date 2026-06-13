@@ -33,7 +33,12 @@ func (h *PublicAPIHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	result, err := h.svc.Search(r.Context(), keyword, page, limit)
+	allowNsfw, err := publicapi.ParseAllowNsfw(r.URL.Query().Get("allowNsfw"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	result, err := h.svc.Search(r.Context(), keyword, page, limit, allowNsfw)
 	if err != nil {
 		Error(w, err)
 		return
@@ -42,7 +47,12 @@ func (h *PublicAPIHandler) Search(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PublicAPIHandler) Detail(w http.ResponseWriter, r *http.Request) {
-	detail, err := h.svc.Detail(r.Context(), chi.URLParam(r, "uniqueId"))
+	allowNsfw, err := publicapi.ParseAllowNsfw(r.URL.Query().Get("allowNsfw"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	detail, err := h.svc.Detail(r.Context(), chi.URLParam(r, "uniqueId"), allowNsfw)
 	if err != nil {
 		Error(w, err)
 		return

@@ -245,6 +245,7 @@ paths:
         - { name: q, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
         - { name: page, in: query, description: 'Offset page. Maximum 100; cursor pagination is not available, so use narrower keywords instead of deep crawling.', schema: { type: integer, minimum: 1, maximum: 100, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: allowNsfw, in: query, description: 'Set to true to include NSFW games alongside SFW games. Defaults to false, which keeps SFW-only results. Only literal true or false are accepted.', schema: { type: boolean, default: false } }
       responses:
         '200':
           description: OK
@@ -259,6 +260,7 @@ paths:
                     properties:
                       items: { type: array, items: { $ref: '#/components/schemas/GameSearchItem' } }
                       pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { description: Invalid request parameters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '429':
           description: Rate limited. Token-authenticated /v1 responses include rate-limit headers.
@@ -276,6 +278,7 @@ paths:
       summary: Get sanitized game detail
       parameters:
         - { name: uniqueId, in: path, required: true, schema: { type: string, minLength: 8, maxLength: 8 } }
+        - { name: allowNsfw, in: query, description: 'Set to true to include NSFW games alongside SFW games. Defaults to false, which keeps SFW-only results. Only literal true or false are accepted.', schema: { type: boolean, default: false } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: object, properties: { success: { type: boolean }, data: { $ref: '#/components/schemas/GameDetail' } } } } } }
         '404': { description: Not found }
@@ -287,6 +290,7 @@ paths:
             X-RateLimit-Limit-Day: { $ref: '#/components/headers/XRateLimitLimitDay' }
             X-RateLimit-Remaining-Day: { $ref: '#/components/headers/XRateLimitRemainingDay' }
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '400': { description: Invalid request parameters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /auth/register/start:
     post:
       security: []

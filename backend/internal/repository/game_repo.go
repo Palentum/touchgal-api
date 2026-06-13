@@ -16,6 +16,54 @@ func NewGameRepo(db Queryer) *GameRepo { return &GameRepo{db: db} }
 const (
 	stringListCapHint  = 8
 	companyListCapHint = 4
+
+	gameSearchSFWPredicate       = "content_limit = 'sfw'"
+	gameSearchAllowNsfwPredicate = "content_limit IN ('sfw', 'nsfw')"
+	gameDetailSFWPredicate       = "g.content_limit = 'sfw'"
+	gameDetailAllowNsfwPredicate = "g.content_limit IN ('sfw', 'nsfw')"
+
+	gameSearchSFWSQL = `
+		SELECT unique_id, name
+		FROM games
+		WHERE deleted_at IS NULL
+		  AND ` + gameSearchSFWPredicate + `
+		  AND search_text ILIKE $1 ESCAPE E'\\'
+		ORDER BY name ASC, unique_id ASC
+		LIMIT $2 OFFSET $3`
+	gameSearchAllowNsfwSQL = `
+		SELECT unique_id, name
+		FROM games
+		WHERE deleted_at IS NULL
+		  AND ` + gameSearchAllowNsfwPredicate + `
+		  AND search_text ILIKE $1 ESCAPE E'\\'
+		ORDER BY name ASC, unique_id ASC
+		LIMIT $2 OFFSET $3`
+	gameSearchCountSFWSQL = `
+		SELECT count(*)
+		FROM games
+		WHERE deleted_at IS NULL
+		  AND ` + gameSearchSFWPredicate + `
+		  AND search_text ILIKE $1 ESCAPE E'\\'`
+	gameSearchCountAllowNsfwSQL = `
+		SELECT count(*)
+		FROM games
+		WHERE deleted_at IS NULL
+		  AND ` + gameSearchAllowNsfwPredicate + `
+		  AND search_text ILIKE $1 ESCAPE E'\\'`
+	gameDetailSFWSQL = `
+		SELECT g.unique_id, g.name, g.introduction, g.banner_url, g.types, g.platforms, g.languages,
+		       g.source_created_at, g.released, g.source_updated_at, g.resource_updated_at,
+		       coalesce(r.average_overall, 0), coalesce(r.count, 0), coalesce(r.rec_strong_no, 0), coalesce(r.rec_no, 0), coalesce(r.rec_neutral, 0), coalesce(r.rec_yes, 0), coalesce(r.rec_strong_yes, 0)
+		FROM games g
+		LEFT JOIN game_rating_stats r ON r.game_unique_id = g.unique_id
+		WHERE g.unique_id = $1 AND g.deleted_at IS NULL AND ` + gameDetailSFWPredicate
+	gameDetailAllowNsfwSQL = `
+		SELECT g.unique_id, g.name, g.introduction, g.banner_url, g.types, g.platforms, g.languages,
+		       g.source_created_at, g.released, g.source_updated_at, g.resource_updated_at,
+		       coalesce(r.average_overall, 0), coalesce(r.count, 0), coalesce(r.rec_strong_no, 0), coalesce(r.rec_no, 0), coalesce(r.rec_neutral, 0), coalesce(r.rec_yes, 0), coalesce(r.rec_strong_yes, 0)
+		FROM games g
+		LEFT JOIN game_rating_stats r ON r.game_unique_id = g.unique_id
+		WHERE g.unique_id = $1 AND g.deleted_at IS NULL AND ` + gameDetailAllowNsfwPredicate
 )
 
 func likeContainsPattern(value string) string {
@@ -40,17 +88,16 @@ func likeContainsPattern(value string) string {
 	return "%" + value + "%"
 }
 
-func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int) (model.GameSearchResult, error) {
+func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int, allowNsfw bool) (model.GameSearchResult, error) {
 	offset := (page - 1) * limit
 	pattern := likeContainsPattern(keyword)
-	rows, err := r.db.Query(ctx, `
-		SELECT unique_id, name
-		FROM games
-		WHERE deleted_at IS NULL
-		  AND content_limit = 'sfw'
-		  AND search_text ILIKE $1 ESCAPE E'\\'
-		ORDER BY name ASC, unique_id ASC
-		LIMIT $2 OFFSET $3`, pattern, limit, offset)
+	searchSQL := gameSearchSFWSQL
+	countSQL := gameSearchCountSFWSQL
+	if allowNsfw {
+		searchSQL = gameSearchAllowNsfwSQL
+		countSQL = gameSearchCountAllowNsfwSQL
+	}
+	rows, err := r.db.Query(ctx, searchSQL, pattern, limit, offset)
 	if err != nil {
 		return model.GameSearchResult{}, err
 	}
@@ -68,29 +115,21 @@ func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int) 
 		return model.GameSearchResult{}, err
 	}
 	total := 0
-	if err := r.db.QueryRow(ctx, `
-		SELECT count(*)
-		FROM games
-		WHERE deleted_at IS NULL
-		  AND content_limit = 'sfw'
-		  AND search_text ILIKE $1 ESCAPE E'\\'`, pattern).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, countSQL, pattern).Scan(&total); err != nil {
 		return model.GameSearchResult{}, err
 	}
 	return model.GameSearchResult{Items: items, Pagination: model.Pagination{Page: page, Limit: limit, Total: total, HasMore: offset+len(items) < total}}, nil
 }
 
-func (r *GameRepo) Detail(ctx context.Context, uniqueID, touchgalSiteURL string) (*model.GameDetail, error) {
+func (r *GameRepo) Detail(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (*model.GameDetail, error) {
 	detail := &model.GameDetail{}
 	var average float64
 	var count, recStrongNo, recNo, recNeutral, recYes, recStrongYes int
-	err := r.db.QueryRow(ctx, `
-		SELECT g.unique_id, g.name, g.introduction, g.banner_url, g.types, g.platforms, g.languages,
-		       g.source_created_at, g.released, g.source_updated_at, g.resource_updated_at,
-		       coalesce(r.average_overall, 0), coalesce(r.count, 0), coalesce(r.rec_strong_no, 0), coalesce(r.rec_no, 0), coalesce(r.rec_neutral, 0), coalesce(r.rec_yes, 0), coalesce(r.rec_strong_yes, 0)
-		FROM games g
-		LEFT JOIN game_rating_stats r ON r.game_unique_id = g.unique_id
-		WHERE g.unique_id = $1 AND g.deleted_at IS NULL AND g.content_limit = 'sfw'`, uniqueID,
-	).Scan(&detail.UniqueID, &detail.Name, &detail.Introduction, &detail.BannerURL, &detail.Type, &detail.Platform, &detail.Language, &detail.PublishTime, &detail.ReleaseDate, &detail.UpdatedAt, &detail.ResourceUpdateTime, &average, &count, &recStrongNo, &recNo, &recNeutral, &recYes, &recStrongYes)
+	detailSQL := gameDetailSFWSQL
+	if allowNsfw {
+		detailSQL = gameDetailAllowNsfwSQL
+	}
+	err := r.db.QueryRow(ctx, detailSQL, uniqueID).Scan(&detail.UniqueID, &detail.Name, &detail.Introduction, &detail.BannerURL, &detail.Type, &detail.Platform, &detail.Language, &detail.PublishTime, &detail.ReleaseDate, &detail.UpdatedAt, &detail.ResourceUpdateTime, &average, &count, &recStrongNo, &recNo, &recNeutral, &recYes, &recStrongYes)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
