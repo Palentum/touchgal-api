@@ -1010,54 +1010,119 @@ select:disabled {
 
   .tg-table-wrap[data-mobile-cards="true"] .tg-table tbody tr {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
     overflow: hidden;
     border: 1px solid var(--tg-hairline);
     border-radius: 12px;
     background: var(--tg-canvas);
+    padding: 12px;
   }
 
   .tg-table-wrap[data-mobile-cards="true"] .tg-table td {
     display: grid;
-    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
-    align-items: start;
-    gap: 8px 12px;
-    border-top: 1px solid var(--tg-hairline-soft);
-    padding: 12px 14px;
-    text-align: right;
+    grid-template-columns: auto minmax(0, 1fr);
+    min-width: 0;
+    align-items: center;
+    gap: 4px 6px;
+    border: 0;
+    background: transparent;
+    padding: 4px 0;
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.35;
   }
 
-  .tg-table-wrap[data-mobile-cards="true"] .tg-table td:first-child {
-    border-top: 0;
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td:first-child:not(.tg-empty) {
+    grid-column: 1 / -1;
+    display: block;
+    border: 0;
+    border-bottom: 1px solid var(--tg-hairline-soft);
+    border-radius: 0;
+    background: transparent;
+    padding: 2px 2px 8px;
+    font-size: 14px;
+  }
+
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="操作"] {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="Token"],
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="错误"],
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="时间"],
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="创建时间"],
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="创建日期"],
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="最近登录"],
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="最新使用时间"],
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="上次使用"] {
+    grid-column: 1 / -1;
   }
 
   .tg-table-wrap[data-mobile-cards="true"] .tg-table td::before {
-    grid-column: 1;
-    grid-row: 1 / span 20;
     color: var(--tg-muted);
     content: attr(data-label);
-    font-weight: 500;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
     text-align: left;
+    white-space: nowrap;
   }
 
-  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label=""] {
-    display: block;
-    text-align: left;
-  }
-
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td:first-child:not(.tg-empty)::before,
   .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label=""]::before {
     content: none;
   }
 
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label=""] {
+    grid-column: 1 / -1;
+    display: block;
+    text-align: left;
+  }
+
   .tg-table-wrap[data-mobile-cards="true"] .tg-table td > * {
     grid-column: 2;
-    justify-self: end;
+    justify-self: start;
     min-width: 0;
     max-width: 100%;
   }
 
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td[data-label="操作"] > * {
+    margin-left: auto;
+  }
+
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td:first-child:not(.tg-empty) > * {
+    grid-column: auto;
+  }
+
   .tg-table-wrap[data-mobile-cards="true"] .tg-table td p {
     overflow-wrap: anywhere;
-    text-align: right;
+    text-align: left;
+  }
+
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td:first-child:not(.tg-empty) .tg-title-sm {
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td:first-child:not(.tg-empty) .tg-muted {
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td .tg-badge {
+    padding: 2px 9px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td .tg-icon-btn {
+    width: 32px;
+    height: 32px;
   }
 
   .tg-table-wrap[data-mobile-cards="true"] .tg-table td code {
@@ -1071,6 +1136,7 @@ select:disabled {
   }
 
 
+  .tg-table-wrap[data-mobile-cards="true"] .tg-table td.tg-empty,
   .tg-table-wrap[data-mobile-cards="true"] .tg-empty {
     border: 1px solid var(--tg-hairline);
     border-radius: 12px;
