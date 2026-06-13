@@ -97,7 +97,7 @@ Context7 查询的 `pgx/v5` 文档要点：
 
 同步边界比 API 更严格：
 
-- `SOURCE_DATABASE_DSN` 必须只读；本项目禁止修改主站数据库。
+- `SOURCE_DATABASE_DSN` 必须只读；sync `Run`/`Start` 和 API 内置 sync 启动路径必须先调用 `EnsureSourceReadOnly`，确认 source 同步表可读且 source DB/schema/table 没有写权限（包括 DB `CREATE`/`TEMPORARY` 与 PostgreSQL 17+ table `MAINTAIN`），检查失败不得创建 sync run 或继续调度。本项目禁止修改主站数据库。
 - 来源读取集中在 `backend/internal/services/sync/source_queries.go`，必须按 keyset/page 或游标分批读取；incremental 条件避免重新引入 `updated >= ... OR resource_update_time >= ...` 这类可能退化的大扫描。
 - 字段清洗与默认值在 `mapper.go`。
 - clean DB upsert、关系替换、search_text 刷新与 full-sync unseen deletion 在 repository/service 层；批量写入使用短事务 batch commit。

@@ -42,7 +42,7 @@ cp backend/.env.example backend/.env
 关键变量：
 
 - `DATABASE_DSN`：本项目 clean DB，指向主机上的 PostgreSQL。
-- `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`；默认只配置给独立 sync worker，API 进程在 `ENABLE_SYNC_WORKER=false` 时不需要该凭据。
+- `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`；默认只配置给独立 sync worker，API 进程在 `ENABLE_SYNC_WORKER=false` 时不需要该凭据。sync 启动会校验该账号具备 source 同步表 `SELECT` 且没有 source DB/schema/table 写权限（包括 DB `CREATE`/`TEMPORARY` 与 PostgreSQL 17+ table `MAINTAIN`），失败时不继续运行。
 - `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；sync 使用独立 target/source pool、分页读取和短事务 batch commit，避免 full sync 占用 API pool 或形成单个长事务。
 - `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、发码限流、session cache、API token 限流与 token auth 跨实例撤销版本。
 - `REDIS_POOL_SIZE` / `REDIS_MIN_IDLE_CONNS` / `REDIS_*_TIMEOUT`：go-redis 连接池与 dial/read/write/pool wait timeout；timeout 默认 `0` 会由本项目转换为固定安全值（5s/3s/3s/4s），避免依赖 go-redis 版本默认语义，高 QPS 部署按实例容量和 `/v1` 峰值并发调优。
@@ -125,7 +125,7 @@ make sync       # go run ./cmd/sync --mode=incremental
 make sync-full  # go run ./cmd/sync --mode=full
 ```
 
-`SOURCE_DATABASE_DSN` 必须使用主库只读账号，且生产环境默认只放在独立 sync worker 的 env 中。本项目禁止修改主项目数据库。同步任务按 source `patch.id` keyset 分页读取，incremental 查询拆分 `updated` 与 `resource_update_time` 条件，clean DB 写入按批提交；full sync 通过 `sync_run_seen` staging 表标记本次见过的 source patch，再在所有批次成功后统一标记未见条目为 deleted。
+`SOURCE_DATABASE_DSN` 必须使用主库只读账号，且生产环境默认只放在独立 sync worker 的 env 中。本项目禁止修改主项目数据库；sync 启动会校验同步相关 source 表可读且没有 source DB/schema/table 写权限（包括 DB `CREATE`/`TEMPORARY` 与 PostgreSQL 17+ table `MAINTAIN`），检查失败时不会创建 sync run。同步任务按 source `patch.id` keyset 分页读取，incremental 查询拆分 `updated` 与 `resource_update_time` 条件，clean DB 写入按批提交；full sync 通过 `sync_run_seen` staging 表标记本次见过的 source patch，再在所有批次成功后统一标记未见条目为 deleted。
 
 ## 创建管理员方式
 

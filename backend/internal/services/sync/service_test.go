@@ -3,14 +3,17 @@ package syncsvc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
 	"github.com/touchgal/developer/backend/internal/repository"
 )
@@ -78,6 +81,213 @@ func (s *fakeRunStore) LastSuccessMaxUpdatedAt(ctx context.Context) (*time.Time,
 	return nil, nil
 }
 
+type readOnlyCheckCall struct {
+	sql  string
+	args []any
+}
+
+type readOnlyCheckQueryer struct {
+	rows  []readOnlyCheckRow
+	calls []readOnlyCheckCall
+}
+
+func (q *readOnlyCheckQueryer) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	q.calls = append(q.calls, readOnlyCheckCall{sql: sql, args: args})
+	if len(q.rows) == 0 {
+		return readOnlyCheckRow{err: errors.New("unexpected source read-only check query")}
+	}
+	row := q.rows[0]
+	q.rows = q.rows[1:]
+	return row
+}
+
+type readOnlyCheckRow struct {
+	values []any
+	err    error
+}
+
+func (r readOnlyCheckRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	if len(dest) != len(r.values) {
+		return fmt.Errorf("scan destination count %d does not match value count %d", len(dest), len(r.values))
+	}
+	for i, value := range r.values {
+		switch dest := dest[i].(type) {
+		case *string:
+			text, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("value %d is %T, not string", i, value)
+			}
+			*dest = text
+		case *bool:
+			boolean, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("value %d is %T, not bool", i, value)
+			}
+			*dest = boolean
+		default:
+			return fmt.Errorf("unsupported scan destination %T", dest)
+		}
+	}
+	return nil
+}
+
+func TestEnsureSourceReadOnlyAllowsSelectOnlySource(t *testing.T) {
+	queryer := &readOnlyCheckQueryer{
+		rows: []readOnlyCheckRow{
+			{values: []any{"off", false, false, true}},
+			{err: pgx.ErrNoRows},
+		},
+	}
+
+	if err := ensureSourceReadOnly(context.Background(), config.PostgresConfig{}, queryer, zerolog.Nop()); err != nil {
+		t.Fatalf("ensure source read-only: %v", err)
+	}
+	if got, want := len(queryer.calls), 2; got != want {
+		t.Fatalf("expected %d read-only check queries, got %d", want, got)
+	}
+	if queryer.calls[0].sql != sourceReadOnlyStatusSQL {
+		t.Fatalf("expected source status probe first, got %q", queryer.calls[0].sql)
+	}
+	tables, ok := queryer.calls[1].args[0].([]string)
+	if !ok {
+		t.Fatalf("expected batched source table list argument, got %T", queryer.calls[1].args[0])
+	}
+	if got, want := len(tables), len(sourceReadOnlyTables); got != want {
+		t.Fatalf("expected %d source tables in one privilege query, got %d", want, got)
+	}
+	supportsMaintain, ok := queryer.calls[1].args[1].(bool)
+	if !ok || !supportsMaintain {
+		t.Fatalf("expected PostgreSQL 17 MAINTAIN support flag, got %#v", queryer.calls[1].args[1])
+	}
+}
+
+func TestEnsureSourceReadOnlyRejectsDatabaseCreatePrivilege(t *testing.T) {
+	queryer := &readOnlyCheckQueryer{
+		rows: []readOnlyCheckRow{{values: []any{"off", true, false, false}}},
+	}
+
+	err := ensureSourceReadOnly(context.Background(), config.PostgresConfig{}, queryer, zerolog.Nop())
+	if err == nil || !strings.Contains(err.Error(), "CREATE privilege on source database") {
+		t.Fatalf("expected source database create privilege error, got %v", err)
+	}
+	if got, want := len(queryer.calls), 1; got != want {
+		t.Fatalf("expected source table check to be skipped after database privilege failure, got %d queries", got)
+	}
+}
+
+func TestEnsureSourceReadOnlyRejectsDatabaseTemporaryPrivilege(t *testing.T) {
+	queryer := &readOnlyCheckQueryer{
+		rows: []readOnlyCheckRow{{values: []any{"off", false, true, false}}},
+	}
+
+	err := ensureSourceReadOnly(context.Background(), config.PostgresConfig{}, queryer, zerolog.Nop())
+	if err == nil || !strings.Contains(err.Error(), "TEMPORARY privilege on source database") {
+		t.Fatalf("expected source database temporary privilege error, got %v", err)
+	}
+	if got, want := len(queryer.calls), 1; got != want {
+		t.Fatalf("expected source table check to be skipped after database privilege failure, got %d queries", got)
+	}
+}
+
+func TestEnsureSourceReadOnlyRejectsWritableSourcePrivilege(t *testing.T) {
+	queryer := &readOnlyCheckQueryer{
+		rows: []readOnlyCheckRow{
+			{values: []any{"off", false, false, true}},
+			{values: []any{"patch", "patch", false, true, true, false}},
+		},
+	}
+
+	err := ensureSourceReadOnly(context.Background(), config.PostgresConfig{}, queryer, zerolog.Nop())
+	if err == nil || !strings.Contains(err.Error(), "write privilege") {
+		t.Fatalf("expected writable source privilege error, got %v", err)
+	}
+}
+
+func TestEnsureSourceReadOnlyRejectsMaintainSourcePrivilege(t *testing.T) {
+	queryer := &readOnlyCheckQueryer{
+		rows: []readOnlyCheckRow{
+			{values: []any{"off", false, false, true}},
+			{values: []any{"patch", "patch", false, true, true, false}},
+		},
+	}
+
+	err := ensureSourceReadOnly(context.Background(), config.PostgresConfig{}, queryer, zerolog.Nop())
+	if err == nil || !strings.Contains(err.Error(), "write privilege") {
+		t.Fatalf("expected source maintain privilege error, got %v", err)
+	}
+	supportsMaintain, ok := queryer.calls[1].args[1].(bool)
+	if !ok || !supportsMaintain {
+		t.Fatalf("expected PostgreSQL 17 MAINTAIN support flag, got %#v", queryer.calls[1].args[1])
+	}
+}
+
+func TestEnsureSourceReadOnlyRejectsSourceSchemaCreatePrivilege(t *testing.T) {
+	queryer := &readOnlyCheckQueryer{
+		rows: []readOnlyCheckRow{
+			{values: []any{"off", false, false, false}},
+			{values: []any{"patch", "patch", false, true, false, true}},
+		},
+	}
+
+	err := ensureSourceReadOnly(context.Background(), config.PostgresConfig{}, queryer, zerolog.Nop())
+	if err == nil || !strings.Contains(err.Error(), "CREATE privilege on source schema") {
+		t.Fatalf("expected source schema create privilege error, got %v", err)
+	}
+}
+
+func TestEnsureSourceReadOnlyReturnsProbeFailure(t *testing.T) {
+	probeErr := errors.New("show failed")
+	queryer := &readOnlyCheckQueryer{
+		rows: []readOnlyCheckRow{{err: probeErr}},
+	}
+
+	err := ensureSourceReadOnly(context.Background(), config.PostgresConfig{}, queryer, zerolog.Nop())
+	if !errors.Is(err, probeErr) {
+		t.Fatalf("expected probe error, got %v", err)
+	}
+}
+
+func TestSourceReadOnlyCheckContextCapsLongSyncQueryTimeout(t *testing.T) {
+	start := time.Now()
+	ctx, cancel := sourceReadOnlyCheckContext(context.Background(), config.PostgresConfig{QueryTimeout: time.Hour})
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("expected read-only check context deadline")
+	}
+	if until := deadline.Sub(start); until > sourceReadOnlyCheckTimeout+time.Second {
+		t.Fatalf("expected read-only check timeout capped near %s, got %s", sourceReadOnlyCheckTimeout, until)
+	}
+}
+
+func TestRunRejectsSourceReadOnlyFailureBeforeCreatingRun(t *testing.T) {
+	store := newFakeRunStore()
+	checkErr := errors.New("source is writable")
+	service := &Service{
+		repo: store,
+		checkSourceReadOnly: func(context.Context) error {
+			return checkErr
+		},
+		log: zerolog.Nop(),
+	}
+
+	_, err := service.Run(context.Background(), ModeIncremental)
+	if !errors.Is(err, checkErr) {
+		t.Fatalf("expected source read-only check error, got %v", err)
+	}
+
+	store.mu.Lock()
+	startCount := store.startCount
+	store.mu.Unlock()
+	if startCount != 0 {
+		t.Fatalf("expected sync run not to be created on source check failure, got %d starts", startCount)
+	}
+}
+
 func TestRunStartedPersistsFailureWithCanceledContext(t *testing.T) {
 	store := newFakeRunStore()
 	service := &Service{repo: store, log: zerolog.Nop()}
@@ -128,7 +338,7 @@ func TestRunRejectsDistributedLockContentionBeforeCreatingRun(t *testing.T) {
 
 func TestStartReturnsRunningRunAndFinishesDetached(t *testing.T) {
 	store := newFakeRunStore()
-	service := &Service{repo: store, log: zerolog.Nop()}
+	service := &Service{repo: store, checkSourceReadOnly: func(context.Context) error { return nil }, log: zerolog.Nop()}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -163,7 +373,7 @@ func TestStartReturnsRunningRunAndFinishesDetached(t *testing.T) {
 func TestStartRejectsConcurrentRun(t *testing.T) {
 	store := newFakeRunStore()
 	store.finishRelease = make(chan struct{})
-	service := &Service{repo: store, log: zerolog.Nop()}
+	service := &Service{repo: store, checkSourceReadOnly: func(context.Context) error { return nil }, log: zerolog.Nop()}
 
 	run, err := service.Start(context.Background(), ModeFull)
 	if err != nil {

@@ -20,8 +20,58 @@ const (
 	ModeIncremental = "incremental"
 	ModeFull        = "full"
 
-	sourceGamePageSize = 1000
+	sourceGamePageSize         = 1000
+	sourceReadOnlyCheckTimeout = 10 * time.Second
 )
+
+var sourceReadOnlyTables = [...]string{
+	"patch",
+	"patch_alias",
+	"patch_tag_relation",
+	"patch_tag",
+	"patch_company_relation",
+	"patch_company",
+	"patch_rating_stat",
+}
+
+const sourceReadOnlyStatusSQL = `
+SELECT current_setting('transaction_read_only'),
+       has_database_privilege(current_database(), 'CREATE'),
+       has_database_privilege(current_database(), 'TEMPORARY'),
+       current_setting('server_version_num')::integer >= 170000`
+
+const sourceWritePrivilegeCheckSQL = `
+WITH required_tables(name) AS (
+	SELECT unnest($1::text[])
+), resolved_tables AS (
+	SELECT required_tables.name,
+	       c.oid,
+	       c.oid::regclass::text AS relation,
+	       c.relnamespace
+	FROM required_tables
+	LEFT JOIN pg_class c ON c.oid = to_regclass(required_tables.name)
+), checked_tables AS (
+	SELECT name,
+	       coalesce(relation, '') AS relation,
+	       oid IS NULL AS missing,
+	       CASE WHEN oid IS NULL THEN false ELSE has_table_privilege(oid, 'SELECT') END AS can_select,
+	       CASE WHEN oid IS NULL THEN false ELSE (
+		       has_table_privilege(oid, 'INSERT') OR
+		       has_table_privilege(oid, 'UPDATE') OR
+		       has_table_privilege(oid, 'DELETE') OR
+		       has_table_privilege(oid, 'TRUNCATE') OR
+		       has_table_privilege(oid, 'REFERENCES') OR
+		       has_table_privilege(oid, 'TRIGGER') OR
+		       CASE WHEN $2::boolean THEN has_table_privilege(oid, 'MAINTAIN') ELSE false END
+	       ) END AS table_writable,
+	       CASE WHEN relnamespace IS NULL THEN false ELSE has_schema_privilege(relnamespace, 'CREATE') END AS schema_writable
+	FROM resolved_tables
+)
+SELECT name, relation, missing, can_select, table_writable, schema_writable
+FROM checked_tables
+WHERE missing OR NOT can_select OR table_writable OR schema_writable
+ORDER BY name
+LIMIT 1`
 
 type runStore interface {
 	StartRun(ctx context.Context, mode string) (*model.SyncRun, error)
@@ -29,6 +79,10 @@ type runStore interface {
 	LastSuccessMaxUpdatedAt(ctx context.Context) (*time.Time, error)
 }
 type syncRunLockFunc func(ctx context.Context, pool *pgxpool.Pool, timeout time.Duration) (*repository.SyncRunLock, bool, error)
+
+type sourceReadOnlyQueryer interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 type Service struct {
 	cfg    config.Config
@@ -38,6 +92,8 @@ type Service struct {
 	log    zerolog.Logger
 
 	acquireLock syncRunLockFunc
+
+	checkSourceReadOnly func(context.Context) error
 
 	lifecycleCtx    context.Context
 	lifecycleCancel context.CancelFunc
@@ -101,6 +157,13 @@ func (s *Service) releaseRun() {
 	s.runMu.Unlock()
 }
 
+func (s *Service) ensureSourceReadOnly(ctx context.Context) error {
+	if s.checkSourceReadOnly != nil {
+		return s.checkSourceReadOnly(ctx)
+	}
+	return s.EnsureSourceReadOnly(ctx)
+}
+
 func (s *Service) Start(_ context.Context, mode string) (*model.SyncRun, error) {
 	if err := validateMode(mode); err != nil {
 		return nil, err
@@ -112,6 +175,12 @@ func (s *Service) Start(_ context.Context, mode string) (*model.SyncRun, error) 
 	runCtx := s.backgroundContext()
 	lock, runRepo, err := s.acquireDistributedRunLock(runCtx)
 	if err != nil {
+		s.wg.Done()
+		s.releaseRun()
+		return nil, err
+	}
+	if err := s.ensureSourceReadOnly(runCtx); err != nil {
+		s.releaseSyncRunLock(runCtx, lock)
 		s.wg.Done()
 		s.releaseRun()
 		return nil, err
@@ -147,6 +216,10 @@ func (s *Service) Run(ctx context.Context, mode string) (*model.SyncRun, error) 
 	if err != nil {
 		return nil, err
 	}
+	if err := s.ensureSourceReadOnly(ctx); err != nil {
+		s.releaseSyncRunLock(ctx, lock)
+		return nil, err
+	}
 	run, err := s.startRun(ctx, mode, runRepo)
 	if err != nil {
 		s.releaseSyncRunLock(ctx, lock)
@@ -165,6 +238,14 @@ func (s *Service) startRun(ctx context.Context, mode string, repo runStore) (*mo
 	}
 	s.log.Debug().Str("mode", mode).Stringer("run_id", run.ID).Msg("sync run started")
 	return run, nil
+}
+
+func sourceReadOnlyCheckContext(ctx context.Context, cfg config.PostgresConfig) (context.Context, context.CancelFunc) {
+	timeout := sourceReadOnlyCheckTimeout
+	if cfg.QueryTimeout > 0 && cfg.QueryTimeout < timeout {
+		timeout = cfg.QueryTimeout
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 func (s *Service) acquireDistributedRunLock(ctx context.Context) (*repository.SyncRunLock, runStore, error) {
@@ -615,13 +696,51 @@ func (s *Service) EnsureSourceReadOnly(ctx context.Context) error {
 	if s.source == nil {
 		return errors.New("source database is not configured")
 	}
-	queryCtx, cancel := optionalTimeoutContext(ctx, s.cfg.SourceDatabasePool.QueryTimeout)
-	defer cancel()
-	_, err := s.source.Exec(queryCtx, `SET TRANSACTION READ ONLY`)
-	if err != nil {
-		s.log.Warn().Err(err).Msg("source read-only transaction check failed")
+	return ensureSourceReadOnly(ctx, s.cfg.SourceDatabasePool, s.source, s.log)
+}
+
+func ensureSourceReadOnly(ctx context.Context, cfg config.PostgresConfig, source sourceReadOnlyQueryer, log zerolog.Logger) error {
+	if source == nil {
+		return errors.New("source database is not configured")
 	}
-	return nil
+	queryCtx, cancel := sourceReadOnlyCheckContext(ctx, cfg)
+	defer cancel()
+
+	var transactionReadOnly string
+	var databaseWritable, databaseTemporary, supportsMaintain bool
+	if err := source.QueryRow(queryCtx, sourceReadOnlyStatusSQL).Scan(&transactionReadOnly, &databaseWritable, &databaseTemporary, &supportsMaintain); err != nil {
+		return fmt.Errorf("check source read-only status: %w", err)
+	}
+	if databaseWritable {
+		return errors.New("SOURCE_DATABASE_DSN user has CREATE privilege on source database")
+	}
+	if databaseTemporary {
+		return errors.New("SOURCE_DATABASE_DSN user has TEMPORARY privilege on source database")
+	}
+
+	var tableName, relation string
+	var missing, canSelect, tableWritable, schemaWritable bool
+	err := source.QueryRow(queryCtx, sourceWritePrivilegeCheckSQL, sourceReadOnlyTables[:], supportsMaintain).Scan(&tableName, &relation, &missing, &canSelect, &tableWritable, &schemaWritable)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Debug().Str("transaction_read_only", transactionReadOnly).Msg("source read-only permissions verified")
+			return nil
+		}
+		return fmt.Errorf("check source table privileges: %w", err)
+	}
+	if missing {
+		return fmt.Errorf("source table %q is not visible to SOURCE_DATABASE_DSN user", tableName)
+	}
+	if !canSelect {
+		return fmt.Errorf("SOURCE_DATABASE_DSN user does not have SELECT privilege on source table %s", relation)
+	}
+	if tableWritable {
+		return fmt.Errorf("SOURCE_DATABASE_DSN user has write privilege on source table %s", relation)
+	}
+	if schemaWritable {
+		return fmt.Errorf("SOURCE_DATABASE_DSN user has CREATE privilege on source schema for table %s", relation)
+	}
+	return errors.New("source read-only check returned an unknown privilege violation")
 }
 
 func (s *Service) String() string {

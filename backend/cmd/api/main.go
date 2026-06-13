@@ -85,6 +85,11 @@ func run() error {
 			syncRepo = repository.NewSyncRepo(repository.WithQueryTimeout(syncTarget, cfg.SyncDatabasePool.QueryTimeout))
 		}
 		syncService = syncsvc.NewService(cfg, source, syncTarget, syncRepo, logger)
+		if source != nil {
+			if err := syncService.EnsureSourceReadOnly(ctx); err != nil {
+				return err
+			}
+		}
 		defer syncService.Stop()
 	}
 	mailer := email.NewMailer(cfg, logger)
