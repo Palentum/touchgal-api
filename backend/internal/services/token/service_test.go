@@ -26,6 +26,9 @@ type fakeTokenStore struct {
 	updatedForUserID      uuid.UUID
 	updatedUserID         uuid.UUID
 	lastUsedUpdates       int
+	listStatus            string
+	listPage              int
+	listLimit             int
 }
 
 func (f *fakeTokenStore) Create(ctx context.Context, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error) {
@@ -41,6 +44,9 @@ func (f *fakeTokenStore) ListByUser(ctx context.Context, userID uuid.UUID) ([]mo
 	return nil, nil
 }
 func (f *fakeTokenStore) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error) {
+	f.listStatus = status
+	f.listPage = page
+	f.listLimit = limit
 	return nil, nil
 }
 func (f *fakeTokenStore) GetByHashWithApplication(ctx context.Context, tokenHash string) (*model.TokenAuthInfo, error) {
@@ -160,6 +166,31 @@ func TestAdminCanCreateTokenWithoutSubmittedApplication(t *testing.T) {
 	}
 	if res.Token.MinuteLimit != cfg.DefaultTokenMinuteLimit || res.Token.DailyLimit != cfg.DefaultTokenDailyLimit {
 		t.Fatal("admin default application limits must be applied to the token")
+	}
+}
+
+func TestListAdminNormalizesPageAndLimit(t *testing.T) {
+	store := &fakeTokenStore{}
+	svc := NewService(config.Config{}, store, fakeTokenAppStore{}, nil)
+	if _, err := svc.ListAdmin(context.Background(), model.TokenActive, 0, 150); err != nil {
+		t.Fatalf("ListAdmin returned error: %v", err)
+	}
+	if store.listStatus != model.TokenActive {
+		t.Fatalf("unexpected status filter: %q", store.listStatus)
+	}
+	if store.listPage != 1 || store.listLimit != maxAdminListLimit {
+		t.Fatalf("unexpected pagination: page=%d limit=%d", store.listPage, store.listLimit)
+	}
+}
+
+func TestListAdminRejectsPageAboveCap(t *testing.T) {
+	store := &fakeTokenStore{}
+	svc := NewService(config.Config{}, store, fakeTokenAppStore{}, nil)
+	if _, err := svc.ListAdmin(context.Background(), "", maxAdminListPage+1, 20); err != model.ErrInvalidInput {
+		t.Fatalf("expected page cap error, got %v", err)
+	}
+	if store.listPage != 0 || store.listLimit != 0 {
+		t.Fatal("invalid admin pagination must not reach the store")
 	}
 }
 

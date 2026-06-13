@@ -87,12 +87,19 @@ func TestListAdminNormalizesFiltersAndPage(t *testing.T) {
 }
 
 func TestListAdminRejectsInvalidFilters(t *testing.T) {
-	svc := NewService(&fakeStore{})
+	store := &fakeStore{}
+	svc := NewService(store)
 	if _, err := svc.ListAdmin(context.Background(), "pending", "", 1, 20); err != model.ErrInvalidInput {
 		t.Fatalf("expected invalid status error, got %v", err)
 	}
 	if _, err := svc.ListAdmin(context.Background(), "", strings.Repeat("a", maxSearchQueryLength+1), 1, 20); err != model.ErrInvalidInput {
 		t.Fatalf("expected long query error, got %v", err)
+	}
+	if _, err := svc.ListAdmin(context.Background(), "", "", maxAdminListPage+1, 20); err != model.ErrInvalidInput {
+		t.Fatalf("expected page cap error, got %v", err)
+	}
+	if store.listPage != 0 || store.listLimit != 0 {
+		t.Fatal("invalid admin pagination must not reach the store")
 	}
 }
 

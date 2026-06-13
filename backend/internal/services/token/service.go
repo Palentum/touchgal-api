@@ -62,6 +62,12 @@ type CreateResult struct {
 	PlainToken string          `json:"token"`
 }
 
+const (
+	defaultAdminListLimit = 20
+	maxAdminListPage      = 100
+	maxAdminListLimit     = 100
+)
+
 func NewService(cfg config.Config, tokens Store, applications ApplicationStore, redisClient *redis.Client) *Service {
 	authCacheTTL := cfg.APITokenAuthCacheTTL()
 	if authCacheTTL <= 0 {
@@ -203,11 +209,14 @@ func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int)
 	if page < 1 {
 		page = 1
 	}
-	if limit < 1 {
-		limit = 20
+	if page > maxAdminListPage {
+		return nil, model.ErrInvalidInput
 	}
-	if limit > 100 {
-		limit = 100
+	if limit < 1 {
+		limit = defaultAdminListLimit
+	}
+	if limit > maxAdminListLimit {
+		limit = maxAdminListLimit
 	}
 	return s.tokens.ListAdmin(ctx, status, page, limit)
 }

@@ -14,6 +14,12 @@ import (
 	usersvc "github.com/touchgal/developer/backend/internal/services/users"
 )
 
+const (
+	defaultAdminListLimit = 20
+	maxAdminListPage      = 100
+	maxAdminListLimit     = 100
+)
+
 type AdminHandler struct {
 	applications *application.Service
 	tokens       *token.Service
@@ -41,7 +47,11 @@ func NewAdminHandler(apps *application.Service, tokens *token.Service, users *us
 }
 
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	page, limit := pageLimit(r)
+	page, limit, err := pageLimit(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	users, err := h.users.ListAdmin(r.Context(), r.URL.Query().Get("status"), r.URL.Query().Get("q"), page, limit)
 	if err != nil {
 		Error(w, err)
@@ -115,7 +125,11 @@ func (h *AdminHandler) invalidateUserSessionCaches(ctx context.Context, userID u
 }
 
 func (h *AdminHandler) ListApplications(w http.ResponseWriter, r *http.Request) {
-	page, limit := pageLimit(r)
+	page, limit, err := pageLimit(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	apps, err := h.applications.ListAdmin(r.Context(), r.URL.Query().Get("status"), page, limit)
 	if err != nil {
 		Error(w, err)
@@ -162,7 +176,11 @@ func (h *AdminHandler) reviewApplication(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *AdminHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
-	page, limit := pageLimit(r)
+	page, limit, err := pageLimit(r)
+	if err != nil {
+		Error(w, err)
+		return
+	}
 	tokens, err := h.tokens.ListAdmin(r.Context(), r.URL.Query().Get("status"), page, limit)
 	if err != nil {
 		Error(w, err)
@@ -213,17 +231,20 @@ func (h *AdminHandler) RunSync(w http.ResponseWriter, r *http.Request) {
 	Success(w, http.StatusAccepted, run)
 }
 
-func pageLimit(r *http.Request) (int, int) {
+func pageLimit(r *http.Request) (int, int, error) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if page < 1 {
 		page = 1
 	}
+	if page > maxAdminListPage {
+		return 0, 0, model.ErrInvalidInput
+	}
 	if limit < 1 {
-		limit = 20
+		limit = defaultAdminListLimit
 	}
-	if limit > 100 {
-		limit = 100
+	if limit > maxAdminListLimit {
+		limit = maxAdminListLimit
 	}
-	return page, limit
+	return page, limit, nil
 }

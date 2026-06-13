@@ -10,9 +10,12 @@ import (
 )
 
 const (
-	maxSearchQueryLength = 160
-	maxDisplayNameLength = 80
-	maxEmailLength       = 254
+	maxSearchQueryLength  = 160
+	maxDisplayNameLength  = 80
+	maxEmailLength        = 254
+	defaultAdminListLimit = 20
+	maxAdminListPage      = 100
+	maxAdminListLimit     = 100
 )
 
 type AdminUpdate struct {
@@ -42,7 +45,10 @@ func (s *Service) ListAdmin(ctx context.Context, status, query string, page, lim
 	if len(query) > maxSearchQueryLength {
 		return nil, model.ErrInvalidInput
 	}
-	page, limit = normalizePage(page, limit, 100)
+	page, limit, err := normalizePage(page, limit)
+	if err != nil {
+		return nil, err
+	}
 	return s.store.ListAdmin(ctx, status, query, page, limit)
 }
 
@@ -108,15 +114,18 @@ func validStatus(status string) bool {
 	return status == model.UserStatusActive || status == model.UserStatusDisabled
 }
 
-func normalizePage(page, limit, maxLimit int) (int, int) {
+func normalizePage(page, limit int) (int, int, error) {
 	if page < 1 {
 		page = 1
 	}
+	if page > maxAdminListPage {
+		return 0, 0, model.ErrInvalidInput
+	}
 	if limit < 1 {
-		limit = 20
+		limit = defaultAdminListLimit
 	}
-	if limit > maxLimit {
-		limit = maxLimit
+	if limit > maxAdminListLimit {
+		limit = maxAdminListLimit
 	}
-	return page, limit
+	return page, limit, nil
 }

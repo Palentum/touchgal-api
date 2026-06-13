@@ -24,6 +24,12 @@ type Service struct {
 
 func NewService(cfg config.Config, store Store) *Service { return &Service{cfg: cfg, store: store} }
 
+const (
+	defaultAdminListLimit = 20
+	maxAdminListPage      = 100
+	maxAdminListLimit     = 100
+)
+
 func ValidateInput(input *model.CreateApplicationInput) error {
 	input.ApplicantName = strings.TrimSpace(input.ApplicantName)
 	input.ProjectName = strings.TrimSpace(input.ProjectName)
@@ -63,7 +69,10 @@ func (s *Service) ListMine(ctx context.Context, userID uuid.UUID) ([]model.Appli
 }
 
 func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error) {
-	page, limit = normalizePage(page, limit, 100)
+	page, limit, err := normalizePage(page, limit)
+	if err != nil {
+		return nil, err
+	}
 	return s.store.ListAdmin(ctx, status, page, limit)
 }
 
@@ -83,15 +92,18 @@ func (s *Service) Review(ctx context.Context, id, adminID uuid.UUID, status stri
 	return s.store.UpdateReview(ctx, id, adminID, status, minuteLimit, dailyLimit)
 }
 
-func normalizePage(page, limit, maxLimit int) (int, int) {
+func normalizePage(page, limit int) (int, int, error) {
 	if page < 1 {
 		page = 1
 	}
+	if page > maxAdminListPage {
+		return 0, 0, model.ErrInvalidInput
+	}
 	if limit < 1 {
-		limit = 20
+		limit = defaultAdminListLimit
 	}
-	if limit > maxLimit {
-		limit = maxLimit
+	if limit > maxAdminListLimit {
+		limit = maxAdminListLimit
 	}
-	return page, limit
+	return page, limit, nil
 }

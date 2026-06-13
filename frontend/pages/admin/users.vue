@@ -100,7 +100,7 @@
       <p class="tg-muted">第 {{ page }} 页 · 每页 {{ limit }} 个</p>
       <div class="tg-actions">
         <button class="tg-btn tg-btn-secondary" type="button" :disabled="loading || page <= 1" @click="previousPage">上一页</button>
-        <button class="tg-btn tg-btn-primary" type="button" :disabled="loading || users.length < limit" @click="nextPage">下一页</button>
+        <button class="tg-btn tg-btn-primary" type="button" :disabled="loading || users.length < limit || page >= maxAdminListPage" @click="nextPage">下一页</button>
       </div>
     </div>
   </section>
@@ -118,6 +118,7 @@ const status = ref<UserStatus | 'all'>('all')
 const search = ref('')
 const page = ref(1)
 const limit = 50
+const maxAdminListPage = 100
 const loading = ref(false)
 const busyUserId = ref<string | null>(null)
 const error = ref('')
@@ -182,7 +183,7 @@ const previousPage = async () => {
 }
 
 const nextPage = async () => {
-  if (users.value.length < limit) return
+  if (users.value.length < limit || page.value >= maxAdminListPage) return
   page.value += 1
   await load()
 }
