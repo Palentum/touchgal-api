@@ -206,6 +206,45 @@ func TestValidateMailDriverRejectsUnknownDriver(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsLogMailDriverOutsideDevelopment(t *testing.T) {
+	cfg := validConfig()
+	cfg.MailDriver = MailDriverLog
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected development MAIL_DRIVER=log config to validate: %v", err)
+	}
+
+	staging := cfg
+	staging.AppEnv = "staging"
+	if err := staging.Validate(); err == nil {
+		t.Fatal("expected staging MAIL_DRIVER=log error")
+	}
+
+	production := cfg
+	production.AppEnv = " production "
+	production.TurnstileSecretKey = "secret"
+	if err := production.Validate(); err == nil {
+		t.Fatal("expected production MAIL_DRIVER=log error")
+	}
+}
+
+func TestValidateProductionRejectsMissingSMTPConfig(t *testing.T) {
+	cfg := validConfig()
+	cfg.AppEnv = " production "
+	cfg.TurnstileSecretKey = "secret"
+
+	missingSMTPHost := cfg
+	missingSMTPHost.SMTPHost = ""
+	if err := missingSMTPHost.Validate(); err == nil {
+		t.Fatal("expected production SMTP_HOST error")
+	}
+
+	missingSMTPFrom := cfg
+	missingSMTPFrom.SMTPFrom = ""
+	if err := missingSMTPFrom.Validate(); err == nil {
+		t.Fatal("expected production SMTP_FROM error")
+	}
+}
+
 func TestLoadMailSendTimeoutDefaultAndEnv(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("MAIL_SEND_TIMEOUT_SECONDS", "")
@@ -490,6 +529,7 @@ func TestValidateRedisSettings(t *testing.T) {
 
 func validConfig() Config {
 	return Config{
+		AppEnv:                            "development",
 		DatabaseDSN:                       "postgres://example",
 		HTTPReadHeaderTimeout:             time.Second,
 		HTTPReadTimeout:                   time.Second,
@@ -520,6 +560,9 @@ func validConfig() Config {
 		APIRequestLogRetentionDays:        1,
 		SyncRunFinishTimeout:              DefaultSyncRunFinishTimeout,
 		MailDriver:                        MailDriverSMTP,
+		SMTPHost:                          "smtp.example.com",
+		SMTPPort:                          587,
+		SMTPFrom:                          "no-reply@example.com",
 		MailSendTimeoutSeconds:            10,
 	}
 }

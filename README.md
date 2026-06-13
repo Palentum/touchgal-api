@@ -49,10 +49,10 @@ cp backend/.env.example backend/.env
 - `SESSION_SECRET` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
 - `ENABLE_PPROF` / `ENABLE_METRICS` / `OBSERVABILITY_ADDR`：可选只读诊断端点；默认关闭并绑定 `127.0.0.1:6060`。`ENABLE_PPROF=true` 时只能绑定 localhost/loopback；仅启用 metrics 时可绑定 private 管理地址；不要绑定公网地址。
-- `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`。
+- `MAIL_DRIVER`：邮箱验证码驱动，支持 `smtp`、`postal`、`log`；`log` 仅允许 `APP_ENV=development` 的本地开发。
 - `MAIL_SEND_TIMEOUT_SECONDS`：SMTP/Postal 单次发信超时，默认 10 秒，避免邮件服务卡顿长期阻塞发码请求。
-- `SMTP_*`：SMTP 驱动配置；`SMTP_FROM` / `SMTP_FROM_NAME` 也作为 Postal 发件人。
-- `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置。
+- `SMTP_*`：SMTP 驱动配置；生产 `MAIL_DRIVER=smtp` 必须配置 `SMTP_HOST` 与 `SMTP_FROM`，不会回退日志驱动。
+- `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置；生产 `MAIL_DRIVER=postal` 缺失这些配置会启动失败。
 - `TURNSTILE_SECRET_KEY`：Cloudflare Turnstile secret key；生产 `APP_ENV=production` 必须配置，开发留空时后端跳过人机验证。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`。
 - `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_TOKEN_AUTH_CACHE_MAX_ENTRIES` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、token auth 短缓存及容量上限、`last_used_at` 写入节流与单账号 active token 数量上限。
@@ -138,7 +138,7 @@ UPDATE users SET is_admin = true WHERE email = 'admin@example.com';
 
 ## 邮箱驱动配置
 
-通过 `MAIL_DRIVER` 选择邮箱验证码驱动：`smtp` 使用 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`；`postal` 使用 `POSTAL_API_URL`、`POSTAL_API_KEY`，并复用 `SMTP_FROM`、`SMTP_FROM_NAME` 作为发件人。SMTP 与 Postal 单次发信都受 `MAIL_SEND_TIMEOUT_SECONDS` 限制。`POSTAL_API_URL` 必须使用 `https://`，可填 Postal 根地址或完整 `/api/v1/send/message` 地址。`log` 会将验证码写入结构化日志。生产发码接口会在发送验证码前校验 Turnstile。开发环境未配置 SMTP 时，后端仍会回退到日志驱动；生产应选择并配置真实邮件驱动。
+通过 `MAIL_DRIVER` 选择邮箱验证码驱动：`smtp` 使用 `SMTP_HOST`、`SMTP_PORT`、`SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM`、`SMTP_FROM_NAME`；`postal` 使用 `POSTAL_API_URL`、`POSTAL_API_KEY`，并复用 `SMTP_FROM`、`SMTP_FROM_NAME` 作为发件人。SMTP 与 Postal 单次发信都受 `MAIL_SEND_TIMEOUT_SECONDS` 限制。`POSTAL_API_URL` 必须使用 `https://`，可填 Postal 根地址或完整 `/api/v1/send/message` 地址。`log` 只用于本地开发：只有 `APP_ENV=development` 才允许使用并在结构化日志输出验证码；其他环境会拒绝 `MAIL_DRIVER=log`。开发环境 `MAIL_DRIVER=smtp` 且未配置 `SMTP_HOST` 时仍回退到日志驱动；非开发环境不会回退，生产 `SMTP_HOST`/`SMTP_FROM` 或 Postal 配置缺失会启动失败。生产发码接口会在发送验证码前校验 Turnstile。
 
 ## API token 申请流程
 

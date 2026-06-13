@@ -394,24 +394,36 @@ func (c Config) Validate() error {
 		return err
 	}
 	switch c.MailDriver {
-	case MailDriverSMTP, MailDriverPostal, MailDriverLog:
-	default:
-		return errors.New("MAIL_DRIVER must be one of: smtp, postal, log")
-	}
-	if c.MailDriver == MailDriverPostal {
-		if c.PostalAPIURL == "" {
+	case MailDriverSMTP:
+		if c.IsProduction() {
+			if strings.TrimSpace(c.SMTPHost) == "" {
+				return errors.New("SMTP_HOST is required when MAIL_DRIVER=smtp and APP_ENV=production")
+			}
+			if strings.TrimSpace(c.SMTPFrom) == "" {
+				return errors.New("SMTP_FROM is required when MAIL_DRIVER=smtp and APP_ENV=production")
+			}
+		}
+	case MailDriverPostal:
+		postalAPIURL := strings.TrimSpace(c.PostalAPIURL)
+		if postalAPIURL == "" {
 			return errors.New("POSTAL_API_URL is required when MAIL_DRIVER=postal")
 		}
-		postalURL, err := url.Parse(c.PostalAPIURL)
+		postalURL, err := url.Parse(postalAPIURL)
 		if err != nil || postalURL.Scheme == "" || postalURL.Host == "" {
 			return errors.New("POSTAL_API_URL must be a valid absolute URL when MAIL_DRIVER=postal")
 		}
 		if postalURL.Scheme != "https" {
 			return errors.New("POSTAL_API_URL must use https when MAIL_DRIVER=postal")
 		}
-		if c.PostalAPIKey == "" {
+		if strings.TrimSpace(c.PostalAPIKey) == "" {
 			return errors.New("POSTAL_API_KEY is required when MAIL_DRIVER=postal")
 		}
+	case MailDriverLog:
+		if !c.IsDevelopment() {
+			return errors.New("MAIL_DRIVER=log is only allowed when APP_ENV=development")
+		}
+	default:
+		return errors.New("MAIL_DRIVER must be one of: smtp, postal, log")
 	}
 	if c.MailSendTimeoutSeconds <= 0 {
 		return errors.New("MAIL_SEND_TIMEOUT_SECONDS must be positive")
@@ -504,7 +516,11 @@ func (c Config) EffectiveSyncRunFinishTimeout() time.Duration {
 }
 
 func (c Config) IsProduction() bool {
-	return c.AppEnv == "production"
+	return strings.EqualFold(strings.TrimSpace(c.AppEnv), "production")
+}
+
+func (c Config) IsDevelopment() bool {
+	return strings.EqualFold(strings.TrimSpace(c.AppEnv), "development")
 }
 
 func env(key, fallback string) string {
