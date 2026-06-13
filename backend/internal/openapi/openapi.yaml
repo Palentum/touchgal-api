@@ -5,22 +5,23 @@ info:
   description: Independent sanitized Galgame metadata API for developers.
 servers:
   - url: http://localhost:8080
-security:
-  - ApiToken: []
 components:
   securitySchemes:
     ApiToken:
       type: http
       scheme: bearer
       bearerFormat: tgal_live
+      description: 'Use `Authorization: Bearer <token>` with a `tgal_live` API token on token-authenticated `/v1` routes.'
     XApiToken:
       type: apiKey
       in: header
       name: X-API-Token
+      description: Alternative `/v1` API token transport using the `X-API-Token` header.
     CookieSession:
       type: apiKey
       in: cookie
       name: tgal_dev_session
+      description: HttpOnly developer portal session cookie set by auth verification routes; portal and admin routes require an active session.
   schemas:
     ErrorResponse:
       type: object
@@ -29,7 +30,7 @@ components:
         error:
           type: object
           properties:
-            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, CODE_COOLDOWN, INVALID_CODE, EXPIRED_CODE, TURNSTILE_FAILED, TURNSTILE_UNAVAILABLE, NOT_READY, INTERNAL_ERROR] }
+            code: { type: string, enum: [BAD_REQUEST, REQUEST_BODY_TOO_LARGE, UNAUTHORIZED, FORBIDDEN, ACCOUNT_DISABLED, NOT_FOUND, CONFLICT, TOKEN_LIMIT_EXCEEDED, RATE_LIMITED, CODE_COOLDOWN, INVALID_CODE, EXPIRED_CODE, TURNSTILE_FAILED, TURNSTILE_UNAVAILABLE, NOT_READY, SYNC_RUNNING, SYNC_DISABLED, INTERNAL_ERROR] }
             message: { type: string }
     HealthResponse:
       type: object
@@ -152,6 +153,31 @@ components:
                 yes: { type: integer }
                 strongYes: { type: integer }
         touchgalUrl: { type: string }
+    ApplicationReviewRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        minuteLimit: { type: integer, minimum: 1 }
+        dailyLimit: { type: integer, minimum: 1 }
+    RunSyncRequest:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [incremental, full] }
+    SyncRun:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        mode: { type: string, enum: [incremental, full] }
+        status: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        sourceMaxUpdatedAt: { type: string, format: date-time, nullable: true }
+        gamesSeen: { type: integer }
+        gamesUpserted: { type: integer }
+        gamesDeleted: { type: integer }
+        errorMessage: { type: string }
     CodeStartResponse:
       type: object
       properties:
@@ -193,6 +219,9 @@ paths:
         '503': { description: Not ready, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /v1/me:
     get:
+      security:
+        - ApiToken: []
+        - XApiToken: []
       summary: API token self check
       responses:
         '200': { description: OK }
@@ -207,6 +236,9 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /v1/games/search:
     get:
+      security:
+        - ApiToken: []
+        - XApiToken: []
       summary: Search sanitized games
       parameters:
         - { name: keyword, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
@@ -238,6 +270,9 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /v1/games/{uniqueId}:
     get:
+      security:
+        - ApiToken: []
+        - XApiToken: []
       summary: Get sanitized game detail
       parameters:
         - { name: uniqueId, in: path, required: true, schema: { type: string, minLength: 8, maxLength: 8 } }
@@ -323,7 +358,8 @@ paths:
       responses: { '200': { description: Logged out } }
   /auth/me:
     get:
-      security: []
+      security:
+        - CookieSession: []
       summary: Current session user
       responses: { '200': { description: Current user }, '401': { description: Login required } }
   /admin/users:
@@ -401,13 +437,156 @@ paths:
         '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '404': { description: User not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/applications:
+    get:
+      security:
+        - CookieSession: []
+      summary: List developer applications for administrators
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, approved, rejected, revoked] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Application' }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/applications/{id}/approve:
+    post:
+      security:
+        - CookieSession: []
+      summary: Approve a developer application
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ApplicationReviewRequest' } } }
+      responses:
+        '200': { description: Application approved, content: { application/json: { schema: { type: object, properties: { success: { type: boolean, const: true }, data: { $ref: '#/components/schemas/Application' } } } } } }
+        '400': { description: Invalid application id or review limits, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Application not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/applications/{id}/reject:
+    post:
+      security:
+        - CookieSession: []
+      summary: Reject a developer application
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ApplicationReviewRequest' } } }
+      responses:
+        '200': { description: Application rejected, content: { application/json: { schema: { type: object, properties: { success: { type: boolean, const: true }, data: { $ref: '#/components/schemas/Application' } } } } } }
+        '400': { description: Invalid application id or review limits, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Application not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/applications/{id}/revoke:
+    post:
+      security:
+        - CookieSession: []
+      summary: Revoke a developer application
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ApplicationReviewRequest' } } }
+      responses:
+        '200': { description: Application revoked, content: { application/json: { schema: { type: object, properties: { success: { type: boolean, const: true }, data: { $ref: '#/components/schemas/Application' } } } } } }
+        '400': { description: Invalid application id or review limits, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Application not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/tokens:
+    get:
+      security:
+        - CookieSession: []
+      summary: List API tokens for administrators
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Token' }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/tokens/{id}:
+    delete:
+      security:
+        - CookieSession: []
+      summary: Delete any API token as an administrator
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Token deleted, content: { application/json: { schema: { type: object, properties: { success: { type: boolean, const: true }, data: { type: object, properties: { deleted: { type: boolean, const: true } } } } } } } }
+        '400': { description: Invalid token id, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Token not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/sync/runs:
+    get:
+      security:
+        - CookieSession: []
+      summary: List recent sync runs for administrators
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SyncRun' }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /admin/sync/run:
+    post:
+      security:
+        - CookieSession: []
+      summary: Trigger an in-process sync run
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RunSyncRequest' } } }
+      responses:
+        '202': { description: Sync run started, content: { application/json: { schema: { type: object, properties: { success: { type: boolean, const: true }, data: { $ref: '#/components/schemas/SyncRun' } } } } } }
+        '400': { description: Invalid sync mode, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '409': { description: Sync already running, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '503': { description: In-process sync disabled, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /applications:
     get:
-      security: []
+      security:
+        - CookieSession: []
       summary: List current user's applications
       responses: { '200': { description: OK } }
     post:
-      security: []
+      security:
+        - CookieSession: []
       summary: Submit one-time account API application
       requestBody:
         required: true
@@ -425,11 +604,13 @@ paths:
       responses: { '201': { description: Created }, '409': { description: Account already has an application } }
   /tokens:
     get:
-      security: []
+      security:
+        - CookieSession: []
       summary: List current user's API tokens without plaintext or hash
       responses: { '200': { description: OK } }
     post:
-      security: []
+      security:
+        - CookieSession: []
       summary: Create API token for approved account or admin user; plaintext is returned once; active token count is capped per user
       requestBody:
         required: true
@@ -437,7 +618,8 @@ paths:
       responses: { '201': { description: Token created }, '409': { description: Active token limit exceeded } }
   /tokens/{id}:
     patch:
-      security: []
+      security:
+        - CookieSession: []
       summary: Update current user's API token name
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -446,14 +628,16 @@ paths:
         content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 100 } } } } }
       responses: { '200': { description: Token updated }, '400': { description: Invalid token name }, '404': { description: Token not found } }
     delete:
-      security: []
+      security:
+        - CookieSession: []
       summary: Delete current user's API token; invalidated token records are removed instead of retained
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses: { '200': { description: Token deleted }, '404': { description: Token not found } }
   /dashboard/stats:
     get:
-      security: []
+      security:
+        - CookieSession: []
       summary: Dashboard stats summary, trend, sources, and endpoint rollups
       parameters:
         - name: days
