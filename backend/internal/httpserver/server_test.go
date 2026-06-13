@@ -133,6 +133,56 @@ func TestAuthStartRoutesUseIPRateLimit(t *testing.T) {
 	}
 }
 
+func TestRouterAppliesSecurityHeadersToResponses(t *testing.T) {
+	router := NewRouter(routerTestConfig(), Services{}, &repository.Repositories{}, nil, zerolog.Nop())
+	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	res := httptest.NewRecorder()
+
+	router.ServeHTTP(res, req)
+
+	checks := map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"Referrer-Policy":        "no-referrer",
+		"X-Frame-Options":        "DENY",
+	}
+	for header, want := range checks {
+		if got := res.Header().Get(header); got != want {
+			t.Fatalf("expected %s %q, got %q", header, want, got)
+		}
+	}
+	if csp := res.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Fatalf("expected frame-ancestors in CSP, got %q", csp)
+	}
+	if permissions := res.Header().Get("Permissions-Policy"); permissions == "" {
+		t.Fatal("expected Permissions-Policy header")
+	}
+}
+
+func TestRouterAppliesNoStoreToSensitiveRoutes(t *testing.T) {
+	router := NewRouter(routerTestConfig(), Services{}, &repository.Repositories{}, nil, zerolog.Nop())
+	sensitivePaths := []string{"/auth/me", "/tokens", "/admin/users", "/dashboard/stats"}
+
+	for _, path := range sensitivePaths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			res := httptest.NewRecorder()
+
+			router.ServeHTTP(res, req)
+
+			if got := res.Header().Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("expected Cache-Control no-store, got %q", got)
+			}
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if got := res.Header().Get("Cache-Control"); got == "no-store" {
+		t.Fatalf("public health route must not inherit no-store, got %q", got)
+	}
+}
+
 func routerTestConfig() config.Config {
 	return config.Config{
 		PublicURL:                         "https://portal.example",

@@ -12,4 +12,4 @@
 5. 执行 `make migrate-up`。
 6. 执行 `make sync-full` 初始化 clean DB。
 7. 启动 `docker compose -f deploy/docker-compose.yml up --build`。
-   `deploy/nginx.conf` 是完整 nginx 示例：`/api/` 做请求/连接限流、超时与 `no-store`，`/_nuxt/` 使用 immutable 长缓存，`/logo.webp` 使用短 TTL，避免固定 public 文件名长期失效困难。
+   `deploy/nginx.conf` 是完整 nginx 示例：`/api/` 做请求/连接限流、超时与 `no-store`，全站设置 HSTS、CSP、`frame-ancestors`/`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy` 与 `X-Content-Type-Options`，`/_nuxt/` 使用 immutable 长缓存，`/logo.webp` 使用短 TTL，避免固定 public 文件名长期失效困难。若 `NUXT_PUBLIC_API_BASE_URL` 指向非同源 API，在 nginx CSP 的 `connect-src` 中同步加入该 API origin。

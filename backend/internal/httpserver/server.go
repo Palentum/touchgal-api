@@ -36,6 +36,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r := chi.NewRouter()
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.Recover(logger))
+	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.CORS(cfg))
 	sessionAuth := middleware.SessionAuth(cfg, services.Auth)
 	authCodeIPRateLimit := middleware.AuthCodeIPRateLimit(redisClient, cfg.AuthCodeIPMinuteLimit, cfg.AuthCodeIPDailyLimit)
@@ -55,6 +56,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	r.Get("/v1/ready", health.Ready)
 
 	r.Route("/auth", func(r chi.Router) {
+		r.Use(middleware.NoStore)
 		r.With(authCodeIPRateLimit).Post("/register/start", authHandler.RegisterStart)
 		r.Post("/register/verify", authHandler.RegisterVerify)
 		r.With(authCodeIPRateLimit).Post("/login/start", authHandler.LoginStart)
@@ -64,6 +66,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	})
 
 	r.Group(func(r chi.Router) {
+		r.Use(middleware.NoStore)
 		r.Use(sessionAuth)
 		r.Use(middleware.RequireUser)
 		r.Get("/applications", applicationHandler.ListMine)
@@ -76,6 +79,7 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 	})
 
 	r.Route("/admin", func(r chi.Router) {
+		r.Use(middleware.NoStore)
 		r.Use(sessionAuth)
 		r.Use(middleware.RequireUser)
 		r.Use(middleware.RequireAdmin)

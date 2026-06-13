@@ -57,10 +57,10 @@ TouchGal main PostgreSQL (read-only)
 
 Context7 查询的 `chi` 文档建议用 `Route` / `Group` / mounted subrouter 组织 REST API，并在 route group 上施加局部 middleware。本项目采用：
 
-- 全局 middleware：`RequestIDMiddleware` -> `Recover` -> `CORS`；不要把 `SessionAuth` 挂成全局 middleware。
-- Cookie 登录路由：`/auth`，其中 `GET /auth/me` 单独使用 `SessionAuth`；`/auth/register/start` 与 `/auth/login/start` 必须挂 `AuthCodeIPRateLimit`。
-- 已登录 portal API：`r.Group(... SessionAuth -> RequireUser ...)`。
-- 管理 API：`/admin` + `SessionAuth` + `RequireUser` + `RequireAdmin`。
+- 全局 middleware：`RequestIDMiddleware` -> `Recover` -> `SecurityHeaders` -> `CORS`；不要把 `SessionAuth` 挂成全局 middleware。
+- Cookie 登录路由：`/auth`，整组使用 `NoStore`；其中 `GET /auth/me` 单独使用 `SessionAuth`；`/auth/register/start` 与 `/auth/login/start` 必须挂 `AuthCodeIPRateLimit`。
+- 已登录 portal API：`NoStore` -> `SessionAuth` -> `RequireUser`。
+- 管理 API：`/admin` + `NoStore` + `SessionAuth` + `RequireUser` + `RequireAdmin`。
 - Public API：`/v1` + `APIPreAuthRateLimit` + `APITokenAuth` + `APIRateLimit` + `APILastUsed` + `APIRequestLog`。
 
 - `/v1` Redis 限流必须同时按 token、user、application 维度独立计数；不要只取 `Effective*Limit` 后按 token key 计数，否则多 token 会放大账号上限。
@@ -167,6 +167,7 @@ API schema 或路由变更时，必须同时更新：
 - [ ] 是否保持 token hash + pepper 校验。
 - [ ] 是否保持管理员路由 `RequireUser` + `RequireAdmin`。
 - [ ] 是否保持 `/v1` token auth、request log、token/user/application 三维 rate limit middleware。
+- [ ] 是否保持全局安全响应头，并让 `/auth/*`、已登录 portal API 与 `/admin/*` 返回 `Cache-Control: no-store`。
 - [ ] 是否同步 OpenAPI 双份文件。
 - [ ] 是否运行了直接覆盖改动的测试/类型检查。
 
