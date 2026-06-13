@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -219,18 +220,17 @@ func TestValidateRejectsLogMailDriverOutsideDevelopment(t *testing.T) {
 		t.Fatal("expected staging MAIL_DRIVER=log error")
 	}
 
-	production := cfg
+	production := validProductionConfig()
 	production.AppEnv = " production "
-	production.TurnstileSecretKey = "secret"
+	production.MailDriver = MailDriverLog
 	if err := production.Validate(); err == nil {
 		t.Fatal("expected production MAIL_DRIVER=log error")
 	}
 }
 
 func TestValidateProductionRejectsMissingSMTPConfig(t *testing.T) {
-	cfg := validConfig()
+	cfg := validProductionConfig()
 	cfg.AppEnv = " production "
-	cfg.TurnstileSecretKey = "secret"
 
 	missingSMTPHost := cfg
 	missingSMTPHost.SMTPHost = ""
@@ -289,16 +289,64 @@ func TestLoadTurnstileSecret(t *testing.T) {
 }
 
 func TestValidateProductionRequiresTurnstileSecret(t *testing.T) {
-	cfg := validConfig()
-	cfg.AppEnv = "production"
+	cfg := validProductionConfig()
 	cfg.TurnstileSecretKey = ""
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected production Turnstile secret error")
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "TURNSTILE_SECRET_KEY") {
+		t.Fatalf("expected production Turnstile secret error, got %v", err)
 	}
 
 	cfg.TurnstileSecretKey = "secret"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected production config with Turnstile secret to validate: %v", err)
+	}
+}
+
+func TestLoadProductionRejectsDefaultSecrets(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("SESSION_SECRET", "")
+	t.Setenv("API_TOKEN_PEPPER", "")
+	t.Setenv("SESSION_COOKIE_SECURE", "")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "SESSION_SECRET") {
+		t.Fatalf("expected production SESSION_SECRET default error, got %v", err)
+	}
+}
+
+func TestValidateProductionRejectsDefaultSecrets(t *testing.T) {
+	cfg := validProductionConfig()
+	cfg.SessionSecret = defaultSessionSecret
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "SESSION_SECRET") {
+		t.Fatalf("expected production SESSION_SECRET default error, got %v", err)
+	}
+
+	cfg = validProductionConfig()
+	cfg.APITokenPepper = defaultAPITokenPepper
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "API_TOKEN_PEPPER") {
+		t.Fatalf("expected production API_TOKEN_PEPPER default error, got %v", err)
+	}
+}
+
+func TestValidateProductionRejectsShortSecrets(t *testing.T) {
+	cfg := validProductionConfig()
+	cfg.SessionSecret = "short-session-secret"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "SESSION_SECRET") {
+		t.Fatalf("expected production short SESSION_SECRET error, got %v", err)
+	}
+
+	cfg = validProductionConfig()
+	cfg.APITokenPepper = "short-token-pepper"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "API_TOKEN_PEPPER") {
+		t.Fatalf("expected production short API_TOKEN_PEPPER error, got %v", err)
+	}
+}
+
+func TestValidateProductionRequiresSecureSessionCookie(t *testing.T) {
+	cfg := validProductionConfig()
+	cfg.SessionCookieSecure = false
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "SESSION_COOKIE_SECURE") {
+		t.Fatalf("expected production SESSION_COOKIE_SECURE error, got %v", err)
 	}
 }
 
@@ -541,8 +589,8 @@ func validConfig() Config {
 		SyncDatabasePool:                  defaultSyncPostgresConfig(),
 		SourceDatabasePool:                defaultSourcePostgresConfig(),
 		LogLevel:                          "info",
-		SessionSecret:                     "secret",
-		APITokenPepper:                    "pepper",
+		SessionSecret:                     "0123456789abcdef0123456789abcdef",
+		APITokenPepper:                    "abcdef0123456789abcdef0123456789",
 		EmailCodeMaxAttempts:              1,
 		DefaultTokenMinuteLimit:           1,
 		DefaultTokenDailyLimit:            1,
@@ -565,4 +613,12 @@ func validConfig() Config {
 		SMTPFrom:                          "no-reply@example.com",
 		MailSendTimeoutSeconds:            10,
 	}
+}
+
+func validProductionConfig() Config {
+	cfg := validConfig()
+	cfg.AppEnv = "production"
+	cfg.SessionCookieSecure = true
+	cfg.TurnstileSecretKey = "turnstile-secret"
+	return cfg
 }

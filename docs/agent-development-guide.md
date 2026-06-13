@@ -168,4 +168,5 @@ API schema 或路由变更时，必须同时更新：
 - [ ] 是否同步 OpenAPI 双份文件。
 - [ ] 是否运行了直接覆盖改动的测试/类型检查。
 
+- 生产配置必须使用非默认且至少 32 字节的 `SESSION_SECRET` 与 `API_TOKEN_PEPPER`，并设置 `SESSION_COOKIE_SECURE=true`；配置校验应在启动时拒绝这些错误。
 - 邮件验证码驱动安全边界：`MAIL_DRIVER=log` 只能用于 `APP_ENV=development` 的本地调试；非开发环境必须使用真实 SMTP 或 Postal 配置，生产配置缺失应启动失败而不是回退日志驱动。

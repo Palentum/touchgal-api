@@ -20,7 +20,12 @@ const (
 	MailDriverLog                      = "log"
 	DefaultMaxActiveTokensPerUser      = 10
 	DefaultAPITokenAuthCacheMaxEntries = 4096
+
+	defaultSessionSecret     = "please-change-this-64-byte-secret"
+	defaultAPITokenPepper    = "please-change-this-long-random-secret"
+	minProductionSecretBytes = 32
 )
+
 const DefaultSyncRunFinishTimeout = 15 * time.Second
 
 type PostgresConfig struct {
@@ -199,7 +204,7 @@ func Load() (Config, error) {
 		RedisWriteTimeout: envDuration("REDIS_WRITE_TIMEOUT", 0),
 		RedisPoolTimeout:  envDuration("REDIS_POOL_TIMEOUT", 0),
 
-		SessionSecret:                     env("SESSION_SECRET", "please-change-this-64-byte-secret"),
+		SessionSecret:                     env("SESSION_SECRET", defaultSessionSecret),
 		SessionCookieName:                 env("SESSION_COOKIE_NAME", "tgal_dev_session"),
 		SessionCookieDomain:               env("SESSION_COOKIE_DOMAIN", ""),
 		SessionCookieSecure:               envBool("SESSION_COOKIE_SECURE", false),
@@ -224,7 +229,7 @@ func Load() (Config, error) {
 		EmailCodeResendCooldownSecs:   envInt("EMAIL_CODE_RESEND_COOLDOWN_SECONDS", 60),
 		EmailCodeMaxAttempts:          envInt("EMAIL_CODE_MAX_ATTEMPTS", 5),
 		TurnstileSecretKey:            env("TURNSTILE_SECRET_KEY", ""),
-		APITokenPepper:                env("API_TOKEN_PEPPER", "please-change-this-long-random-secret"),
+		APITokenPepper:                env("API_TOKEN_PEPPER", defaultAPITokenPepper),
 		APITokenPrefix:                env("API_TOKEN_PREFIX", "tgal_live"),
 		DefaultTokenMinuteLimit:       envInt("DEFAULT_TOKEN_MINUTE_LIMIT", 60),
 		DefaultTokenDailyLimit:        envInt("DEFAULT_TOKEN_DAILY_LIMIT", 5000),
@@ -344,6 +349,23 @@ func validateObservabilityConfig(cfg Config) error {
 	return nil
 }
 
+func validateSensitiveSecret(name, value, defaultValue string, production bool) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fmt.Errorf("%s is required", name)
+	}
+	if !production {
+		return nil
+	}
+	if trimmed == defaultValue {
+		return fmt.Errorf("%s must be changed when APP_ENV=production", name)
+	}
+	if len(trimmed) < minProductionSecretBytes {
+		return fmt.Errorf("%s must be at least %d bytes when APP_ENV=production", name, minProductionSecretBytes)
+	}
+	return nil
+}
+
 func (c Config) Validate() error {
 	if c.DatabaseDSN == "" {
 		return errors.New("DATABASE_DSN is required")
@@ -381,13 +403,17 @@ func (c Config) Validate() error {
 	if err := validateRedisConfig(c); err != nil {
 		return err
 	}
-	if c.SessionSecret == "" {
-		return errors.New("SESSION_SECRET is required")
+	isProduction := c.IsProduction()
+	if err := validateSensitiveSecret("SESSION_SECRET", c.SessionSecret, defaultSessionSecret, isProduction); err != nil {
+		return err
 	}
-	if c.APITokenPepper == "" {
-		return errors.New("API_TOKEN_PEPPER is required")
+	if err := validateSensitiveSecret("API_TOKEN_PEPPER", c.APITokenPepper, defaultAPITokenPepper, isProduction); err != nil {
+		return err
 	}
-	if c.IsProduction() && strings.TrimSpace(c.TurnstileSecretKey) == "" {
+	if isProduction && !c.SessionCookieSecure {
+		return errors.New("SESSION_COOKIE_SECURE must be true when APP_ENV=production")
+	}
+	if isProduction && strings.TrimSpace(c.TurnstileSecretKey) == "" {
 		return errors.New("TURNSTILE_SECRET_KEY is required when APP_ENV=production")
 	}
 	if _, err := logging.ParseLevel(c.LogLevel); err != nil {
