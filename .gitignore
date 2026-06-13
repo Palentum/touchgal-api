@@ -9,9 +9,25 @@ frontend/.output/
 frontend/.data/
 frontend/dist/
 
-# Environment
-backend/.env
-frontend/.env
+# Environment / local secrets
+.env*
+!.env.example
+
+# Certificates / keys
+*.pem
+*.key
+*.crt
+
+# Dumps / logs / coverage
+*.dump
+*.sql.gz
+*.log
+*.log.*
+coverage/
+coverage.out
+*.coverprofile
+*.lcov
+lcov.info
 
 # OS/editor
 .DS_Store

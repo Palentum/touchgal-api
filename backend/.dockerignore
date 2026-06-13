@@ -1,3 +1,15 @@
-.env
-bin
+.env*
+!.env.example
+*.pem
+*.key
+*.crt
+*.dump
+*.sql.gz
+*.log
+*.log.*
+coverage/
 coverage.out
+*.coverprofile
+*.lcov
+lcov.info
+bin/
