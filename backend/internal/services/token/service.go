@@ -8,11 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
 )
@@ -38,6 +40,7 @@ type Service struct {
 	cfg          config.Config
 	tokens       Store
 	applications ApplicationStore
+	redis        *redis.Client
 
 	authCacheTTL               time.Duration
 	authCacheMaxEntries        int
@@ -49,8 +52,9 @@ type Service struct {
 }
 
 type cachedAuthInfo struct {
-	info      model.TokenAuthInfo
-	expiresAt time.Time
+	info           model.TokenAuthInfo
+	expiresAt      time.Time
+	authCacheEpoch string
 }
 
 type CreateResult struct {
@@ -58,7 +62,7 @@ type CreateResult struct {
 	PlainToken string          `json:"token"`
 }
 
-func NewService(cfg config.Config, tokens Store, applications ApplicationStore) *Service {
+func NewService(cfg config.Config, tokens Store, applications ApplicationStore, redisClient *redis.Client) *Service {
 	authCacheTTL := cfg.APITokenAuthCacheTTL()
 	if authCacheTTL <= 0 {
 		authCacheTTL = time.Minute
@@ -71,6 +75,7 @@ func NewService(cfg config.Config, tokens Store, applications ApplicationStore) 
 		cfg:                        cfg,
 		tokens:                     tokens,
 		applications:               applications,
+		redis:                      redisClient,
 		authCacheTTL:               authCacheTTL,
 		authCacheMaxEntries:        authCacheMaxEntries,
 		authCache:                  make(map[string]cachedAuthInfo),
@@ -218,34 +223,69 @@ func (s *Service) DeleteMine(ctx context.Context, id, userID uuid.UUID) error {
 	if err := s.tokens.DeleteForUser(ctx, id, userID); err != nil {
 		return err
 	}
-	s.InvalidateToken(id)
-	return nil
+	return s.InvalidateToken(ctx, id)
 }
 func (s *Service) DeleteByAdmin(ctx context.Context, id uuid.UUID) error {
 	if err := s.tokens.DeleteByID(ctx, id); err != nil {
 		return err
 	}
-	s.InvalidateToken(id)
-	return nil
+	return s.InvalidateToken(ctx, id)
 }
 func (s *Service) CountActive(ctx context.Context) (int, error) { return s.tokens.CountActive(ctx) }
 
 func (s *Service) Authenticate(ctx context.Context, raw string) (*model.TokenAuthInfo, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" || !generatedTokenShape(raw, s.cfg.APITokenPrefix) {
 		return nil, model.ErrUnauthorized
 	}
 	now := time.Now()
 	tokenHash := HashAPIToken(raw, s.cfg.APITokenPepper)
-	if info, ok := s.cachedAuthInfo(tokenHash, now); ok {
+	if info, ok := s.cachedAuthInfo(ctx, tokenHash, now); ok {
 		return info, nil
 	}
+	if s.redis == nil {
+		info, err := s.loadAuthInfo(ctx, tokenHash, now)
+		if err != nil {
+			return nil, err
+		}
+		s.cacheAuthInfo(tokenHash, info, now, "")
+		return info, nil
+	}
+	for {
+		epochBefore, beforeOK := s.currentAuthCacheEpoch(ctx)
+		info, err := s.loadAuthInfo(ctx, tokenHash, now)
+		if err != nil {
+			return nil, err
+		}
+		epochAfter, afterOK := s.currentAuthCacheEpoch(ctx)
+		if beforeOK && afterOK {
+			if epochBefore != epochAfter {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			s.cacheAuthInfo(tokenHash, info, now, epochAfter)
+		}
+		return info, nil
+	}
+}
+
+func (s *Service) MarkLastUsed(ctx context.Context, id uuid.UUID) error {
+	return s.tokens.UpdateLastUsed(ctx, id)
+}
+
+func (s *Service) loadAuthInfo(ctx context.Context, tokenHash string, now time.Time) (*model.TokenAuthInfo, error) {
 	info, err := s.tokens.GetByHashWithApplication(ctx, tokenHash)
 	if err != nil {
 		return nil, model.ErrUnauthorized
 	}
 	if info.Token.Status != model.TokenActive {
 		_ = s.tokens.DeleteByID(ctx, info.Token.ID)
+		_ = s.InvalidateToken(ctx, info.Token.ID)
 		return nil, model.ErrUnauthorized
 	}
 	if info.UserStatus != model.UserStatusActive {
@@ -256,39 +296,104 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (*model.TokenAut
 	}
 	if info.Token.ExpiresAt != nil && !now.Before(*info.Token.ExpiresAt) {
 		_ = s.tokens.DeleteByID(ctx, info.Token.ID)
+		_ = s.InvalidateToken(ctx, info.Token.ID)
 		return nil, model.ErrUnauthorized
 	}
-	s.cacheAuthInfo(tokenHash, info, now)
 	return info, nil
 }
 
-func (s *Service) MarkLastUsed(ctx context.Context, id uuid.UUID) error {
-	return s.tokens.UpdateLastUsed(ctx, id)
-}
-
-func (s *Service) InvalidateToken(id uuid.UUID) {
+func (s *Service) InvalidateToken(ctx context.Context, id uuid.UUID) error {
+	if id == uuid.Nil {
+		return nil
+	}
+	err := s.bumpAuthCacheEpoch(ctx)
 	s.authCacheMu.Lock()
 	s.evictTokenLocked(id)
 	s.authCacheMu.Unlock()
+	return err
 }
 
-func (s *Service) InvalidateUser(userID uuid.UUID) {
+func (s *Service) InvalidateUser(ctx context.Context, userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return nil
+	}
+	err := s.bumpAuthCacheEpoch(ctx)
 	s.authCacheMu.Lock()
 	for tokenID := range s.authCacheUserTokens[userID] {
 		s.evictTokenLocked(tokenID)
 	}
 	s.authCacheMu.Unlock()
+	return err
 }
 
-func (s *Service) InvalidateApplication(applicationID uuid.UUID) {
+func (s *Service) InvalidateApplication(ctx context.Context, applicationID uuid.UUID) error {
+	if applicationID == uuid.Nil {
+		return nil
+	}
+	err := s.bumpAuthCacheEpoch(ctx)
 	s.authCacheMu.Lock()
 	for tokenID := range s.authCacheApplicationTokens[applicationID] {
 		s.evictTokenLocked(tokenID)
 	}
 	s.authCacheMu.Unlock()
+	return err
 }
 
-func (s *Service) cachedAuthInfo(tokenHash string, now time.Time) (*model.TokenAuthInfo, bool) {
+const (
+	authCacheEpochKey                 = "token:auth:epoch"
+	authCacheInvalidationWriteTimeout = 3 * time.Second
+)
+
+func (s *Service) currentAuthCacheEpoch(ctx context.Context) (string, bool) {
+	if s.redis == nil {
+		return "", false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	epoch, err := s.redis.Get(ctx, authCacheEpochKey).Result()
+	if errors.Is(err, redis.Nil) {
+		return s.initializeAuthCacheEpoch(ctx)
+	}
+	if err != nil {
+		return "", false
+	}
+	return epoch, true
+}
+
+func (s *Service) initializeAuthCacheEpoch(ctx context.Context) (string, bool) {
+	epoch := strconv.FormatInt(time.Now().UnixNano(), 10)
+	created, err := s.redis.SetNX(ctx, authCacheEpochKey, epoch, 0).Result()
+	if err != nil {
+		return "", false
+	}
+	if created {
+		return epoch, true
+	}
+	epoch, err = s.redis.Get(ctx, authCacheEpochKey).Result()
+	if err != nil {
+		return "", false
+	}
+	return epoch, true
+}
+
+func (s *Service) bumpAuthCacheEpoch(ctx context.Context) error {
+	if s.redis == nil {
+		return nil
+	}
+	writeCtx, cancel := context.WithTimeout(context.Background(), authCacheInvalidationWriteTimeout)
+	defer cancel()
+	created, err := s.redis.SetNX(writeCtx, authCacheEpochKey, strconv.FormatInt(time.Now().UnixNano(), 10), 0).Result()
+	if err != nil {
+		return err
+	}
+	if created {
+		return nil
+	}
+	return s.redis.Incr(writeCtx, authCacheEpochKey).Err()
+}
+
+func (s *Service) cachedAuthInfo(ctx context.Context, tokenHash string, now time.Time) (*model.TokenAuthInfo, bool) {
 	s.authCacheMu.RLock()
 	entry, ok := s.authCache[tokenHash]
 	s.authCacheMu.RUnlock()
@@ -303,11 +408,22 @@ func (s *Service) cachedAuthInfo(tokenHash string, now time.Time) (*model.TokenA
 		s.authCacheMu.Unlock()
 		return nil, false
 	}
+	if s.redis != nil {
+		currentEpoch, ok := s.currentAuthCacheEpoch(ctx)
+		if !ok || currentEpoch != entry.authCacheEpoch {
+			s.authCacheMu.Lock()
+			if current, ok := s.authCache[tokenHash]; ok && current.info.Token.ID == entry.info.Token.ID {
+				s.evictTokenLocked(current.info.Token.ID)
+			}
+			s.authCacheMu.Unlock()
+			return nil, false
+		}
+	}
 	info := entry.info
 	return &info, true
 }
 
-func (s *Service) cacheAuthInfo(tokenHash string, info *model.TokenAuthInfo, now time.Time) {
+func (s *Service) cacheAuthInfo(tokenHash string, info *model.TokenAuthInfo, now time.Time, authCacheEpoch string) {
 	if s.authCacheTTL <= 0 || info == nil {
 		return
 	}
@@ -338,7 +454,7 @@ func (s *Service) cacheAuthInfo(tokenHash string, info *model.TokenAuthInfo, now
 	if maxEntries := s.authCacheMaxEntries; maxEntries > 0 && len(s.authCache) >= maxEntries {
 		s.evictAnyAuthCacheEntryLocked()
 	}
-	s.authCache[tokenHash] = cachedAuthInfo{info: *info, expiresAt: expiresAt}
+	s.authCache[tokenHash] = cachedAuthInfo{info: *info, expiresAt: expiresAt, authCacheEpoch: authCacheEpoch}
 	s.authCacheTokenHashes[info.Token.ID] = tokenHash
 	addTokenIndex(s.authCacheUserTokens, info.Token.UserID, info.Token.ID)
 	addTokenIndex(s.authCacheApplicationTokens, info.Token.ApplicationID, info.Token.ID)

@@ -79,7 +79,13 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.invalidateUserAuthCaches(r.Context(), id)
+	h.invalidateUserSessionCaches(r.Context(), id)
+	if req.Status != nil || req.MinuteLimit != nil || req.DailyLimit != nil {
+		if err := h.tokens.InvalidateUser(r.Context(), id); err != nil {
+			Error(w, err)
+			return
+		}
+	}
 	Success(w, http.StatusOK, user)
 }
 
@@ -94,12 +100,15 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		Error(w, err)
 		return
 	}
-	h.invalidateUserAuthCaches(r.Context(), id)
+	h.invalidateUserSessionCaches(r.Context(), id)
+	if err := h.tokens.InvalidateUser(r.Context(), id); err != nil {
+		Error(w, err)
+		return
+	}
 	Success(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
-func (h *AdminHandler) invalidateUserAuthCaches(ctx context.Context, userID uuid.UUID) {
-	h.tokens.InvalidateUser(userID)
+func (h *AdminHandler) invalidateUserSessionCaches(ctx context.Context, userID uuid.UUID) {
 	if h.sessions != nil {
 		h.sessions.InvalidateUserSessions(ctx, userID)
 	}
@@ -145,7 +154,10 @@ func (h *AdminHandler) reviewApplication(w http.ResponseWriter, r *http.Request,
 		Error(w, err)
 		return
 	}
-	h.tokens.InvalidateApplication(app.ID)
+	if err := h.tokens.InvalidateApplication(r.Context(), app.ID); err != nil {
+		Error(w, err)
+		return
+	}
 	Success(w, http.StatusOK, app)
 }
 

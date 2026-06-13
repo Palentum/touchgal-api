@@ -91,7 +91,7 @@ func run() error {
 
 	authService := auth.NewService(cfg, repos.Users, repos.Auth, redisClient, mailer)
 	applicationService := application.NewService(cfg, repos.Applications)
-	tokenService := token.NewService(cfg, repos.Tokens, repos.Applications)
+	tokenService := token.NewService(cfg, repos.Tokens, repos.Applications, redisClient)
 	userService := usersvc.NewService(repos.Users)
 	publicService := publicapi.NewService(cfg, repos.Games)
 	statsService := stats.NewService(repos.Stats)

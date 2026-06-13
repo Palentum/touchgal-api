@@ -2,9 +2,12 @@ package token
 
 import (
 	"context"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -93,7 +96,7 @@ func (f fakeTokenAppStore) EnsureAdminApproved(ctx context.Context, userID uuid.
 func TestTokenOnlyApprovedAccountCanCreate(t *testing.T) {
 	cfg := config.Config{APITokenPrefix: "tgal_live", APITokenPepper: "pepper", DefaultTokenMinuteLimit: 60, DefaultTokenDailyLimit: 5000}
 	pending := &model.Application{ID: uuid.New(), UserID: uuid.New(), Status: model.ApplicationPending}
-	svc := NewService(cfg, &fakeTokenStore{}, fakeTokenAppStore{app: pending})
+	svc := NewService(cfg, &fakeTokenStore{}, fakeTokenAppStore{app: pending}, nil)
 	_, err := svc.Create(context.Background(), pending.UserID, false, "prod")
 	if err != model.ErrApplicationOpen {
 		t.Fatalf("expected application error, got %v", err)
@@ -101,7 +104,7 @@ func TestTokenOnlyApprovedAccountCanCreate(t *testing.T) {
 
 	approved := &model.Application{ID: uuid.New(), UserID: uuid.New(), Status: model.ApplicationApproved, DefaultMinuteLimit: 10, DefaultDailyLimit: 100}
 	store := &fakeTokenStore{}
-	svc = NewService(cfg, store, fakeTokenAppStore{app: approved})
+	svc = NewService(cfg, store, fakeTokenAppStore{app: approved}, nil)
 	res, err := svc.Create(context.Background(), approved.UserID, false, "prod")
 	if err != nil {
 		t.Fatalf("create approved token: %v", err)
@@ -127,7 +130,7 @@ func TestCreateTokenEnforcesActiveTokenLimit(t *testing.T) {
 	}
 	app := &model.Application{ID: uuid.New(), UserID: userID, Status: model.ApplicationApproved, DefaultMinuteLimit: 10, DefaultDailyLimit: 100}
 	store := &fakeTokenStore{activeTokenCount: 2}
-	svc := NewService(cfg, store, fakeTokenAppStore{app: app})
+	svc := NewService(cfg, store, fakeTokenAppStore{app: app}, nil)
 
 	_, err := svc.Create(context.Background(), userID, false, "prod")
 	if err != model.ErrTokenLimitExceeded {
@@ -146,7 +149,7 @@ func TestAdminCanCreateTokenWithoutSubmittedApplication(t *testing.T) {
 	userID := uuid.New()
 	adminApp := &model.Application{ID: uuid.New(), Status: model.ApplicationApproved}
 	store := &fakeTokenStore{}
-	svc := NewService(cfg, store, fakeTokenAppStore{ensuredAdmin: adminApp})
+	svc := NewService(cfg, store, fakeTokenAppStore{ensuredAdmin: adminApp}, nil)
 
 	res, err := svc.Create(context.Background(), userID, true, "prod")
 	if err != nil {
@@ -164,7 +167,7 @@ func TestUpdateNameMineTrimsAndScopesToken(t *testing.T) {
 	tokenID := uuid.New()
 	userID := uuid.New()
 	store := &fakeTokenStore{}
-	svc := NewService(config.Config{}, store, fakeTokenAppStore{})
+	svc := NewService(config.Config{}, store, fakeTokenAppStore{}, nil)
 
 	updated, err := svc.UpdateNameMine(context.Background(), tokenID, userID, "  renamed token  ")
 	if err != nil {
@@ -179,7 +182,7 @@ func TestUpdateNameMineTrimsAndScopesToken(t *testing.T) {
 }
 
 func TestUpdateNameMineRejectsBlankName(t *testing.T) {
-	svc := NewService(config.Config{}, &fakeTokenStore{}, fakeTokenAppStore{})
+	svc := NewService(config.Config{}, &fakeTokenStore{}, fakeTokenAppStore{}, nil)
 	if _, err := svc.UpdateNameMine(context.Background(), uuid.New(), uuid.New(), "   "); err != model.ErrInvalidInput {
 		t.Fatalf("expected invalid input for blank token name, got %v", err)
 	}
@@ -189,7 +192,7 @@ func TestDeleteMineRemovesTokenRecord(t *testing.T) {
 	tokenID := uuid.New()
 	userID := uuid.New()
 	store := &fakeTokenStore{}
-	svc := NewService(config.Config{}, store, fakeTokenAppStore{})
+	svc := NewService(config.Config{}, store, fakeTokenAppStore{}, nil)
 
 	if err := svc.DeleteMine(context.Background(), tokenID, userID); err != nil {
 		t.Fatalf("delete token: %v", err)
@@ -211,7 +214,7 @@ func TestAuthenticateRejectsDeletedToken(t *testing.T) {
 	cfg := authConfig()
 	raw := validRawToken()
 	store := &fakeTokenStore{}
-	svc := NewService(cfg, store, fakeTokenAppStore{})
+	svc := NewService(cfg, store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
 		t.Fatalf("expected deleted token unauthorized, got %v", err)
 	}
@@ -222,7 +225,7 @@ func TestAuthenticateDeletesInactiveTokenRecord(t *testing.T) {
 	raw := validRawToken()
 	tokenID := uuid.New()
 	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: "disabled", TokenHash: HashAPIToken(raw, "pepper")}, ApplicationStatus: model.ApplicationApproved}}
-	svc := NewService(cfg, store, fakeTokenAppStore{})
+	svc := NewService(cfg, store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
 		t.Fatalf("expected inactive token unauthorized, got %v", err)
 	}
@@ -245,13 +248,15 @@ func TestAuthenticateRejectsTokenAfterUserDisabledAndCacheInvalidated(t *testing
 		ApplicationStatus: model.ApplicationApproved,
 		UserStatus:        model.UserStatusActive,
 	}}
-	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
 		t.Fatalf("authenticate active user: %v", err)
 	}
 
 	store.auth.UserStatus = model.UserStatusDisabled
-	svc.InvalidateUser(userID)
+	if err := svc.InvalidateUser(context.Background(), userID); err != nil {
+		t.Fatalf("invalidate user: %v", err)
+	}
 
 	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
 		t.Fatalf("expected disabled user token unauthorized after cache invalidation, got %v", err)
@@ -270,7 +275,7 @@ func TestAuthenticateDeletesExpiredTokenRecord(t *testing.T) {
 	tokenID := uuid.New()
 	expiredAt := time.Now().Add(-time.Second)
 	store := &fakeTokenStore{auth: &model.TokenAuthInfo{Token: model.APIToken{ID: tokenID, Status: model.TokenActive, TokenHash: HashAPIToken(raw, "pepper"), ExpiresAt: &expiredAt}, ApplicationStatus: model.ApplicationApproved, UserStatus: model.UserStatusActive}}
-	svc := NewService(cfg, store, fakeTokenAppStore{})
+	svc := NewService(cfg, store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), raw); err != model.ErrUnauthorized {
 		t.Fatalf("expected expired token unauthorized, got %v", err)
 	}
@@ -281,7 +286,7 @@ func TestAuthenticateDeletesExpiredTokenRecord(t *testing.T) {
 
 func TestAuthenticateRejectsMalformedTokenWithoutStoreLookup(t *testing.T) {
 	store := &fakeTokenStore{}
-	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), "not-a-generated-token"); err != model.ErrUnauthorized {
 		t.Fatalf("expected malformed token unauthorized, got %v", err)
 	}
@@ -298,7 +303,7 @@ func TestAuthenticateCachesValidTokenAndDoesNotUpdateLastUsed(t *testing.T) {
 		ApplicationStatus: model.ApplicationApproved,
 		UserStatus:        model.UserStatusActive,
 	}}
-	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
 		t.Fatalf("first authenticate: %v", err)
 	}
@@ -314,7 +319,7 @@ func TestAuthenticateCachesValidTokenAndDoesNotUpdateLastUsed(t *testing.T) {
 }
 func TestAuthenticateBoundsAuthCacheEntries(t *testing.T) {
 	store := &fakeTokenStore{}
-	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, nil)
 	svc.authCacheMaxEntries = 2
 
 	for i, ch := range []string{"A", "B", "C"} {
@@ -356,7 +361,7 @@ func TestDeleteMineInvalidatesCachedToken(t *testing.T) {
 		ApplicationStatus: model.ApplicationApproved,
 		UserStatus:        model.UserStatusActive,
 	}}
-	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}
@@ -382,19 +387,157 @@ func TestInvalidateUserAndApplicationEvictCachedTokens(t *testing.T) {
 		ApplicationStatus: model.ApplicationApproved,
 		UserStatus:        model.UserStatusActive,
 	}}
-	svc := NewService(authConfig(), store, fakeTokenAppStore{})
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, nil)
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}
-	svc.InvalidateUser(userID)
+	if err := svc.InvalidateUser(context.Background(), userID); err != nil {
+		t.Fatalf("invalidate user: %v", err)
+	}
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
 		t.Fatalf("authenticate after user invalidation: %v", err)
 	}
-	svc.InvalidateApplication(applicationID)
+	if err := svc.InvalidateApplication(context.Background(), applicationID); err != nil {
+		t.Fatalf("invalidate application: %v", err)
+	}
 	if _, err := svc.Authenticate(context.Background(), raw); err != nil {
 		t.Fatalf("authenticate after application invalidation: %v", err)
 	}
 	if store.authLookups != 3 {
 		t.Fatalf("expected one lookup per invalidation, got %d", store.authLookups)
+	}
+}
+
+func TestSharedAuthCacheEpochInvalidatesOtherServiceInstances(t *testing.T) {
+	server := miniredis.RunT(t)
+	clientA := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer clientA.Close()
+	clientB := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer clientB.Close()
+
+	ctx := context.Background()
+	raw := validRawToken()
+	tokenID := uuid.New()
+	userID := uuid.New()
+	applicationID := uuid.New()
+	tokenHash := HashAPIToken(raw, "pepper")
+	authInfo := func(userStatus, applicationStatus string) *model.TokenAuthInfo {
+		return &model.TokenAuthInfo{
+			Token: model.APIToken{
+				ID:            tokenID,
+				UserID:        userID,
+				ApplicationID: applicationID,
+				Status:        model.TokenActive,
+				TokenHash:     tokenHash,
+				MinuteLimit:   10,
+				DailyLimit:    100,
+			},
+			UserID:                 userID,
+			UserStatus:             userStatus,
+			UserMinuteLimit:        10,
+			UserDailyLimit:         100,
+			ApplicationID:          applicationID,
+			ApplicationStatus:      applicationStatus,
+			ApplicationMinuteLimit: 10,
+			ApplicationDailyLimit:  100,
+		}
+	}
+
+	storeA := &fakeTokenStore{}
+	storeB := &fakeTokenStore{auth: authInfo(model.UserStatusActive, model.ApplicationApproved)}
+	svcA := NewService(authConfig(), storeA, fakeTokenAppStore{}, clientA)
+	svcB := NewService(authConfig(), storeB, fakeTokenAppStore{}, clientB)
+
+	if _, err := svcB.Authenticate(ctx, raw); err != nil {
+		t.Fatalf("initial authenticate: %v", err)
+	}
+	storeB.auth = authInfo(model.UserStatusDisabled, model.ApplicationApproved)
+	if err := svcA.InvalidateUser(ctx, userID); err != nil {
+		t.Fatalf("cross-instance invalidate user: %v", err)
+	}
+	if _, err := svcB.Authenticate(ctx, raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected disabled user to miss cross-instance cache, got %v", err)
+	}
+
+	storeB.auth = authInfo(model.UserStatusActive, model.ApplicationApproved)
+	if _, err := svcB.Authenticate(ctx, raw); err != nil {
+		t.Fatalf("authenticate after user re-enable: %v", err)
+	}
+	storeB.auth = authInfo(model.UserStatusActive, model.ApplicationRevoked)
+	if err := svcA.InvalidateApplication(ctx, applicationID); err != nil {
+		t.Fatalf("cross-instance invalidate application: %v", err)
+	}
+	if _, err := svcB.Authenticate(ctx, raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected revoked application to miss cross-instance cache, got %v", err)
+	}
+
+	storeB.auth = authInfo(model.UserStatusActive, model.ApplicationApproved)
+	if _, err := svcB.Authenticate(ctx, raw); err != nil {
+		t.Fatalf("authenticate before delete: %v", err)
+	}
+	if err := svcA.DeleteMine(ctx, tokenID, userID); err != nil {
+		t.Fatalf("delete mine: %v", err)
+	}
+	storeB.auth = nil
+	if _, err := svcB.Authenticate(ctx, raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected deleted token to miss cross-instance cache, got %v", err)
+	}
+	if storeB.authLookups != 6 {
+		t.Fatalf("expected every shared invalidation to force a store lookup, got %d", storeB.authLookups)
+	}
+}
+
+func TestMissingSharedAuthCacheEpochInvalidatesExistingEntries(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+
+	ctx := context.Background()
+	raw := validRawToken()
+	tokenID := uuid.New()
+	userID := uuid.New()
+	tokenHash := HashAPIToken(raw, "pepper")
+	store := &fakeTokenStore{auth: &model.TokenAuthInfo{
+		Token:             model.APIToken{ID: tokenID, UserID: userID, ApplicationID: uuid.New(), Status: model.TokenActive, TokenHash: tokenHash, MinuteLimit: 10, DailyLimit: 100},
+		ApplicationStatus: model.ApplicationApproved,
+		UserStatus:        model.UserStatusActive,
+	}}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, client)
+
+	if _, err := svc.Authenticate(ctx, raw); err != nil {
+		t.Fatalf("initial authenticate: %v", err)
+	}
+	oldEpoch, err := strconv.ParseInt(client.Get(ctx, authCacheEpochKey).Val(), 10, 64)
+	if err != nil {
+		t.Fatalf("parse initial auth cache epoch: %v", err)
+	}
+	server.Del(authCacheEpochKey)
+	for time.Now().UnixNano() <= oldEpoch {
+	}
+	store.auth.UserStatus = model.UserStatusDisabled
+	if _, err := svc.Authenticate(ctx, raw); err != model.ErrUnauthorized {
+		t.Fatalf("expected missing shared epoch to force cache miss, got %v", err)
+	}
+	if store.authLookups != 2 {
+		t.Fatalf("expected DB lookup after missing shared epoch, got %d", store.authLookups)
+	}
+}
+
+func TestDeleteMineReturnsSharedInvalidationError(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+
+	tokenID := uuid.New()
+	userID := uuid.New()
+	store := &fakeTokenStore{}
+	svc := NewService(authConfig(), store, fakeTokenAppStore{}, client)
+	server.Close()
+
+	if err := svc.DeleteMine(context.Background(), tokenID, userID); err == nil {
+		t.Fatal("expected delete to surface shared auth cache invalidation failure")
+	}
+	if store.deletedForUserID != tokenID || store.deletedUserID != userID {
+		t.Fatal("delete must still remove the token row before reporting invalidation failure")
 	}
 }

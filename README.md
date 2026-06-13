@@ -44,7 +44,7 @@ cp backend/.env.example backend/.env
 - `DATABASE_DSN`：本项目 clean DB，指向主机上的 PostgreSQL。
 - `SOURCE_DATABASE_DSN`：TouchGal 主库只读账号连接串，生产建议 `sslmode=require`；默认只配置给独立 sync worker，API 进程在 `ENABLE_SYNC_WORKER=false` 时不需要该凭据。
 - `DB_*` / `SYNC_DB_*` / `SOURCE_DB_*`：分别控制 API clean DB、sync clean DB、source 主库连接池与 `statement_timeout`、`idle_in_transaction_session_timeout`、query timeout；sync 使用独立 target/source pool、分页读取和短事务 batch commit，避免 full sync 占用 API pool 或形成单个长事务。
-- `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流。
+- `REDIS_ADDR` / `REDIS_PASSWORD` / `REDIS_DB`：主机上的 Redis，用于验证码、session cache、API token 限流与 token auth 跨实例撤销版本。
 - `REDIS_POOL_SIZE` / `REDIS_MIN_IDLE_CONNS` / `REDIS_*_TIMEOUT`：go-redis 连接池与 dial/read/write/pool wait timeout；timeout 默认 `0` 会由本项目转换为固定安全值（5s/3s/3s/4s），避免依赖 go-redis 版本默认语义，高 QPS 部署按实例容量和 `/v1` 峰值并发调优。
 - `SESSION_SECRET` / `SESSION_COOKIE_SECURE` / `SESSION_AUTH_CACHE_TTL_SECONDS` / `SESSION_LAST_SEEN_UPDATE_INTERVAL_SECONDS`：登录 session hash secret、Secure Cookie 开关、portal session 用户短缓存 TTL、`sessions.last_seen_at` 写入节流窗口。生产会拒绝默认或短于 32 字节的 `SESSION_SECRET`，并强制 `SESSION_COOKIE_SECURE=true`。
 - `LOG_LEVEL`：后端日志级别，支持 `trace`、`debug`、`info`、`warn`、`error`、`fatal`；本地排查可用 `LOG_LEVEL=debug make backend-dev`。
@@ -55,7 +55,7 @@ cp backend/.env.example backend/.env
 - `POSTAL_API_URL` / `POSTAL_API_KEY`：Postal HTTP API 驱动配置；生产 `MAIL_DRIVER=postal` 缺失这些配置会启动失败。
 - `TURNSTILE_SECRET_KEY`：Cloudflare Turnstile secret key；生产 `APP_ENV=production` 必须配置，开发留空时后端跳过人机验证。
 - `API_TOKEN_PEPPER`：API token hash pepper，数据库只存 `sha256(token + "." + pepper)`；生产会拒绝默认或短于 32 字节的值。
-- `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_TOKEN_AUTH_CACHE_MAX_ENTRIES` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、token auth 短缓存及容量上限、`last_used_at` 写入节流与单账号 active token 数量上限。
+- `API_PREAUTH_IP_*` / `API_TOKEN_AUTH_CACHE_TTL_SECONDS` / `API_TOKEN_AUTH_CACHE_MAX_ENTRIES` / `API_LAST_USED_UPDATE_INTERVAL_SECONDS` / `MAX_ACTIVE_TOKENS_PER_USER`：`/v1` pre-auth IP 粗限流、带 Redis 撤销版本校验的 token auth 短缓存及容量上限、`last_used_at` 写入节流与单账号 active token 数量上限。
 - `API_REQUEST_LOG_QUEUE_SIZE` / `API_REQUEST_LOG_BATCH_SIZE` / `API_REQUEST_LOG_FLUSH_INTERVAL` / `API_REQUEST_LOG_RETENTION_DAYS`：`/v1` request log 有界队列、批量写入间隔与 raw log 保留天数；dashboard 统计读取聚合表。
 - `ENABLE_SYNC_WORKER`：API 进程是否启动后台同步，默认 `false`；生产建议保持关闭并使用独立 worker。
 - `SYNC_INTERVAL_MINUTES` / `SYNC_FULL_INTERVAL_HOURS` / `SYNC_RUN_FINISH_TIMEOUT`：仅在 `ENABLE_SYNC_WORKER=true` 时控制 API 进程内 incremental/full 同步周期，以及请求取消后持久化 sync run 结束状态的最大等待时间。
