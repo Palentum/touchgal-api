@@ -111,6 +111,7 @@ cp frontend/.env.example frontend/.env
 
 ```env
 NUXT_PUBLIC_API_BASE_URL=http://localhost:8080
+NUXT_API_BASE_URL=http://localhost:8080
 NUXT_PUBLIC_TOUCHGAL_TECH_DOCS_URL=https://github.com/KUN1007/kun-touchgal-next
 NUXT_PUBLIC_API_DOCS_URL=/docs/api
 NUXT_PUBLIC_TURNSTILE_SITE_KEY=
@@ -253,7 +254,7 @@ docker compose -f deploy/docker-compose.yml up --build
 ```
 
 说明：
-- `NUXT_PUBLIC_API_BASE_URL` 是浏览器和 Nuxt SSR 进程共用的 public base URL。需要完整测试 SSR 登录态页面时，优先使用 `make backend-dev` + `make frontend-dev` 直连启动；Compose 更适合作为容器镜像 smoke test。
+- `NUXT_PUBLIC_API_BASE_URL` 是浏览器使用的 public base URL；`NUXT_API_BASE_URL` 是 Nuxt SSR 进程使用的 server-only base URL。需要完整测试 SSR 登录态页面时，两者都指向同一个本地后端，或让 public base 使用同源反代 `/api` 且 server base 指向后端直连地址。
 - Compose backend healthcheck 使用 `http://127.0.0.1:8080/v1/ready`。
 - frontend 会等待 backend service healthy。
 - Compose 默认设置 read-only rootfs 和 tmpfs；本地调试需要写临时文件时写入 `/tmp`。

@@ -19,11 +19,10 @@
 import { sanitizePostLoginRedirect } from '~/utils/redirect'
 
 definePageMeta({
-  middleware: async () => {
+  middleware: async (to) => {
     if (import.meta.server) {
       return
     }
-
     const auth = useAuthStore()
     if (!auth.loaded) {
       await auth.fetchMe()
@@ -32,7 +31,7 @@ definePageMeta({
       return navigateTo('/account-disabled')
     }
     if (auth.user) {
-      return navigateTo('/dashboard')
+      return navigateTo(sanitizePostLoginRedirect(to.query.redirect))
     }
   }
 })

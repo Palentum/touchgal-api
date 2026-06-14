@@ -149,11 +149,12 @@ cp frontend/.env.example frontend/.env
 
 常见生产配置：
 
-- 同源反代：`NUXT_PUBLIC_API_BASE_URL=https://developer.example.com/api`
+- 同源反代（浏览器走同源，SSR 可直连后端）：`NUXT_PUBLIC_API_BASE_URL=/api`，`NUXT_API_BASE_URL=http://backend:8080`（Docker Compose）或 `http://127.0.0.1:8080`（同机 systemd）。
+- 同源绝对 URL：`NUXT_PUBLIC_API_BASE_URL=https://developer.example.com/api`
 - 独立 API origin：`NUXT_PUBLIC_API_BASE_URL=https://api.example.com`
 - Turnstile：`NUXT_PUBLIC_TURNSTILE_SITE_KEY=<Cloudflare Turnstile site key>`
 
-当前 `useApi()` 在 SSR 与浏览器端共用同一个 public base URL，因此生产环境应填写前端 SSR 进程和用户浏览器都能访问的绝对 URL。不要在生产 SSR 部署中只设置相对路径 `/api`，否则服务端渲染阶段可能请求到 Nuxt 自身而非 Go 后端。如果使用 `deploy/nginx.conf` 的 `/api/` location，`proxy_pass http://touchgal_backend/;` 会去掉 `/api/` 前缀，因此前端请求 `https://developer.example.com/api/auth/me` 会到达后端 `/auth/me`。
+`useApi()` 浏览器端使用 `NUXT_PUBLIC_API_BASE_URL`；SSR 阶段优先使用 server-only 的 `NUXT_API_BASE_URL`，并继续转发请求 Cookie。若 `NUXT_PUBLIC_API_BASE_URL` 是 `/api` 这类相对路径，生产必须配置绝对的 `NUXT_API_BASE_URL`，且不能从请求 `Host` 推导 SSR fetch origin；未配置时 SSR 认证会 fail closed，避免把 Cookie 转发到伪造 Host。如果使用 `deploy/nginx.conf` 的 `/api/` location，`proxy_pass http://touchgal_backend/;` 会去掉 `/api/` 前缀，因此前端请求 `/api/auth/me` 会到达后端 `/auth/me`。
 
 ## 9. 构建与发布制品
 
@@ -497,11 +498,17 @@ curl -fsS https://developer.example.com/api/v1/ready
 | `TOUCHGAL_TECH_DOCS_URL` | `https://github.com/KUN1007/kun-touchgal-next` | 按文档入口设置 | 后端/门户展示技术文档链接时使用。 |
 | `API_DOCS_URL` | `/docs/api` | 按门户路由设置 | 后端/门户展示 API 文档入口时使用。 |
 
+### 前端 server runtime 变量
+
+| 变量 | 默认/示例 | 生产要求 | 说明 |
+| --- | --- | --- | --- |
+| `NUXT_API_BASE_URL` | 空 | 生产建议设置为 Nuxt SSR 进程可访问的后端地址，例如 `http://backend:8080` 或 `http://127.0.0.1:8080` | 仅服务端使用。设置后 SSR 请求不依赖 public origin；未设置时回退到 `NUXT_PUBLIC_API_BASE_URL`。 |
+
 ### 前端 public runtime 变量
 
 | 变量 | 默认/示例 | 生产要求 | 说明 |
 | --- | --- | --- | --- |
-| `NUXT_PUBLIC_API_BASE_URL` | `http://localhost:8080` | 生产使用 SSR 进程和浏览器都能访问的绝对 URL，例如 `https://developer.example.com/api` | Nuxt public API base URL。`useApi()` 会拼接 endpoint path。 |
+| `NUXT_PUBLIC_API_BASE_URL` | `http://localhost:8080` | 浏览器可访问的 API base URL；同源反代可填 `/api`，独立域名可填 `https://api.example.com` | Nuxt public API base URL。`useApi()` 会拼接 endpoint path。 |
 | `NUXT_PUBLIC_TOUCHGAL_TECH_DOCS_URL` | `https://github.com/KUN1007/kun-touchgal-next` | 按文档入口设置 | 门户展示技术文档链接。 |
 | `NUXT_PUBLIC_API_DOCS_URL` | `/docs/api` | 按门户路由设置 | 门户 API 文档入口。 |
 | `NUXT_PUBLIC_TURNSTILE_SITE_KEY` | 空 | 生产配置 Cloudflare site key | 前端 Turnstile site key。必须与后端 secret key 同一站点配置。 |

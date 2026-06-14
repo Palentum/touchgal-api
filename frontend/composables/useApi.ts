@@ -37,9 +37,22 @@ const toApiFailure = (err: unknown): ApiFailure => {
   return { success: false, error: { code: 'FETCH_ERROR', message } }
 }
 
+const normalizeBaseURL = (value: unknown) => String(value || '').replace(/\/$/, '')
+
+// Server-side $fetch treats relative URLs as Nitro-local routes. Relative SSR API bases must be backed by trusted config, not request Host.
+const resolveFetchBaseURL = (publicBaseURL: string, serverBaseURL: string) => {
+  const configuredBaseURL = import.meta.server && serverBaseURL ? serverBaseURL : publicBaseURL
+  if (import.meta.server && configuredBaseURL.startsWith('/')) {
+    throw new Error('NUXT_API_BASE_URL is required when NUXT_PUBLIC_API_BASE_URL is relative')
+  }
+
+  return configuredBaseURL
+}
+
 export const useApi = () => {
   const config = useRuntimeConfig()
-  const baseURL = String(config.public.apiBaseUrl).replace(/\/$/, '')
+  const baseURL = normalizeBaseURL(config.public.apiBaseUrl)
+  const fetchBaseURL = resolveFetchBaseURL(baseURL, normalizeBaseURL(config.apiBaseUrl))
 
   const headersWithRequestCookie = (input?: Record<string, string>) => {
     const headers: Record<string, string> = { ...(input || {}) }
@@ -53,7 +66,7 @@ export const useApi = () => {
   }
 
   const apiFetchWithHeaders = async <T>(path: string, options: ApiOptions, headers: Record<string, string>) => {
-    return await $fetch<ApiResponse<T>>(`${baseURL}${path}`, {
+    return await $fetch<ApiResponse<T>>(`${fetchBaseURL}${path}`, {
       method: options.method || 'GET',
       body: options.body,
       query: options.query,
