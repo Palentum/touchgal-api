@@ -255,6 +255,7 @@ paths:
         - ApiToken: []
         - XApiToken: []
       summary: Search sanitized games
+      description: Results are ordered by relevance. Title matches rank first, alias matches rank lower, and remaining indexed metadata matches rank after aliases; ties fall back to name and uniqueId ascending.
       parameters:
         - { name: keyword, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
         - { name: q, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }

@@ -219,7 +219,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     slug: 'games-search',
     navLabel: '搜索条目',
     name: '搜索游戏条目',
-    introduction: '按关键词搜索 clean DB 中未删除的公开 Galgame 条目。默认只返回 SFW；传入 `allowNsfw=true` 时会同时返回 SFW 与 NSFW 条目。',
+    introduction: '按关键词搜索 clean DB 中未删除的公开 Galgame 条目。默认只返回 SFW；传入 `allowNsfw=true` 时会同时返回 SFW 与 NSFW 条目。搜索结果按相关度排序：标题匹配优先，其次是别名匹配，最后是标签、厂商等其他索引文本。',
     method: 'GET',
     path: '/v1/games/search',
     auth: '需要有效的 `tgal_live` API token。',
@@ -267,7 +267,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       {
         code: 200,
         title: 'OK',
-        description: '返回匹配条目列表与分页信息。默认结果只包含 SFW；显式 `allowNsfw=true` 时包含 SFW 与 NSFW。搜索列表只包含名称与公开 uniqueId，详情请继续调用条目详情接口。',
+        description: '返回匹配条目列表与分页信息。默认结果只包含 SFW；显式 `allowNsfw=true` 时包含 SFW 与 NSFW。结果按标题匹配、别名匹配、其他索引文本匹配分档排序，同档按相关度排序，并用名称与 uniqueId 保持稳定顺序。搜索列表只包含名称与公开 uniqueId，详情请继续调用条目详情接口。',
         example: `{
   "success": true,
   "data": {

@@ -25,21 +25,95 @@ const (
 	gameDetailAllowNsfwPredicate = "g.content_limit IN ('sfw', 'nsfw')"
 
 	gameSearchSFWSQL = `
+		WITH ranked_games AS (
+			SELECT g.unique_id,
+			       g.name,
+			       CASE
+			         WHEN g.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(g.name, $4)
+			         WHEN g.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(g.name, $4)
+			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(g.name, $4)
+			         ELSE 0
+			       END AS title_rank,
+			       CASE
+			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 0
+			         ELSE COALESCE((
+			           SELECT max(CASE
+			             WHEN a.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(a.name, $4)
+			             WHEN a.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(a.name, $4)
+			             WHEN a.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(a.name, $4)
+			             ELSE 0
+			           END)
+			           FROM game_aliases a
+			           WHERE a.game_unique_id = g.unique_id
+			             AND a.name ILIKE $1 ESCAPE E'\\'
+			         ), 0)
+			       END AS alias_rank,
+			       similarity(g.search_text, $4) AS metadata_rank
+			FROM games g
+			WHERE g.deleted_at IS NULL
+			  AND g.` + gameSearchSFWPredicate + `
+			  AND g.search_text ILIKE $1 ESCAPE E'\\'
+		)
 		SELECT unique_id, name
-		FROM games
-		WHERE deleted_at IS NULL
-		  AND ` + gameSearchSFWPredicate + `
-		  AND search_text ILIKE $1 ESCAPE E'\\'
-		ORDER BY name ASC, unique_id ASC
-		LIMIT $2 OFFSET $3`
+		FROM ranked_games
+		ORDER BY
+		  CASE
+		    WHEN title_rank > 0 THEN 0
+		    WHEN alias_rank > 0 THEN 1
+		    ELSE 2
+		  END ASC,
+		  CASE
+		    WHEN title_rank > 0 THEN title_rank
+		    WHEN alias_rank > 0 THEN alias_rank
+		    ELSE metadata_rank
+		  END DESC,
+		  name ASC, unique_id ASC
+		LIMIT $5 OFFSET $6`
 	gameSearchAllowNsfwSQL = `
+		WITH ranked_games AS (
+			SELECT g.unique_id,
+			       g.name,
+			       CASE
+			         WHEN g.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(g.name, $4)
+			         WHEN g.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(g.name, $4)
+			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(g.name, $4)
+			         ELSE 0
+			       END AS title_rank,
+			       CASE
+			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 0
+			         ELSE COALESCE((
+			           SELECT max(CASE
+			             WHEN a.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(a.name, $4)
+			             WHEN a.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(a.name, $4)
+			             WHEN a.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(a.name, $4)
+			             ELSE 0
+			           END)
+			           FROM game_aliases a
+			           WHERE a.game_unique_id = g.unique_id
+			             AND a.name ILIKE $1 ESCAPE E'\\'
+			         ), 0)
+			       END AS alias_rank,
+			       similarity(g.search_text, $4) AS metadata_rank
+			FROM games g
+			WHERE g.deleted_at IS NULL
+			  AND g.` + gameSearchAllowNsfwPredicate + `
+			  AND g.search_text ILIKE $1 ESCAPE E'\\'
+		)
 		SELECT unique_id, name
-		FROM games
-		WHERE deleted_at IS NULL
-		  AND ` + gameSearchAllowNsfwPredicate + `
-		  AND search_text ILIKE $1 ESCAPE E'\\'
-		ORDER BY name ASC, unique_id ASC
-		LIMIT $2 OFFSET $3`
+		FROM ranked_games
+		ORDER BY
+		  CASE
+		    WHEN title_rank > 0 THEN 0
+		    WHEN alias_rank > 0 THEN 1
+		    ELSE 2
+		  END ASC,
+		  CASE
+		    WHEN title_rank > 0 THEN title_rank
+		    WHEN alias_rank > 0 THEN alias_rank
+		    ELSE metadata_rank
+		  END DESC,
+		  name ASC, unique_id ASC
+		LIMIT $5 OFFSET $6`
 	gameSearchCountSFWSQL = `
 		SELECT count(*)
 		FROM games
@@ -94,13 +168,15 @@ const (
 		ORDER BY gr.published_at DESC, gr.source_resource_id DESC`
 )
 
-func likeContainsPattern(value string) string {
+func likePattern(value string, leadingWildcard, trailingWildcard bool) string {
 	for i := 0; i < len(value); i++ {
 		switch value[i] {
 		case '%', '_', '\\':
 			var b strings.Builder
-			b.Grow(len(value) + 4)
-			b.WriteByte('%')
+			b.Grow(len(value)*2 + 2)
+			if leadingWildcard {
+				b.WriteByte('%')
+			}
 			b.WriteString(value[:i])
 			for ; i < len(value); i++ {
 				switch value[i] {
@@ -109,23 +185,40 @@ func likeContainsPattern(value string) string {
 				}
 				b.WriteByte(value[i])
 			}
-			b.WriteByte('%')
+			if trailingWildcard {
+				b.WriteByte('%')
+			}
 			return b.String()
 		}
 	}
-	return "%" + value + "%"
+	if leadingWildcard && trailingWildcard {
+		return "%" + value + "%"
+	}
+	if leadingWildcard {
+		return "%" + value
+	}
+	if trailingWildcard {
+		return value + "%"
+	}
+	return value
 }
+
+func likeContainsPattern(value string) string { return likePattern(value, true, true) }
+func likeExactPattern(value string) string    { return likePattern(value, false, false) }
+func likePrefixPattern(value string) string   { return likePattern(value, false, true) }
 
 func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int, allowNsfw bool) (model.GameSearchResult, error) {
 	offset := (page - 1) * limit
-	pattern := likeContainsPattern(keyword)
+	containsPattern := likeContainsPattern(keyword)
+	exactPattern := likeExactPattern(keyword)
+	prefixPattern := likePrefixPattern(keyword)
 	searchSQL := gameSearchSFWSQL
 	countSQL := gameSearchCountSFWSQL
 	if allowNsfw {
 		searchSQL = gameSearchAllowNsfwSQL
 		countSQL = gameSearchCountAllowNsfwSQL
 	}
-	rows, err := r.db.Query(ctx, searchSQL, pattern, limit, offset)
+	rows, err := r.db.Query(ctx, searchSQL, containsPattern, exactPattern, prefixPattern, keyword, limit, offset)
 	if err != nil {
 		return model.GameSearchResult{}, err
 	}
@@ -143,7 +236,7 @@ func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int, 
 		return model.GameSearchResult{}, err
 	}
 	total := 0
-	if err := r.db.QueryRow(ctx, countSQL, pattern).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, countSQL, containsPattern).Scan(&total); err != nil {
 		return model.GameSearchResult{}, err
 	}
 	return model.GameSearchResult{Items: items, Pagination: model.Pagination{Page: page, Limit: limit, Total: total, HasMore: offset+len(items) < total}}, nil

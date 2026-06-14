@@ -127,7 +127,7 @@ func (r gameCountRow) Scan(dest ...any) error {
 	return nil
 }
 
-func TestGameRepoSearchUsesSearchTextWithoutJoinDistinctOrWindowCount(t *testing.T) {
+func TestGameRepoSearchRanksTitleBeforeAliasAndMetadata(t *testing.T) {
 	queryer := &recordingGameQueryer{
 		rows:     &gameSearchRows{rows: []gameSearchRow{{uniqueID: "abcd1234", name: "Summer"}}},
 		countRow: gameCountRow{total: 2},
@@ -143,16 +143,35 @@ func TestGameRepoSearchUsesSearchTextWithoutJoinDistinctOrWindowCount(t *testing
 	}
 
 	mainSQL := strings.ToLower(queryer.sql)
-	if !strings.Contains(mainSQL, "content_limit = 'sfw'") {
+	if !strings.Contains(mainSQL, "g.content_limit = 'sfw'") {
 		t.Fatalf("search SQL must default to SFW-only predicate: %q", queryer.sql)
 	}
 	if strings.Contains(mainSQL, " join ") || strings.Contains(mainSQL, "distinct") || strings.Contains(mainSQL, "lower(") || strings.Contains(mainSQL, "over()") {
 		t.Fatalf("search SQL should avoid joins, distinct, lower(), and window count: %q", queryer.sql)
 	}
-	if !strings.Contains(mainSQL, "search_text ilike $1 escape") {
-		t.Fatalf("search SQL must use indexed search_text ILIKE predicate with escaping: %q", queryer.sql)
+	for _, want := range []string{
+		"g.search_text ilike $1 escape",
+		"g.name ilike $2 escape",
+		"g.name ilike $3 escape",
+		"g.name ilike $1 escape",
+		"similarity(g.name, $4)",
+		"from game_aliases a",
+		"a.game_unique_id = g.unique_id",
+		"a.name ilike $1 escape",
+		"similarity(a.name, $4)",
+		"similarity(g.search_text, $4) as metadata_rank",
+		"when title_rank > 0 then 0",
+		"when alias_rank > 0 then 1",
+		"when title_rank > 0 then title_rank",
+		"when alias_rank > 0 then alias_rank",
+		"else metadata_rank",
+		"name asc, unique_id asc",
+	} {
+		if !strings.Contains(mainSQL, want) {
+			t.Fatalf("search SQL missing %q in %q", want, queryer.sql)
+		}
 	}
-	if len(queryer.args) != 3 || queryer.args[0] != "%Summer%" || queryer.args[1] != 1 || queryer.args[2] != 0 {
+	if len(queryer.args) != 6 || queryer.args[0] != "%Summer%" || queryer.args[1] != "Summer" || queryer.args[2] != "Summer%" || queryer.args[3] != "Summer" || queryer.args[4] != 1 || queryer.args[5] != 0 {
 		t.Fatalf("unexpected search args: %#v", queryer.args)
 	}
 
@@ -186,7 +205,7 @@ func TestGameRepoSearchAllowNsfwUsesOptInPredicate(t *testing.T) {
 	if strings.Contains(mainSQL, "content_limit = 'sfw'") {
 		t.Fatalf("allow-NSFW search SQL should not keep SFW-only predicate: %q", queryer.sql)
 	}
-	if len(queryer.args) != 3 || queryer.args[0] != "%Summer%" || queryer.args[1] != 20 || queryer.args[2] != 0 {
+	if len(queryer.args) != 6 || queryer.args[0] != "%Summer%" || queryer.args[1] != "Summer" || queryer.args[2] != "Summer%" || queryer.args[3] != "Summer" || queryer.args[4] != 20 || queryer.args[5] != 0 {
 		t.Fatalf("unexpected search args: %#v", queryer.args)
 	}
 
@@ -213,10 +232,19 @@ func TestGameRepoSearchEscapesLikeWildcards(t *testing.T) {
 		t.Fatalf("search: %v", err)
 	}
 	if queryer.args[0] != `%100\%\_\\%` {
-		t.Fatalf("LIKE wildcards were not escaped: %#v", queryer.args[0])
+		t.Fatalf("LIKE contains pattern did not escape wildcards: %#v", queryer.args[0])
+	}
+	if queryer.args[1] != `100\%\_\\` {
+		t.Fatalf("LIKE exact pattern did not escape wildcards: %#v", queryer.args[1])
+	}
+	if queryer.args[2] != `100\%\_\\%` {
+		t.Fatalf("LIKE prefix pattern did not escape wildcards: %#v", queryer.args[2])
+	}
+	if queryer.args[3] != `100%_\` {
+		t.Fatalf("raw relevance keyword should not be LIKE-escaped: %#v", queryer.args[3])
 	}
 	if queryer.countArgs[0] != queryer.args[0] {
-		t.Fatalf("count query must reuse escaped pattern: search=%#v count=%#v", queryer.args[0], queryer.countArgs[0])
+		t.Fatalf("count query must reuse escaped contains pattern: search=%#v count=%#v", queryer.args[0], queryer.countArgs[0])
 	}
 }
 
