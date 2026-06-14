@@ -728,9 +728,8 @@ select:disabled {
 }
 
 .tg-dashboard-shell {
-  display: grid;
+  display: flex;
   min-height: 100vh;
-  grid-template-columns: 280px minmax(0, 1fr);
   background: var(--tg-canvas);
   color: var(--tg-ink);
 }
@@ -739,6 +738,8 @@ select:disabled {
   position: sticky;
   top: 0;
   display: flex;
+  width: 280px;
+  flex: 0 0 280px;
   height: 100vh;
   flex-direction: column;
   border-right: 1px solid rgba(250, 249, 245, 0.08);
@@ -780,6 +781,7 @@ select:disabled {
 }
 
 .tg-dashboard-content {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -862,8 +864,9 @@ select:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .tg-dashboard-shell {
-    grid-template-columns: 232px minmax(0, 1fr);
+  .tg-dashboard-sidebar {
+    width: 232px;
+    flex-basis: 232px;
   }
 }
 
@@ -1220,6 +1223,8 @@ select:disabled {
     position: static;
     height: auto;
     padding: 20px 16px;
+    width: auto;
+    flex-basis: auto;
   }
 
   .tg-sidebar-nav {

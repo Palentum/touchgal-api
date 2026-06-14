@@ -125,8 +125,8 @@ Context7 查询的 Nuxt 3 文档要点：
 
 - 所有后端请求走 `frontend/composables/useApi.ts` 或基于它的 typed composables。
 - `useApi()` 已设置 `credentials: 'include'`；SSR 时会转发请求 Cookie，并优先使用 server-only `runtimeConfig.apiBaseUrl`。
-- 认证状态在 Pinia `frontend/stores/auth.ts`；页面保护在 `frontend/middleware/auth.ts` 与 `frontend/middleware/admin.ts`。
-- 不在组件里硬编码后端地址；浏览器地址使用 `runtimeConfig.public.apiBaseUrl`，SSR 后端直连地址使用 `runtimeConfig.apiBaseUrl`。若 public API base 是相对路径，必须配置绝对 server API base，不得从请求 `Host` 推导后端 origin。
+- 认证状态在 Pinia `frontend/stores/auth.ts`；页面保护在 `frontend/middleware/auth.ts` 与 `frontend/middleware/admin.ts`。`/auth/me` 的网络/配置错误不得当作未登录重定向，避免 CDN/WAF 或 SSR 后端地址错误造成登录循环。
+- 不在组件里硬编码后端地址；浏览器地址使用 `runtimeConfig.public.apiBaseUrl`，SSR 后端直连地址使用 `runtimeConfig.apiBaseUrl`。生产必须让 SSR 直连后端内网地址，不让认证请求绕到 Cloudflare/CDN；若 public API base 是相对路径，必须配置绝对 server API base，不得从请求 `Host` 推导后端 origin。
 - Nuxt/UI 改动后运行 `cd frontend && pnpm typecheck`；涉及 SSR、routes、config 时再运行 `pnpm build`。
 
 ## OpenAPI 与文档同步

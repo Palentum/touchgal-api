@@ -149,12 +149,12 @@ cp frontend/.env.example frontend/.env
 
 常见生产配置：
 
-- 同源反代（浏览器走同源，SSR 可直连后端）：`NUXT_PUBLIC_API_BASE_URL=/api`，`NUXT_API_BASE_URL=http://backend:8080`（Docker Compose）或 `http://127.0.0.1:8080`（同机 systemd）。
-- 同源绝对 URL：`NUXT_PUBLIC_API_BASE_URL=https://developer.example.com/api`
-- 独立 API origin：`NUXT_PUBLIC_API_BASE_URL=https://api.example.com`
+- 同源反代（推荐，浏览器走同源，SSR 直连后端）：`NUXT_PUBLIC_API_BASE_URL=/api`，`NUXT_API_BASE_URL=http://backend:8080`（Docker Compose）或 `http://127.0.0.1:8080`（同机 systemd）。
+- 同源绝对 URL：`NUXT_PUBLIC_API_BASE_URL=https://developer.example.com/api`，同时仍设置 `NUXT_API_BASE_URL` 为 Nuxt 进程到后端的内网地址。
+- 独立 API origin：`NUXT_PUBLIC_API_BASE_URL=https://api.example.com`，同时仍设置 `NUXT_API_BASE_URL` 为 Nuxt 进程到后端的内网地址；不要让 SSR 认证请求绕到 CDN/WAF。
 - Turnstile：`NUXT_PUBLIC_TURNSTILE_SITE_KEY=<Cloudflare Turnstile site key>`
 
-`useApi()` 浏览器端使用 `NUXT_PUBLIC_API_BASE_URL`；SSR 阶段优先使用 server-only 的 `NUXT_API_BASE_URL`，并继续转发请求 Cookie。若 `NUXT_PUBLIC_API_BASE_URL` 是 `/api` 这类相对路径，生产必须配置绝对的 `NUXT_API_BASE_URL`，且不能从请求 `Host` 推导 SSR fetch origin；未配置时 SSR 认证会 fail closed，避免把 Cookie 转发到伪造 Host。如果使用 `deploy/nginx.conf` 的 `/api/` location，`proxy_pass http://touchgal_backend/;` 会去掉 `/api/` 前缀，因此前端请求 `/api/auth/me` 会到达后端 `/auth/me`。
+`useApi()` 浏览器端使用 `NUXT_PUBLIC_API_BASE_URL`；SSR 阶段优先使用 server-only 的 `NUXT_API_BASE_URL`，并继续转发请求 Cookie。Docker Compose 示例会给 frontend 容器默认注入 `NUXT_API_BASE_URL=http://backend:8080`，避免 SSR `/auth/me` 经过 Cloudflare 或公网 API 域名后被挑战、缓存或丢 Cookie。若 `NUXT_PUBLIC_API_BASE_URL` 是 `/api` 这类相对路径，生产必须配置绝对的 `NUXT_API_BASE_URL`，且不能从请求 `Host` 推导 SSR fetch origin；未配置时 SSR 认证会 fail closed，避免把 Cookie 转发到伪造 Host。如果使用 `deploy/nginx.conf` 的 `/api/` location，`proxy_pass http://touchgal_backend/;` 会去掉 `/api/` 前缀，因此前端请求 `/api/auth/me` 会到达后端 `/auth/me`。
 
 ## 9. 构建与发布制品
 
@@ -170,6 +170,7 @@ docker compose -f deploy/docker-compose.yml build
 
 - Compose 文件不包含 PostgreSQL 和 Redis；它们需要在宿主机或外部服务中运行。
 - 后端容器访问宿主机 PostgreSQL/Redis 时，DSN/Redis 地址使用 `host.docker.internal`。
+- 前端容器默认设置 `NUXT_API_BASE_URL=http://backend:8080` 供 SSR 直连 Compose 内部 backend；浏览器使用的 `NUXT_PUBLIC_API_BASE_URL` 仍来自 `frontend/.env`。
 - Compose 示例为后端和前端设置了非 root 用户、read-only rootfs、tmpfs、drop capabilities、`no-new-privileges`、CPU/memory/pid 限制。
 
 ### 二进制/systemd 路径
@@ -502,7 +503,7 @@ curl -fsS https://developer.example.com/api/v1/ready
 
 | 变量 | 默认/示例 | 生产要求 | 说明 |
 | --- | --- | --- | --- |
-| `NUXT_API_BASE_URL` | 空 | 生产建议设置为 Nuxt SSR 进程可访问的后端地址，例如 `http://backend:8080` 或 `http://127.0.0.1:8080` | 仅服务端使用。设置后 SSR 请求不依赖 public origin；未设置时回退到 `NUXT_PUBLIC_API_BASE_URL`。 |
+| `NUXT_API_BASE_URL` | Docker Compose 默认 `http://backend:8080`；二进制/systemd 常用 `http://127.0.0.1:8080` | 生产必须设置为 Nuxt SSR 进程可访问的后端内网地址 | 仅服务端使用。设置后 SSR 请求不依赖 public origin、Cloudflare 或外层反代；未设置时绝对 public origin 会作为回退，可能导致 SSR 认证被 CDN/WAF 拦截。 |
 
 ### 前端 public runtime 变量
 

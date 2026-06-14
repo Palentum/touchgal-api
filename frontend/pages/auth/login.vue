@@ -27,6 +27,12 @@ definePageMeta({
     if (!auth.loaded) {
       await auth.fetchMe()
     }
+    if (auth.hasAuthFetchError && import.meta.client) {
+      await auth.fetchMe({ refresh: true })
+    }
+    if (auth.hasAuthFetchError) {
+      return
+    }
     if (auth.isAccountDisabled) {
       return navigateTo('/account-disabled')
     }

@@ -32,6 +32,8 @@ services:
       context: ../frontend
     env_file:
       - ../frontend/.env
+    environment:
+      NUXT_API_BASE_URL: ${NUXT_API_BASE_URL:-http://backend:8080}
     user: "1000:1000"
     read_only: true
     tmpfs:
