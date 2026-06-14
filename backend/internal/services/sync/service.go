@@ -32,6 +32,8 @@ var sourceReadOnlyTables = [...]string{
 	"patch_company_relation",
 	"patch_company",
 	"patch_rating_stat",
+	"patch_resource",
+	"patch_resource_link",
 }
 
 const sourceReadOnlyStatusSQL = `
@@ -113,6 +115,7 @@ type sourceRelations struct {
 	tags      map[int][]model.TagData
 	companies map[int][]model.CompanyData
 	ratings   map[int]*model.RatingData
+	resources map[int][]SourceResource
 }
 
 func NewService(cfg config.Config, source, target *pgxpool.Pool, repo *repository.SyncRepo, log zerolog.Logger) *Service {
@@ -433,6 +436,7 @@ func (s *Service) writeTargetBatch(ctx context.Context, lock *repository.SyncRun
 	tags := make(map[string][]model.TagData, len(items))
 	companies := make(map[string][]model.CompanyData, len(items))
 	ratings := make(map[string]*model.RatingData, len(items))
+	resources := make(map[string][]model.CleanResourceEntry, len(items))
 	var sourceMax *time.Time
 	for _, item := range items {
 		src := item.source
@@ -452,6 +456,14 @@ func (s *Service) writeTargetBatch(ctx context.Context, lock *repository.SyncRun
 		if sourceMax == nil || maxUpdated.After(*sourceMax) {
 			tmp := maxUpdated
 			sourceMax = &tmp
+		}
+		resources[uniqueID] = nil
+		for _, sourceResource := range relations.resources[src.ID] {
+			cleanResource, ok := MapSourceResource(sourceResource, uniqueID)
+			if !ok {
+				continue
+			}
+			resources[uniqueID] = append(resources[uniqueID], cleanResource)
 		}
 	}
 
@@ -482,6 +494,9 @@ func (s *Service) writeTargetBatch(ctx context.Context, lock *repository.SyncRun
 		return 0, 0, nil, err
 	}
 	if err := txRepo.UpsertRatingsBatch(ctx, ratings, uniqueIDs); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := txRepo.ReplaceResourcesBatch(ctx, resources); err != nil {
 		return 0, 0, nil, err
 	}
 	if err := txRepo.RefreshSearchTextBatch(ctx, uniqueIDs); err != nil {
@@ -594,6 +609,7 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 		tags:      make(map[int][]model.TagData, len(patchIDs)),
 		companies: make(map[int][]model.CompanyData, len(patchIDs)),
 		ratings:   make(map[int]*model.RatingData, len(patchIDs)),
+		resources: make(map[int][]SourceResource, len(patchIDs)),
 	}
 	if len(patchIDs) == 0 {
 		return relations, nil
@@ -656,6 +672,27 @@ func (s *Service) querySourceRelations(ctx context.Context, patchIDs []int) (sou
 			return relations, err
 		}
 		relations.companies[patchID] = append(relations.companies[patchID], item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		cancel()
+		return relations, err
+	}
+	rows.Close()
+	cancel()
+
+	rows, cancel, err = s.querySource(ctx, sourceResourcesByPatchIDsSQL, patchIDs)
+	if err != nil {
+		return relations, err
+	}
+	for rows.Next() {
+		var item SourceResource
+		if err := rows.Scan(&item.PatchID, &item.ResourceID, &item.Name, &item.Introduction, &item.Categories, &item.Section, &item.Sizes, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			rows.Close()
+			cancel()
+			return relations, err
+		}
+		relations.resources[item.PatchID] = append(relations.resources[item.PatchID], item)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()

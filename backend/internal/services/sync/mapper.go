@@ -23,6 +23,18 @@ type SourceGame struct {
 	ResourceUpdatedAt time.Time
 }
 
+type SourceResource struct {
+	PatchID      int
+	ResourceID   int
+	Name         string
+	Introduction string
+	Categories   []string
+	Section      string
+	Sizes        []string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 func MapSourceGame(src SourceGame, defaultContentPolicy string) model.CleanGame {
 	contentLimit := strings.TrimSpace(src.ContentLimit)
 	if contentLimit == "" && defaultContentPolicy != "" && defaultContentPolicy != "all" {
@@ -43,6 +55,36 @@ func MapSourceGame(src SourceGame, defaultContentPolicy string) model.CleanGame 
 		SourceUpdatedAt:   src.UpdatedAt,
 		ResourceUpdatedAt: src.ResourceUpdatedAt,
 	}
+}
+
+func MapSourceResource(src SourceResource, gameUniqueID string) (model.CleanResourceEntry, bool) {
+	gameUniqueID = strings.TrimSpace(gameUniqueID)
+	section := strings.TrimSpace(src.Section)
+	if src.ResourceID <= 0 || gameUniqueID == "" {
+		return model.CleanResourceEntry{}, false
+	}
+
+	var resourceType string
+	switch section {
+	case "galgame":
+		resourceType = model.ResourceTypeResource
+	case "patch":
+		resourceType = model.ResourceTypePatch
+	default:
+		return model.CleanResourceEntry{}, false
+	}
+
+	return model.CleanResourceEntry{
+		SourceResourceID: src.ResourceID,
+		GameUniqueID:     gameUniqueID,
+		Name:             strings.TrimSpace(src.Name),
+		Introduction:     src.Introduction,
+		Categories:       cleanStrings(src.Categories),
+		ResourceType:     resourceType,
+		Sizes:            cleanStrings(src.Sizes),
+		PublishedAt:      src.CreatedAt,
+		SourceUpdatedAt:  src.UpdatedAt,
+	}, true
 }
 
 func cleanStrings(values []string) []string {

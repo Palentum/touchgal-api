@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -237,6 +238,111 @@ func TestSyncRepoUpsertRatingsBatchUsesAffectedSetForDeletesAndUpserts(t *testin
 	}
 }
 
+func TestSyncRepoReplaceResourcesBatchCleansAndReplacesAffectedGames(t *testing.T) {
+	queryer := &recordingSyncQueryer{}
+	repo := NewSyncRepo(queryer)
+	publishedAt := time.Date(2026, 6, 14, 10, 0, 0, 0, time.UTC)
+	sourceUpdatedAt := publishedAt.Add(time.Hour)
+
+	err := repo.ReplaceResourcesBatch(context.Background(), map[string][]model.CleanResourceEntry{
+		" abcd1234 ": {
+			{
+				SourceResourceID: 42,
+				GameUniqueID:     "abcd1234",
+				Name:             " 汉化补丁 ",
+				Introduction:     "补丁简介",
+				Categories:       []string{"patch", "patch", ""},
+				ResourceType:     model.ResourceTypeResource,
+				Sizes:            []string{"1.2 GB", "1.2 GB", ""},
+				PublishedAt:      publishedAt,
+				SourceUpdatedAt:  sourceUpdatedAt,
+			},
+			{
+				SourceResourceID: 42,
+				GameUniqueID:     "abcd1234",
+				Name:             "duplicate",
+				ResourceType:     model.ResourceTypePatch,
+			},
+			{
+				SourceResourceID: 0,
+				GameUniqueID:     "abcd1234",
+				ResourceType:     model.ResourceTypeResource,
+			},
+			{
+				SourceResourceID: 43,
+				GameUniqueID:     "",
+				ResourceType:     model.ResourceTypeResource,
+			},
+			{
+				SourceResourceID: 44,
+				GameUniqueID:     "abcd1234",
+				ResourceType:     "unknown",
+			},
+		},
+		"efgh5678": nil,
+		"   ":      {{SourceResourceID: 99, GameUniqueID: "ignored", ResourceType: model.ResourceTypeResource}},
+	})
+	if err != nil {
+		t.Fatalf("replace resources batch: %v", err)
+	}
+	if len(queryer.sqls) != 2 {
+		t.Fatalf("expected delete and insert bulk execs, got %d", len(queryer.sqls))
+	}
+	if !strings.Contains(queryer.sqls[0], "DELETE FROM game_resources") || strings.Contains(queryer.sqls[0], "game_tags") || strings.Contains(queryer.sqls[0], "game_companies") || strings.Contains(queryer.sqls[0], "game_aliases") {
+		t.Fatalf("expected bulk game_resources delete only, got %q", queryer.sqls[0])
+	}
+	if !strings.Contains(queryer.sqls[1], "INSERT INTO game_resources") ||
+		!strings.Contains(queryer.sqls[1], "WHERE source_resource_id > 0") ||
+		!strings.Contains(queryer.sqls[1], "ON CONFLICT (source_resource_id) DO UPDATE") ||
+		strings.Contains(queryer.sqls[1], "game_tags") ||
+		strings.Contains(queryer.sqls[1], "game_companies") ||
+		strings.Contains(queryer.sqls[1], "game_aliases") {
+		t.Fatalf("expected JSONB bulk game_resources insert/upsert only, got %q", queryer.sqls[1])
+	}
+
+	var rows []resourceBatchRow
+	decodeJSONArg(t, queryer.args[0][0], &rows)
+	if len(rows) != 2 {
+		t.Fatalf("expected one resource row plus one affected placeholder, got %#v", rows)
+	}
+	g1Resource := resourceRowFor(rows, "abcd1234", 42)
+	if g1Resource.SourceResourceID != 42 ||
+		g1Resource.Name != "汉化补丁" ||
+		g1Resource.Introduction != "补丁简介" ||
+		g1Resource.ResourceType != model.ResourceTypeResource ||
+		!g1Resource.PublishedAt.Equal(publishedAt) ||
+		!g1Resource.SourceUpdatedAt.Equal(sourceUpdatedAt) {
+		t.Fatalf("expected trimmed resource 42 payload, got %#v", g1Resource)
+	}
+	if len(g1Resource.Categories) != 1 || g1Resource.Categories[0] != "patch" {
+		t.Fatalf("expected cleaned categories, got %#v", g1Resource.Categories)
+	}
+	if len(g1Resource.Sizes) != 1 || g1Resource.Sizes[0] != "1.2 GB" {
+		t.Fatalf("expected cleaned sizes, got %#v", g1Resource.Sizes)
+	}
+	g2Placeholder := resourceRowFor(rows, "efgh5678", 0)
+	if g2Placeholder.UniqueID != "efgh5678" || g2Placeholder.SourceResourceID != 0 {
+		t.Fatalf("expected empty resources affected placeholder, got %#v", g2Placeholder)
+	}
+}
+
+func TestSyncRepoReplaceResourcesBatchSkipsEmptyInput(t *testing.T) {
+	queryer := &recordingSyncQueryer{}
+	repo := NewSyncRepo(queryer)
+
+	if err := repo.ReplaceResourcesBatch(context.Background(), nil); err != nil {
+		t.Fatalf("replace resources nil batch: %v", err)
+	}
+	if err := repo.ReplaceResourcesBatch(context.Background(), map[string][]model.CleanResourceEntry{
+		" ": {{SourceResourceID: 42, GameUniqueID: "ignored", ResourceType: model.ResourceTypeResource}},
+	}); err != nil {
+		t.Fatalf("replace resources blank-key batch: %v", err)
+	}
+	if len(queryer.sqls) != 0 {
+		t.Fatalf("expected no exec for empty affected resources, got %d", len(queryer.sqls))
+	}
+}
+
 func BenchmarkSyncRepoUpsertRatingsBatch1000(b *testing.B) {
 	const size = 1000
 	ratings := make(map[string]*model.RatingData, size)
@@ -319,8 +425,8 @@ func TestSyncRepoSeenSourcePatchIDsUseRunScopedBulkSQL(t *testing.T) {
 	if err := repo.CleanupSeenSourcePatchIDs(context.Background(), runID); err != nil {
 		t.Fatalf("cleanup seen source patch IDs: %v", err)
 	}
-	if len(queryer.sqls) != 3 {
-		t.Fatalf("expected add, mark deleted, and cleanup execs, got %d", len(queryer.sqls))
+	if len(queryer.sqls) != 4 {
+		t.Fatalf("expected add, mark deleted, resource cleanup, and seen cleanup execs, got %d", len(queryer.sqls))
 	}
 	if !strings.Contains(queryer.sqls[0], "INSERT INTO sync_run_seen") || !strings.Contains(queryer.sqls[0], "unnest($2::int[])") {
 		t.Fatalf("expected bulk seen insert, got %q", queryer.sqls[0])
@@ -332,8 +438,11 @@ func TestSyncRepoSeenSourcePatchIDsUseRunScopedBulkSQL(t *testing.T) {
 	if !strings.Contains(queryer.sqls[1], "NOT EXISTS") || !strings.Contains(queryer.sqls[1], "sync_run_seen") {
 		t.Fatalf("expected run-scoped unseen delete, got %q", queryer.sqls[1])
 	}
-	if !strings.Contains(queryer.sqls[2], "DELETE FROM sync_run_seen WHERE run_id = $1") {
-		t.Fatalf("expected seen cleanup, got %q", queryer.sqls[2])
+	if !strings.Contains(queryer.sqls[2], "DELETE FROM game_resources") || !strings.Contains(queryer.sqls[2], "games g") || !strings.Contains(queryer.sqls[2], "g.deleted_at IS NOT NULL") {
+		t.Fatalf("expected deleted-game resource cleanup, got %q", queryer.sqls[2])
+	}
+	if !strings.Contains(queryer.sqls[3], "DELETE FROM sync_run_seen WHERE run_id = $1") {
+		t.Fatalf("expected seen cleanup, got %q", queryer.sqls[3])
 	}
 }
 
@@ -373,4 +482,13 @@ func companyRowFor(rows []companyBatchRow, uniqueID string) companyBatchRow {
 		}
 	}
 	return companyBatchRow{}
+}
+
+func resourceRowFor(rows []resourceBatchRow, uniqueID string, sourceResourceID int) resourceBatchRow {
+	for _, row := range rows {
+		if row.UniqueID == uniqueID && row.SourceResourceID == sourceResourceID {
+			return row
+		}
+	}
+	return resourceBatchRow{}
 }

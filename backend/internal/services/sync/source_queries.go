@@ -50,3 +50,26 @@ SELECT patch_id, coalesce(avg_overall, 0), coalesce(count, 0), coalesce(rec_stro
        coalesce(o6, 0), coalesce(o7, 0), coalesce(o8, 0), coalesce(o9, 0), coalesce(o10, 0)
 FROM patch_rating_stat
 WHERE patch_id = ANY($1::int[])`
+
+const sourceResourcesByPatchIDsSQL = `
+SELECT r.patch_id,
+       r.id,
+       coalesce(r.name, ''),
+       coalesce(r.note, ''),
+       coalesce(r.type, '{}'::text[]),
+       coalesce(r.section, ''),
+       coalesce(link_sizes.sizes, '{}'::text[]),
+       r.created,
+       r.updated
+FROM patch_resource r
+LEFT JOIN LATERAL (
+  SELECT array_agg(size ORDER BY first_sort_order, first_id) AS sizes
+  FROM (
+    SELECT btrim(l.size) AS size, min(l.sort_order) AS first_sort_order, min(l.id) AS first_id
+    FROM patch_resource_link l
+    WHERE l.resource_id = r.id AND btrim(l.size) <> ''
+    GROUP BY btrim(l.size)
+  ) s
+) link_sizes ON true
+WHERE r.patch_id = ANY($1::int[]) AND r.status = 0
+ORDER BY r.patch_id, r.created DESC, r.id DESC`

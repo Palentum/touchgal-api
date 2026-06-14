@@ -454,6 +454,113 @@ type ratingBatchRow struct {
 	Histogram      *model.RatingHistogram `json:"histogram,omitempty"`
 }
 
+func (r *SyncRepo) ReplaceResourcesBatch(ctx context.Context, resources map[string][]model.CleanResourceEntry) error {
+	payload := make([]resourceBatchRow, 0)
+	seenResourceIDs := make(map[int]struct{})
+	for uniqueID, values := range resources {
+		uniqueID = strings.TrimSpace(uniqueID)
+		if uniqueID == "" {
+			continue
+		}
+		cleaned := cleanUniqueResources(values, uniqueID, seenResourceIDs)
+		for _, resource := range cleaned {
+			if cap(payload) == 0 {
+				payload = make([]resourceBatchRow, 0, len(resources))
+			}
+			payload = append(payload, resourceBatchRow{
+				UniqueID:         uniqueID,
+				SourceResourceID: resource.SourceResourceID,
+				Name:             resource.Name,
+				Introduction:     resource.Introduction,
+				Categories:       resource.Categories,
+				ResourceType:     resource.ResourceType,
+				Sizes:            resource.Sizes,
+				PublishedAt:      resource.PublishedAt,
+				SourceUpdatedAt:  resource.SourceUpdatedAt,
+			})
+		}
+		if len(cleaned) == 0 {
+			if cap(payload) == 0 {
+				payload = make([]resourceBatchRow, 0, len(resources))
+			}
+			payload = append(payload, resourceBatchRow{UniqueID: uniqueID})
+		}
+	}
+	if len(payload) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH affected AS (
+			SELECT DISTINCT unique_id
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, source_resource_id int, name text, introduction text, categories text[], resource_type text, sizes text[], published_at timestamptz, source_updated_at timestamptz)
+		)
+		DELETE FROM game_resources gr
+		USING affected a
+		WHERE gr.game_unique_id = a.unique_id`, string(data))
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		WITH payload AS (
+			SELECT *
+			FROM jsonb_to_recordset($1::jsonb) AS row(unique_id text, source_resource_id int, name text, introduction text, categories text[], resource_type text, sizes text[], published_at timestamptz, source_updated_at timestamptz)
+		)
+		INSERT INTO game_resources (source_resource_id, game_unique_id, name, introduction, categories, resource_type, sizes, published_at, source_updated_at, synced_at)
+		SELECT source_resource_id, unique_id, name, introduction, categories, resource_type, sizes, published_at, source_updated_at, now()
+		FROM payload
+		WHERE source_resource_id > 0
+		ON CONFLICT (source_resource_id) DO UPDATE SET
+		  game_unique_id = excluded.game_unique_id,
+		  name = excluded.name,
+		  introduction = excluded.introduction,
+		  categories = excluded.categories,
+		  resource_type = excluded.resource_type,
+		  sizes = excluded.sizes,
+		  published_at = excluded.published_at,
+		  source_updated_at = excluded.source_updated_at,
+		  synced_at = now()`, string(data))
+	return err
+}
+
+type resourceBatchRow struct {
+	UniqueID         string    `json:"unique_id"`
+	SourceResourceID int       `json:"source_resource_id"`
+	Name             string    `json:"name"`
+	Introduction     string    `json:"introduction"`
+	Categories       []string  `json:"categories"`
+	ResourceType     string    `json:"resource_type"`
+	Sizes            []string  `json:"sizes"`
+	PublishedAt      time.Time `json:"published_at"`
+	SourceUpdatedAt  time.Time `json:"source_updated_at"`
+}
+
+func cleanUniqueResources(resources []model.CleanResourceEntry, uniqueID string, seen map[int]struct{}) []model.CleanResourceEntry {
+	cleaned := make([]model.CleanResourceEntry, 0, len(resources))
+	for _, resource := range resources {
+		resource.GameUniqueID = strings.TrimSpace(resource.GameUniqueID)
+		resource.Name = strings.TrimSpace(resource.Name)
+		resource.ResourceType = strings.TrimSpace(resource.ResourceType)
+		if resource.SourceResourceID <= 0 || resource.GameUniqueID == "" || resource.GameUniqueID != uniqueID {
+			continue
+		}
+		if resource.ResourceType != model.ResourceTypeResource && resource.ResourceType != model.ResourceTypePatch {
+			continue
+		}
+		if _, ok := seen[resource.SourceResourceID]; ok {
+			continue
+		}
+		resource.Categories = cleanUniqueStrings(resource.Categories)
+		resource.Sizes = cleanUniqueStrings(resource.Sizes)
+		seen[resource.SourceResourceID] = struct{}{}
+		cleaned = append(cleaned, resource)
+	}
+	return cleaned
+}
+
 func (r *SyncRepo) RefreshSearchTextBatch(ctx context.Context, uniqueIDs []string) error {
 	uniqueIDs = cleanUniqueStrings(uniqueIDs)
 	if len(uniqueIDs) == 0 {
@@ -527,7 +634,15 @@ func (r *SyncRepo) MarkDeletedNotSeenByRun(ctx context.Context, runID uuid.UUID)
 	if err != nil {
 		return 0, err
 	}
-	return int(cmd.RowsAffected()), nil
+	deleted := int(cmd.RowsAffected())
+	_, err = r.db.Exec(ctx, `
+		DELETE FROM game_resources gr
+		USING games g
+		WHERE gr.game_unique_id = g.unique_id AND g.deleted_at IS NOT NULL`)
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }
 
 func (r *SyncRepo) CleanupSeenSourcePatchIDs(ctx context.Context, runID uuid.UUID) error {

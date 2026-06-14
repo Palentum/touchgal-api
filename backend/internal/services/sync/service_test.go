@@ -418,3 +418,47 @@ func TestSourceGamesPageSQLUsesKeysetAndSplitIncrementalPredicates(t *testing.T)
 		}
 	}
 }
+
+func TestSourceReadOnlyTablesIncludeResourceTables(t *testing.T) {
+	required := map[string]bool{
+		"patch_resource":      false,
+		"patch_resource_link": false,
+	}
+	for _, table := range sourceReadOnlyTables {
+		if _, ok := required[table]; ok {
+			required[table] = true
+		}
+	}
+	for table, found := range required {
+		if !found {
+			t.Fatalf("source read-only table list missing %s", table)
+		}
+	}
+}
+
+func TestSourceResourcesSQLReadsOnlySafeMetadata(t *testing.T) {
+	for _, want := range []string{
+		"FROM patch_resource",
+		"patch_resource_link",
+		"r.status = 0",
+		"btrim(l.size)",
+	} {
+		if !strings.Contains(sourceResourcesByPatchIDsSQL, want) {
+			t.Fatalf("source resource SQL missing %q in %s", want, sourceResourcesByPatchIDsSQL)
+		}
+	}
+	lowerSQL := strings.ToLower(sourceResourcesByPatchIDsSQL)
+	for _, forbidden := range []string{
+		"user_id",
+		"content",
+		"code",
+		"password",
+		"hash",
+		"s3_key",
+		"storage",
+	} {
+		if strings.Contains(lowerSQL, forbidden) {
+			t.Fatalf("source resource SQL must not select or reference %q: %s", forbidden, sourceResourcesByPatchIDsSQL)
+		}
+	}
+}

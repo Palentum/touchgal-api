@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+const (
+	ResourceTypeResource = "resource"
+	ResourceTypePatch    = "patch"
+)
+
 type GameSearchItem struct {
 	Name     string `json:"name"`
 	UniqueID string `json:"uniqueId"`
@@ -74,6 +79,18 @@ type CleanGame struct {
 	SourceCreatedAt   time.Time
 	SourceUpdatedAt   time.Time
 	ResourceUpdatedAt time.Time
+}
+
+type CleanResourceEntry struct {
+	SourceResourceID int
+	GameUniqueID     string
+	Name             string
+	Introduction     string
+	Categories       []string
+	ResourceType     string
+	Sizes            []string
+	PublishedAt      time.Time
+	SourceUpdatedAt  time.Time
 }
 
 type TagData struct {
