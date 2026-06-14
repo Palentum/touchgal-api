@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -47,6 +49,48 @@ type gameSearchRows struct {
 	closed bool
 	err    error
 }
+
+type gameResourceRow struct {
+	sourceResourceID int
+	name             string
+	introduction     string
+	categories       []string
+	sizes            []string
+	publishedAt      time.Time
+}
+
+type gameResourceRows struct {
+	rows   []gameResourceRow
+	idx    int
+	closed bool
+	err    error
+}
+
+func (r *gameResourceRows) Close()                                       { r.closed = true }
+func (r *gameResourceRows) Err() error                                   { return r.err }
+func (r *gameResourceRows) CommandTag() pgconn.CommandTag                { return pgconn.NewCommandTag("SELECT") }
+func (r *gameResourceRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *gameResourceRows) Next() bool {
+	if r.idx >= len(r.rows) {
+		r.closed = true
+		return false
+	}
+	r.idx++
+	return true
+}
+func (r *gameResourceRows) Scan(dest ...any) error {
+	row := r.rows[r.idx-1]
+	*(dest[0].(*int)) = row.sourceResourceID
+	*(dest[1].(*string)) = row.name
+	*(dest[2].(*string)) = row.introduction
+	*(dest[3].(*[]string)) = row.categories
+	*(dest[4].(*[]string)) = row.sizes
+	*(dest[5].(*time.Time)) = row.publishedAt
+	return nil
+}
+func (r *gameResourceRows) Values() ([]any, error) { return nil, nil }
+func (r *gameResourceRows) RawValues() [][]byte    { return nil }
+func (r *gameResourceRows) Conn() *pgx.Conn        { return nil }
 
 func (r *gameSearchRows) Close()                                       { r.closed = true }
 func (r *gameSearchRows) Err() error                                   { return r.err }
@@ -204,5 +248,119 @@ func TestGameRepoDetailDefaultsToSFWPredicate(t *testing.T) {
 	detailSQL := strings.ToLower(queryer.countSQL)
 	if !strings.Contains(detailSQL, "g.content_limit = 'sfw'") {
 		t.Fatalf("detail SQL must default to SFW-only predicate: %q", queryer.countSQL)
+	}
+}
+
+func TestGameRepoResourcesDefaultSFWAndDeepLink(t *testing.T) {
+	queryer := &recordingGameQueryer{
+		rows: &gameResourceRows{rows: []gameResourceRow{{
+			sourceResourceID: 42,
+			name:             "Resource",
+			introduction:     "Intro",
+			categories:       []string{"Galgame"},
+			sizes:            []string{"4.2GB"},
+			publishedAt:      time.Date(2024, 5, 30, 10, 0, 0, 0, time.UTC),
+		}}},
+		countRow: gameCountRow{total: 1},
+	}
+	repo := NewGameRepo(queryer)
+
+	result, err := repo.Resources(context.Background(), "abcd1234", "https://www.touchgal.ink/", false)
+	if err != nil {
+		t.Fatalf("resources: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("unexpected resources result: %#v", result)
+	}
+	if result.Items[0].DeepLink != "https://www.touchgal.ink/abcd1234?tab=resources&resourceId=42&resourceSection=galgame" {
+		t.Fatalf("unexpected deep link: %q", result.Items[0].DeepLink)
+	}
+
+	visibleSQL := strings.ToLower(queryer.countSQL)
+	if !strings.Contains(visibleSQL, "select 1") || !strings.Contains(visibleSQL, "g.content_limit = 'sfw'") {
+		t.Fatalf("visibility SQL must check SFW game visibility: %q", queryer.countSQL)
+	}
+	resourceSQL := strings.ToLower(queryer.sql)
+	for _, want := range []string{"from game_resources", "join games g", "gr.resource_type = $2", "g.content_limit = 'sfw'"} {
+		if !strings.Contains(resourceSQL, want) {
+			t.Fatalf("resource SQL missing %q: %q", want, queryer.sql)
+		}
+	}
+	if len(queryer.args) != 2 || queryer.args[0] != "abcd1234" || queryer.args[1] != model.ResourceTypeResource {
+		t.Fatalf("unexpected resource args: %#v", queryer.args)
+	}
+}
+
+func TestGameRepoPatchesAllowNsfwAndDeepLink(t *testing.T) {
+	queryer := &recordingGameQueryer{
+		rows: &gameResourceRows{rows: []gameResourceRow{{
+			sourceResourceID: 43,
+			name:             "Patch",
+			introduction:     "Intro",
+			categories:       []string{"Patch"},
+			sizes:            []string{"512MB"},
+			publishedAt:      time.Date(2024, 5, 31, 10, 0, 0, 0, time.UTC),
+		}}},
+		countRow: gameCountRow{total: 1},
+	}
+	repo := NewGameRepo(queryer)
+
+	result, err := repo.Patches(context.Background(), "abcd1234", "https://www.touchgal.ink", true)
+	if err != nil {
+		t.Fatalf("patches: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].DeepLink != "https://www.touchgal.ink/abcd1234?tab=resources&resourceId=43&resourceSection=patch" {
+		t.Fatalf("unexpected patches result: %#v", result)
+	}
+
+	visibleSQL := strings.ToLower(queryer.countSQL)
+	if !strings.Contains(visibleSQL, "g.content_limit in ('sfw', 'nsfw')") {
+		t.Fatalf("visibility SQL must allow SFW and NSFW rows when opted in: %q", queryer.countSQL)
+	}
+	resourceSQL := strings.ToLower(queryer.sql)
+	if !strings.Contains(resourceSQL, "g.content_limit in ('sfw', 'nsfw')") {
+		t.Fatalf("resource SQL must allow SFW and NSFW rows when opted in: %q", queryer.sql)
+	}
+	if len(queryer.args) != 2 || queryer.args[1] != model.ResourceTypePatch {
+		t.Fatalf("unexpected patch args: %#v", queryer.args)
+	}
+}
+
+func TestGameRepoResourcesMapsInvisibleGameToNotFound(t *testing.T) {
+	queryer := &recordingGameQueryer{countRow: gameCountRow{err: pgx.ErrNoRows}}
+	repo := NewGameRepo(queryer)
+
+	_, err := repo.Resources(context.Background(), "abcd1234", "https://www.touchgal.ink", false)
+	if err != model.ErrNotFound {
+		t.Fatalf("expected not found, got %v", err)
+	}
+	if queryer.sql != "" {
+		t.Fatalf("resource query should not run after invisible game check: %q", queryer.sql)
+	}
+}
+
+func TestGameRepoResourcesEmptyListEncodesAsArray(t *testing.T) {
+	queryer := &recordingGameQueryer{
+		rows:     &gameResourceRows{},
+		countRow: gameCountRow{total: 1},
+	}
+	repo := NewGameRepo(queryer)
+
+	result, err := repo.Resources(context.Background(), "abcd1234", "https://www.touchgal.ink", false)
+	if err != nil {
+		t.Fatalf("resources: %v", err)
+	}
+	if len(result.Items) != 0 {
+		t.Fatalf("expected empty resource list, got %#v", result.Items)
+	}
+	if result.Items == nil {
+		t.Fatal("empty resource list must encode as []")
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal resource list: %v", err)
+	}
+	if string(encoded) != `{"items":[]}` {
+		t.Fatalf("expected empty JSON array, got %s", encoded)
 	}
 }

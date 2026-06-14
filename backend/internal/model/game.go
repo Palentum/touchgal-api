@@ -45,6 +45,18 @@ type GameDetail struct {
 	Rating             RatingView    `json:"rating"`
 	TouchGalURL        string        `json:"touchgalUrl"`
 }
+type GameResourceList struct {
+	Items []GameResourceItem `json:"items"`
+}
+
+type GameResourceItem struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Categories  []string  `json:"categories"`
+	Sizes       []string  `json:"sizes"`
+	PublishTime time.Time `json:"publishTime"`
+	DeepLink    string    `json:"deepLink"`
+}
 
 type CompanyView struct {
 	Name    string   `json:"name"`

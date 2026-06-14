@@ -59,3 +59,31 @@ func (h *PublicAPIHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	Success(w, http.StatusOK, detail)
 }
+
+func (h *PublicAPIHandler) Resources(w http.ResponseWriter, r *http.Request) {
+	allowNsfw, err := publicapi.ParseAllowNsfw(r.URL.Query().Get("allowNsfw"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	result, err := h.svc.Resources(r.Context(), chi.URLParam(r, "uniqueId"), allowNsfw)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, result)
+}
+
+func (h *PublicAPIHandler) Patches(w http.ResponseWriter, r *http.Request) {
+	allowNsfw, err := publicapi.ParseAllowNsfw(r.URL.Query().Get("allowNsfw"))
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	result, err := h.svc.Patches(r.Context(), chi.URLParam(r, "uniqueId"), allowNsfw)
+	if err != nil {
+		Error(w, err)
+		return
+	}
+	Success(w, http.StatusOK, result)
+}

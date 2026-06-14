@@ -9,9 +9,19 @@ import (
 )
 
 type fakeGameStore struct {
-	searchAllowNsfw bool
-	detailAllowNsfw bool
-	detailErr       error
+	searchAllowNsfw    bool
+	detailAllowNsfw    bool
+	detailErr          error
+	resourcesCalled    bool
+	resourcesUniqueID  string
+	resourcesSiteURL   string
+	resourcesAllowNsfw bool
+	resourcesErr       error
+	patchesCalled      bool
+	patchesUniqueID    string
+	patchesSiteURL     string
+	patchesAllowNsfw   bool
+	patchesErr         error
 }
 
 func (f *fakeGameStore) Search(ctx context.Context, keyword string, page, limit int, allowNsfw bool) (model.GameSearchResult, error) {
@@ -24,6 +34,28 @@ func (f *fakeGameStore) Detail(ctx context.Context, uniqueID, touchgalSiteURL st
 		return nil, f.detailErr
 	}
 	return nil, model.ErrNotFound
+}
+
+func (f *fakeGameStore) Resources(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (model.GameResourceList, error) {
+	f.resourcesCalled = true
+	f.resourcesUniqueID = uniqueID
+	f.resourcesSiteURL = touchgalSiteURL
+	f.resourcesAllowNsfw = allowNsfw
+	if f.resourcesErr != nil {
+		return model.GameResourceList{}, f.resourcesErr
+	}
+	return model.GameResourceList{Items: []model.GameResourceItem{}}, nil
+}
+
+func (f *fakeGameStore) Patches(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (model.GameResourceList, error) {
+	f.patchesCalled = true
+	f.patchesUniqueID = uniqueID
+	f.patchesSiteURL = touchgalSiteURL
+	f.patchesAllowNsfw = allowNsfw
+	if f.patchesErr != nil {
+		return model.GameResourceList{}, f.patchesErr
+	}
+	return model.GameResourceList{Items: []model.GameResourceItem{}}, nil
 }
 
 func TestSearchParamsValidation(t *testing.T) {
@@ -101,6 +133,48 @@ func TestServicePassesAllowNsfw(t *testing.T) {
 	}
 	if !store.detailAllowNsfw {
 		t.Fatal("expected Detail to pass allowNsfw=true")
+	}
+}
+
+func TestResourcesPassesAllowNsfwAndSiteURL(t *testing.T) {
+	store := &fakeGameStore{}
+	svc := NewService(config.Config{TouchGalSiteURL: "https://www.touchgal.ink"}, store)
+
+	if _, err := svc.Resources(context.Background(), "abcd1234", true); err != nil {
+		t.Fatalf("resources: %v", err)
+	}
+	if !store.resourcesCalled {
+		t.Fatal("expected Resources store call")
+	}
+	if store.resourcesUniqueID != "abcd1234" {
+		t.Fatalf("unexpected uniqueId: %q", store.resourcesUniqueID)
+	}
+	if store.resourcesSiteURL != "https://www.touchgal.ink" {
+		t.Fatalf("unexpected TouchGal site URL: %q", store.resourcesSiteURL)
+	}
+	if !store.resourcesAllowNsfw {
+		t.Fatal("expected Resources to pass allowNsfw=true")
+	}
+}
+
+func TestPatchesRejectsInvalidUniqueIDBeforeStore(t *testing.T) {
+	store := &fakeGameStore{}
+	svc := NewService(config.Config{TouchGalSiteURL: "https://www.touchgal.ink"}, store)
+
+	if _, err := svc.Patches(context.Background(), "bad", false); err != model.ErrInvalidInput {
+		t.Fatalf("expected invalid input, got %v", err)
+	}
+	if store.patchesCalled {
+		t.Fatal("patches store should not be called for invalid uniqueId")
+	}
+}
+
+func TestResourcesReturnsStoreNotFound(t *testing.T) {
+	store := &fakeGameStore{resourcesErr: model.ErrNotFound}
+	svc := NewService(config.Config{TouchGalSiteURL: "https://www.touchgal.ink"}, store)
+
+	if _, err := svc.Resources(context.Background(), "abcd1234", false); err != model.ErrNotFound {
+		t.Fatalf("expected not found, got %v", err)
 	}
 }
 

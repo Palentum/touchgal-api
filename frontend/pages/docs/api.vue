@@ -5,7 +5,7 @@
       <p class="tg-eyebrow" style="color: var(--tg-on-primary);">TouchGal API Docs</p>
       <h1 class="tg-display-lg">TouchGal API 文档</h1>
       <p style="margin-top: 20px; max-width: 760px; line-height: 1.7;">
-        稳定、脱敏、可限流的 Galgame 元数据 API。公开业务接口需要 API token；健康检查与就绪检查无需 token。游戏搜索与详情默认只返回 SFW，调用方可通过 `allowNsfw=true` 显式允许 NSFW 条目。
+        稳定、脱敏、可限流的 Galgame 元数据 API。公开业务接口需要 API token；健康检查与就绪检查无需 token。游戏搜索、详情、资源与补丁接口默认只返回 SFW 条目；调用方可通过 `allowNsfw=true` 显式允许 NSFW 条目。
       </p>
     </header>
 

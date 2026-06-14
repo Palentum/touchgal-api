@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -14,8 +15,9 @@ type GameRepo struct{ db Queryer }
 func NewGameRepo(db Queryer) *GameRepo { return &GameRepo{db: db} }
 
 const (
-	stringListCapHint  = 8
-	companyListCapHint = 4
+	stringListCapHint   = 8
+	companyListCapHint  = 4
+	resourceListCapHint = 8
 
 	gameSearchSFWPredicate       = "content_limit = 'sfw'"
 	gameSearchAllowNsfwPredicate = "content_limit IN ('sfw', 'nsfw')"
@@ -64,6 +66,32 @@ const (
 		FROM games g
 		LEFT JOIN game_rating_stats r ON r.game_unique_id = g.unique_id
 		WHERE g.unique_id = $1 AND g.deleted_at IS NULL AND ` + gameDetailAllowNsfwPredicate
+	gameResourceVisibleSFWSQL = `
+		SELECT 1
+		FROM games g
+		WHERE g.unique_id = $1 AND g.deleted_at IS NULL AND ` + gameDetailSFWPredicate
+	gameResourceVisibleAllowNsfwSQL = `
+		SELECT 1
+		FROM games g
+		WHERE g.unique_id = $1 AND g.deleted_at IS NULL AND ` + gameDetailAllowNsfwPredicate
+	gameResourceListSFWSQL = `
+		SELECT gr.source_resource_id, gr.name, gr.introduction, gr.categories, gr.sizes, gr.published_at
+		FROM game_resources gr
+		JOIN games g ON g.unique_id = gr.game_unique_id
+		WHERE gr.game_unique_id = $1
+		  AND gr.resource_type = $2
+		  AND g.deleted_at IS NULL
+		  AND ` + gameDetailSFWPredicate + `
+		ORDER BY gr.published_at DESC, gr.source_resource_id DESC`
+	gameResourceListAllowNsfwSQL = `
+		SELECT gr.source_resource_id, gr.name, gr.introduction, gr.categories, gr.sizes, gr.published_at
+		FROM game_resources gr
+		JOIN games g ON g.unique_id = gr.game_unique_id
+		WHERE gr.game_unique_id = $1
+		  AND gr.resource_type = $2
+		  AND g.deleted_at IS NULL
+		  AND ` + gameDetailAllowNsfwPredicate + `
+		ORDER BY gr.published_at DESC, gr.source_resource_id DESC`
 )
 
 func likeContainsPattern(value string) string {
@@ -153,6 +181,60 @@ func (r *GameRepo) Detail(ctx context.Context, uniqueID, touchgalSiteURL string,
 	detail.Rating = model.RatingView{Average: average, Count: count, Recommend: model.RecommendView{StrongNo: recStrongNo, No: recNo, Neutral: recNeutral, Yes: recYes, StrongYes: recStrongYes}}
 	detail.TouchGalURL = strings.TrimRight(touchgalSiteURL, "/") + "/" + uniqueID
 	return detail, nil
+}
+
+func (r *GameRepo) Resources(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (model.GameResourceList, error) {
+	return r.resourceList(ctx, uniqueID, touchgalSiteURL, model.ResourceTypeResource, "galgame", allowNsfw)
+}
+
+func (r *GameRepo) Patches(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (model.GameResourceList, error) {
+	return r.resourceList(ctx, uniqueID, touchgalSiteURL, model.ResourceTypePatch, "patch", allowNsfw)
+}
+
+func (r *GameRepo) resourceList(ctx context.Context, uniqueID, touchgalSiteURL, resourceType, resourceSection string, allowNsfw bool) (model.GameResourceList, error) {
+	visibleSQL := gameResourceVisibleSFWSQL
+	listSQL := gameResourceListSFWSQL
+	if allowNsfw {
+		visibleSQL = gameResourceVisibleAllowNsfwSQL
+		listSQL = gameResourceListAllowNsfwSQL
+	}
+
+	var visible int
+	err := r.db.QueryRow(ctx, visibleSQL, uniqueID).Scan(&visible)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.GameResourceList{}, model.ErrNotFound
+	}
+	if err != nil {
+		return model.GameResourceList{}, err
+	}
+
+	rows, err := r.db.Query(ctx, listSQL, uniqueID, resourceType)
+	if err != nil {
+		return model.GameResourceList{}, err
+	}
+	defer rows.Close()
+
+	items := make([]model.GameResourceItem, 0)
+	for rows.Next() {
+		var sourceResourceID int
+		var item model.GameResourceItem
+		if err := rows.Scan(&sourceResourceID, &item.Name, &item.Description, &item.Categories, &item.Sizes, &item.PublishTime); err != nil {
+			return model.GameResourceList{}, err
+		}
+		if cap(items) == 0 {
+			items = make([]model.GameResourceItem, 0, resourceListCapHint)
+		}
+		item.DeepLink = touchGalResourceDeepLink(touchgalSiteURL, uniqueID, sourceResourceID, resourceSection)
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return model.GameResourceList{}, err
+	}
+	return model.GameResourceList{Items: items}, nil
+}
+
+func touchGalResourceDeepLink(siteURL, uniqueID string, sourceResourceID int, resourceSection string) string {
+	return strings.TrimRight(siteURL, "/") + "/" + uniqueID + "?tab=resources&resourceId=" + strconv.Itoa(sourceResourceID) + "&resourceSection=" + resourceSection
 }
 
 func (r *GameRepo) stringList(ctx context.Context, query string, args ...any) ([]string, error) {

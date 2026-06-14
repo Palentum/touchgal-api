@@ -106,6 +106,8 @@ func NewRouter(cfg config.Config, services Services, repos *repository.Repositor
 			r.Get("/me", publicHandler.Me)
 			r.Get("/games/search", publicHandler.Search)
 			r.Get("/games/{uniqueId}", publicHandler.Detail)
+			r.Get("/games/{uniqueId}/resources", publicHandler.Resources)
+			r.Get("/games/{uniqueId}/patches", publicHandler.Patches)
 		})
 	})
 

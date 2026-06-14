@@ -432,7 +432,185 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       rateLimitedStatus,
       internalStatus
     ]
+  },
+  {
+    slug: 'game-resources',
+    navLabel: 'Galgame 资源',
+    name: '获取 Galgame 资源',
+    introduction: '按公开 uniqueId 返回该条目下 Galgame 资源分类的公开资源元数据。默认只允许 SFW 条目；传入 `allowNsfw=true` 时允许返回 NSFW 条目的资源。响应不包含真实资源下载地址、提取码、上传者或内部 source 字段。',
+    method: 'GET',
+    path: '/v1/games/{uniqueId}/resources',
+    auth: '需要有效的 `tgal_live` API token。',
+    parameters: [
+      ...tokenHeaderParameters,
+      {
+        name: 'uniqueId',
+        location: 'Path',
+        required: true,
+        type: 'string, 8 alphanumeric chars',
+        description: '公开 8 位条目 ID，仅允许英文大小写字母与数字。'
+      },
+      {
+        name: 'allowNsfw',
+        location: 'Query',
+        required: false,
+        type: 'boolean, default false',
+        description: '是否允许返回 NSFW 条目的资源。默认 false，NSFW 条目会按未找到处理；设为 true 时允许返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
+      },
+    ],
+    requestExample: `curl "https://api.example.com/v1/games/abcd1234/resources?allowNsfw=true" \\
+  -H "Authorization: Bearer tgal_live_xxx"`,
+    statuses: [
+      {
+        code: 200,
+        title: 'OK',
+        description: '返回可见条目的 Galgame 资源列表。条目存在且可见但没有该类型资源时仍返回 200，且 `data.items` 为 []。',
+        example: `{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "name": "游戏本体资源",
+        "description": "公开资源简介。",
+        "categories": ["Galgame"],
+        "sizes": ["4.2GB"],
+        "publishTime": "2024-05-30T10:00:00Z",
+        "deepLink": "https://www.touchgal.ink/abcd1234?tab=resources&resourceId=42&resourceSection=galgame"
+      }
+    ]
   }
-]
+}`,
+        fields: [
+          { name: 'success', description: '固定为 true。' },
+          { name: 'data.items', description: 'Galgame 资源数组；无该类型资源时为空数组。' },
+          { name: 'data.items[].name', description: '资源名称。' },
+          { name: 'data.items[].description', description: '资源简介，来自 clean DB 的公开 introduction。' },
+          { name: 'data.items[].categories', description: '资源分类数组。' },
+          { name: 'data.items[].sizes', description: '去重后的资源大小文本数组。' },
+          { name: 'data.items[].publishTime', description: '资源发布时间。' },
+          { name: 'data.items[].deepLink', description: 'TouchGal 页面跳转链接，用于打开对应条目的 resources tab 并定位资源；不是下载链接。' }
+        ]
+      },
+      {
+        code: 400,
+        title: 'Bad request',
+        description: 'uniqueId 不是 8 位、包含非英文大小写字母/数字字符，或 allowNsfw 不是 true/false。',
+        example: `{
+  "success": false,
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Invalid request parameters"
+  }
+}`,
+        fields: errorFields
+      },
+      unauthorizedStatus,
+      {
+        code: 404,
+        title: 'Not found',
+        description: '未找到该公开 uniqueId、对应条目已删除/不可公开，或目标是 NSFW 且本次请求未设置 `allowNsfw=true`。条目存在且可见但无 Galgame 资源不是 404。',
+        example: `{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Resource not found"
+  }
+}`,
+        fields: errorFields
+      },
+      rateLimitedStatus,
+      internalStatus
+    ]
+  },
+  {
+    slug: 'game-patches',
+    navLabel: 'Galgame 补丁',
+    name: '获取 Galgame 补丁',
+    introduction: '按公开 uniqueId 返回该条目下 Galgame 补丁分类的公开资源元数据。默认只允许 SFW 条目；传入 `allowNsfw=true` 时允许返回 NSFW 条目的补丁。响应不包含真实资源下载地址、提取码、上传者或内部 source 字段。',
+    method: 'GET',
+    path: '/v1/games/{uniqueId}/patches',
+    auth: '需要有效的 `tgal_live` API token。',
+    parameters: [
+      ...tokenHeaderParameters,
+      {
+        name: 'uniqueId',
+        location: 'Path',
+        required: true,
+        type: 'string, 8 alphanumeric chars',
+        description: '公开 8 位条目 ID，仅允许英文大小写字母与数字。'
+      },
+      {
+        name: 'allowNsfw',
+        location: 'Query',
+        required: false,
+        type: 'boolean, default false',
+        description: '是否允许返回 NSFW 条目的补丁。默认 false，NSFW 条目会按未找到处理；设为 true 时允许返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
+      },
+    ],
+    requestExample: `curl "https://api.example.com/v1/games/abcd1234/patches?allowNsfw=true" \\
+  -H "Authorization: Bearer tgal_live_xxx"`,
+    statuses: [
+      {
+        code: 200,
+        title: 'OK',
+        description: '返回可见条目的 Galgame 补丁列表。条目存在且可见但没有该类型资源时仍返回 200，且 `data.items` 为 []。',
+        example: `{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "name": "中文补丁",
+        "description": "公开补丁简介。",
+        "categories": ["Patch"],
+        "sizes": ["512MB"],
+        "publishTime": "2024-05-31T10:00:00Z",
+        "deepLink": "https://www.touchgal.ink/abcd1234?tab=resources&resourceId=43&resourceSection=patch"
+      }
+    ]
+  }
+}`,
+        fields: [
+          { name: 'success', description: '固定为 true。' },
+          { name: 'data.items', description: 'Galgame 补丁数组；无该类型资源时为空数组。' },
+          { name: 'data.items[].name', description: '补丁资源名称。' },
+          { name: 'data.items[].description', description: '补丁资源简介，来自 clean DB 的公开 introduction。' },
+          { name: 'data.items[].categories', description: '补丁分类数组。' },
+          { name: 'data.items[].sizes', description: '去重后的补丁大小文本数组。' },
+          { name: 'data.items[].publishTime', description: '补丁发布时间。' },
+          { name: 'data.items[].deepLink', description: 'TouchGal 页面跳转链接，用于打开对应条目的 resources tab 并定位补丁；不是下载链接。' }
+        ]
+      },
+      {
+        code: 400,
+        title: 'Bad request',
+        description: 'uniqueId 不是 8 位、包含非英文大小写字母/数字字符，或 allowNsfw 不是 true/false。',
+        example: `{
+  "success": false,
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Invalid request parameters"
+  }
+}`,
+        fields: errorFields
+      },
+      unauthorizedStatus,
+      {
+        code: 404,
+        title: 'Not found',
+        description: '未找到该公开 uniqueId、对应条目已删除/不可公开，或目标是 NSFW 且本次请求未设置 `allowNsfw=true`。条目存在且可见但无 Galgame 补丁不是 404。',
+        example: `{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Resource not found"
+  }
+}`,
+        fields: errorFields
+      },
+      rateLimitedStatus,
+      internalStatus
+    ]
+  },
 
+]
 export const getApiEndpointDoc = (slug: string) => apiEndpointDocs.find(doc => doc.slug === slug)

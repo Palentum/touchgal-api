@@ -12,6 +12,8 @@ import (
 type GameStore interface {
 	Search(ctx context.Context, keyword string, page, limit int, allowNsfw bool) (model.GameSearchResult, error)
 	Detail(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (*model.GameDetail, error)
+	Resources(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (model.GameResourceList, error)
+	Patches(ctx context.Context, uniqueID, touchgalSiteURL string, allowNsfw bool) (model.GameResourceList, error)
 }
 
 type Service struct {
@@ -91,4 +93,18 @@ func (s *Service) Detail(ctx context.Context, uniqueID string, allowNsfw bool) (
 		return nil, err
 	}
 	return s.games.Detail(ctx, uniqueID, s.cfg.TouchGalSiteURL, allowNsfw)
+}
+
+func (s *Service) Resources(ctx context.Context, uniqueID string, allowNsfw bool) (model.GameResourceList, error) {
+	if err := ValidateUniqueID(uniqueID); err != nil {
+		return model.GameResourceList{}, err
+	}
+	return s.games.Resources(ctx, uniqueID, s.cfg.TouchGalSiteURL, allowNsfw)
+}
+
+func (s *Service) Patches(ctx context.Context, uniqueID string, allowNsfw bool) (model.GameResourceList, error) {
+	if err := ValidateUniqueID(uniqueID); err != nil {
+		return model.GameResourceList{}, err
+	}
+	return s.games.Patches(ctx, uniqueID, s.cfg.TouchGalSiteURL, allowNsfw)
 }

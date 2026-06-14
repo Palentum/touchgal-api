@@ -153,6 +153,21 @@ components:
                 yes: { type: integer }
                 strongYes: { type: integer }
         touchgalUrl: { type: string }
+    GameResourceItem:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        categories: { type: array, items: { type: string } }
+        sizes: { type: array, items: { type: string } }
+        publishTime: { type: string, format: date-time }
+        deepLink: { type: string, format: uri }
+    GameResourceList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/GameResourceItem' }
     ApplicationReviewRequest:
       type: object
       additionalProperties: false
@@ -291,6 +306,66 @@ paths:
             X-RateLimit-Remaining-Day: { $ref: '#/components/headers/XRateLimitRemainingDay' }
           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
         '400': { description: Invalid request parameters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /v1/games/{uniqueId}/resources:
+    get:
+      security:
+        - ApiToken: []
+        - XApiToken: []
+      summary: List Galgame resources for a game
+      parameters:
+        - { name: uniqueId, in: path, required: true, schema: { type: string, minLength: 8, maxLength: 8 } }
+        - { name: allowNsfw, in: query, description: 'Set to true to include NSFW games alongside SFW games. Defaults to false, which keeps SFW-only results. Only literal true or false are accepted.', schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data: { $ref: '#/components/schemas/GameResourceList' }
+        '400': { description: Invalid request parameters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429':
+          description: Rate limited. Token-authenticated /v1 responses include rate-limit headers.
+          headers:
+            X-RateLimit-Limit-Minute: { $ref: '#/components/headers/XRateLimitLimitMinute' }
+            X-RateLimit-Remaining-Minute: { $ref: '#/components/headers/XRateLimitRemainingMinute' }
+            X-RateLimit-Limit-Day: { $ref: '#/components/headers/XRateLimitLimitDay' }
+            X-RateLimit-Remaining-Day: { $ref: '#/components/headers/XRateLimitRemainingDay' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+  /v1/games/{uniqueId}/patches:
+    get:
+      security:
+        - ApiToken: []
+        - XApiToken: []
+      summary: List Galgame patches for a game
+      parameters:
+        - { name: uniqueId, in: path, required: true, schema: { type: string, minLength: 8, maxLength: 8 } }
+        - { name: allowNsfw, in: query, description: 'Set to true to include NSFW games alongside SFW games. Defaults to false, which keeps SFW-only results. Only literal true or false are accepted.', schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data: { $ref: '#/components/schemas/GameResourceList' }
+        '400': { description: Invalid request parameters, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '429':
+          description: Rate limited. Token-authenticated /v1 responses include rate-limit headers.
+          headers:
+            X-RateLimit-Limit-Minute: { $ref: '#/components/headers/XRateLimitLimitMinute' }
+            X-RateLimit-Remaining-Minute: { $ref: '#/components/headers/XRateLimitRemainingMinute' }
+            X-RateLimit-Limit-Day: { $ref: '#/components/headers/XRateLimitLimitDay' }
+            X-RateLimit-Remaining-Day: { $ref: '#/components/headers/XRateLimitRemainingDay' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
   /auth/register/start:
     post:
       security: []
