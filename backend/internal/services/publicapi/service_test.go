@@ -66,11 +66,9 @@ func TestSearchParamsValidation(t *testing.T) {
 	if _, _, _, err := NormalizeSearch("", 1, 10); err != model.ErrInvalidInput {
 		t.Fatal("empty keyword accepted")
 	}
-	if _, _, _, err := NormalizeSearch("ab", 1, 10); err != model.ErrInvalidInput {
-		t.Fatal("short keyword accepted")
-	}
-	if _, _, _, err := NormalizeSearch("あい", 1, 10); err != model.ErrInvalidInput {
-		t.Fatal("short unicode keyword accepted")
+	keyword, page, limit, err = NormalizeSearch("魔", 1, 10)
+	if err != nil || keyword != "魔" || page != 1 || limit != 10 {
+		t.Fatalf("single-rune unicode keyword rejected: %q %d %d %v", keyword, page, limit, err)
 	}
 	if _, _, _, err := NormalizeSearch("summer", maxSearchPage+1, 10); err != model.ErrInvalidInput {
 		t.Fatal("page above cap accepted")

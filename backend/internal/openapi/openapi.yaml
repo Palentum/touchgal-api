@@ -257,8 +257,8 @@ paths:
       summary: Search sanitized games
       description: Results are ordered by relevance. Title matches rank first, alias matches rank lower, and remaining indexed metadata matches rank after aliases; ties fall back to name and uniqueId ascending.
       parameters:
-        - { name: keyword, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
-        - { name: q, in: query, schema: { type: string, minLength: 3, maxLength: 100 } }
+        - { name: keyword, in: query, schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { name: q, in: query, schema: { type: string, minLength: 1, maxLength: 100 } }
         - { name: page, in: query, description: 'Offset page. Maximum 100; cursor pagination is not available, so use narrower keywords instead of deep crawling.', schema: { type: integer, minimum: 1, maximum: 100, default: 1 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
         - { name: allowNsfw, in: query, description: 'Set to true to include NSFW games alongside SFW games. Defaults to false, which keeps SFW-only results. Only literal true or false are accepted.', schema: { type: boolean, default: false } }

@@ -24,7 +24,7 @@ type Service struct {
 func NewService(cfg config.Config, games GameStore) *Service { return &Service{cfg: cfg, games: games} }
 
 const (
-	minSearchKeywordRunes = 3
+	minSearchKeywordRunes = 1
 	maxSearchKeywordRunes = 100
 	maxSearchPage         = 100
 	defaultSearchLimit    = 20
