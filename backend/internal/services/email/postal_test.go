@@ -52,6 +52,9 @@ func TestPostalMailerSendsVerificationCode(t *testing.T) {
 		if !strings.Contains(payload.PlainBody, "123456") || !strings.Contains(payload.PlainBody, "10 分钟") {
 			t.Errorf("verification body missing code or ttl: %q", payload.PlainBody)
 		}
+		if !strings.Contains(payload.HTMLBody, "123456") || !strings.Contains(payload.HTMLBody, "#cc785c") || !strings.Contains(payload.HTMLBody, "#181715") {
+			t.Errorf("verification HTML body missing code or design tokens: %q", payload.HTMLBody)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"success","data":{"message_id":"msg"}}`))

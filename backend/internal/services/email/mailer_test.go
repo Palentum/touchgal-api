@@ -76,3 +76,23 @@ func TestSMTPMailerRejectsMissingConfig(t *testing.T) {
 		t.Fatalf("expected SMTP_FROM error, got %v", err)
 	}
 }
+
+func TestVerificationHTMLBodyUsesDesignTokens(t *testing.T) {
+	body := VerificationHTMLBody("register", "<123456>", 10)
+
+	for _, want := range []string{
+		"#faf9f5",
+		"#cc785c",
+		"#181715",
+		"完成 TouchGal API 开发者门户注册",
+		"10 分钟",
+		"&lt;123456&gt;",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("verification HTML missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "<123456>") {
+		t.Fatalf("verification HTML contains unescaped code:\n%s", body)
+	}
+}

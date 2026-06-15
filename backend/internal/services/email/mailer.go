@@ -13,6 +13,8 @@ import (
 	"github.com/touchgal/developer/backend/internal/config"
 )
 
+const verificationMIMEBoundary = "touchgal-api-verification-boundary"
+
 type Mailer interface {
 	SendVerificationCode(to, purpose, code string, ttlMinutes int) error
 }
@@ -53,16 +55,28 @@ func (m *SMTPMailer) SendVerificationCode(to, purpose, code string, ttlMinutes i
 		return errors.New("SMTP_FROM is required")
 	}
 	subject := VerificationSubject(purpose)
-	body := VerificationBody(code, ttlMinutes)
+	plainBody := VerificationBody(code, ttlMinutes)
+	htmlBody := VerificationHTMLBody(purpose, code, ttlMinutes)
 	fromLabel := formatFrom(m.cfg.SMTPFrom, m.cfg.SMTPFromName)
 	msg := strings.Join([]string{
 		"From: " + fromLabel,
 		"To: " + to,
 		"Subject: " + subject,
 		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=UTF-8",
+		`Content-Type: multipart/alternative; boundary="` + verificationMIMEBoundary + `"`,
 		"",
-		body,
+		"--" + verificationMIMEBoundary,
+		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Transfer-Encoding: 8bit",
+		"",
+		plainBody,
+		"--" + verificationMIMEBoundary,
+		"Content-Type: text/html; charset=UTF-8",
+		"Content-Transfer-Encoding: 8bit",
+		"",
+		htmlBody,
+		"--" + verificationMIMEBoundary + "--",
+		"",
 	}, "\r\n")
 
 	addr := fmt.Sprintf("%s:%d", m.cfg.SMTPHost, m.cfg.SMTPPort)

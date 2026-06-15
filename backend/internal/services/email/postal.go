@@ -34,6 +34,7 @@ type postalSendRequest struct {
 	To        []string `json:"to"`
 	Subject   string   `json:"subject"`
 	PlainBody string   `json:"plain_body"`
+	HTMLBody  string   `json:"html_body"`
 }
 
 type postalAPIResponse struct {
@@ -57,6 +58,7 @@ func (m *PostalMailer) SendVerificationCode(to, purpose, code string, ttlMinutes
 		To:        []string{to},
 		Subject:   VerificationSubject(purpose),
 		PlainBody: VerificationBody(code, ttlMinutes),
+		HTMLBody:  VerificationHTMLBody(purpose, code, ttlMinutes),
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
