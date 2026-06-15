@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/touchgal/developer/backend/internal/config"
+	"github.com/touchgal/developer/backend/internal/model"
 )
 
 func TestNewMailerFallsBackToLogOnlyInDevelopment(t *testing.T) {
@@ -94,5 +95,32 @@ func TestVerificationHTMLBodyUsesDesignTokens(t *testing.T) {
 	}
 	if strings.Contains(body, "<123456>") {
 		t.Fatalf("verification HTML contains unescaped code:\n%s", body)
+	}
+}
+
+func TestApplicationSubmittedHTMLBodyEscapesFields(t *testing.T) {
+	body := ApplicationSubmittedHTMLBody(model.Application{
+		ApplicantName: "<Kun>",
+		ProjectName:   "<Bot>",
+		ProjectURL:    "https://example.com/?q=<x>",
+		UsageScenario: "line <one>",
+	}, "https://portal.example.com/admin/applications")
+
+	for _, want := range []string{
+		"&lt;Kun&gt;",
+		"&lt;Bot&gt;",
+		"&lt;one&gt;",
+		"#faf9f5",
+		"#cc785c",
+		"#181715",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("application submitted HTML missing %q:\n%s", want, body)
+		}
+	}
+	for _, notWant := range []string{"<Kun>", "<Bot>"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("application submitted HTML contains unescaped %q:\n%s", notWant, body)
+		}
 	}
 }

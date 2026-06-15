@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/touchgal/developer/backend/internal/config"
+	"github.com/touchgal/developer/backend/internal/model"
 )
 
 func TestSMTPMailerTimesOutWaitingForServerGreeting(t *testing.T) {
@@ -136,7 +137,8 @@ func TestSMTPMailerDoesNotSendCredentialsWhenAuthUnsupported(t *testing.T) {
 	}
 }
 
-func TestSMTPMailerSendsMultipartVerificationCode(t *testing.T) {
+func captureSMTPMessage(t *testing.T, send func(*SMTPMailer) error) string {
+	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -260,8 +262,8 @@ func TestSMTPMailerSendsMultipartVerificationCode(t *testing.T) {
 		MailSendTimeoutSeconds: 1,
 	})
 
-	if err := mailer.SendVerificationCode("user@example.com", "login", "123456", 10); err != nil {
-		t.Fatalf("send verification code: %v", err)
+	if err := send(mailer); err != nil {
+		t.Fatalf("send SMTP message: %v", err)
 	}
 	if err := <-serverDone; err != nil {
 		t.Fatalf("smtp test server: %v", err)
@@ -269,19 +271,68 @@ func TestSMTPMailerSendsMultipartVerificationCode(t *testing.T) {
 
 	select {
 	case body := <-message:
-		for _, want := range []string{
-			"Content-Type: multipart/alternative;",
-			"Content-Type: text/plain; charset=UTF-8",
-			"Content-Type: text/html; charset=UTF-8",
-			"123456",
-			"#cc785c",
-			"#181715",
-		} {
-			if !strings.Contains(body, want) {
-				t.Fatalf("SMTP message missing %q:\n%s", want, body)
-			}
-		}
+		return body
 	case <-time.After(2 * time.Second):
 		t.Fatal("SMTP test server did not capture message body")
+		return ""
+	}
+}
+
+func TestSMTPMailerSendsMultipartVerificationCode(t *testing.T) {
+	body := captureSMTPMessage(t, func(mailer *SMTPMailer) error {
+		return mailer.SendVerificationCode("user@example.com", "login", "123456", 10)
+	})
+
+	for _, want := range []string{
+		"Content-Type: multipart/alternative;",
+		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Type: text/html; charset=UTF-8",
+		"123456",
+		"#cc785c",
+		"#181715",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SMTP message missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestSMTPMailerSendsApplicationSubmittedNotification(t *testing.T) {
+	body := captureSMTPMessage(t, func(mailer *SMTPMailer) error {
+		return mailer.SendApplicationSubmitted(
+			[]string{"admin@example.com"},
+			model.Application{ApplicantName: "Kun", ProjectName: "Docs Bot", ProjectURL: "https://example.com", ExpectedDailyRequests: 100, UsageScenario: "展示条目信息"},
+			"https://portal.example.com/admin/applications",
+		)
+	})
+
+	for _, want := range []string{
+		"TouchGal API 新应用申请待审核",
+		"https://portal.example.com/admin/applications",
+		"Content-Type: multipart/alternative;",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SMTP message missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestSMTPMailerApplicationNotificationUsesRandomBoundary(t *testing.T) {
+	body := captureSMTPMessage(t, func(mailer *SMTPMailer) error {
+		return mailer.SendApplicationSubmitted(
+			[]string{"admin@example.com"},
+			model.Application{
+				ApplicantName:         "Kun",
+				ProjectName:           "Docs Bot",
+				ProjectURL:            "https://example.com",
+				ExpectedDailyRequests: 100,
+				UsageScenario:         "line\r\n--" + verificationMIMEBoundary + "\r\nContent-Type: text/html",
+			},
+			"https://portal.example.com/admin/applications",
+		)
+	})
+
+	if strings.Contains(body, `boundary="`+verificationMIMEBoundary+`"`) {
+		t.Fatalf("application notification reused predictable verification MIME boundary:\n%s", body)
 	}
 }

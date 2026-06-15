@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/touchgal/developer/backend/internal/config"
+	"github.com/touchgal/developer/backend/internal/model"
 )
 
 const postalSendPath = "/api/v1/send/message"
@@ -43,6 +44,10 @@ type postalAPIResponse struct {
 }
 
 func (m *PostalMailer) SendVerificationCode(to, purpose, code string, ttlMinutes int) error {
+	return m.sendMessage([]string{to}, VerificationSubject(purpose), VerificationBody(code, ttlMinutes), VerificationHTMLBody(purpose, code, ttlMinutes))
+}
+
+func (m *PostalMailer) sendMessage(to []string, subject, plainBody, htmlBody string) error {
 	if m.cfg.PostalAPIURL == "" {
 		return errors.New("POSTAL_API_URL is required")
 	}
@@ -52,13 +57,16 @@ func (m *PostalMailer) SendVerificationCode(to, purpose, code string, ttlMinutes
 	if m.cfg.SMTPFrom == "" {
 		return errors.New("SMTP_FROM is required")
 	}
+	if len(to) == 0 {
+		return errors.New("email recipient is required")
+	}
 
 	payload := postalSendRequest{
 		From:      formatFrom(m.cfg.SMTPFrom, m.cfg.SMTPFromName),
-		To:        []string{to},
-		Subject:   VerificationSubject(purpose),
-		PlainBody: VerificationBody(code, ttlMinutes),
-		HTMLBody:  VerificationHTMLBody(purpose, code, ttlMinutes),
+		To:        to,
+		Subject:   subject,
+		PlainBody: plainBody,
+		HTMLBody:  htmlBody,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -80,6 +88,10 @@ func (m *PostalMailer) SendVerificationCode(to, purpose, code string, ttlMinutes
 		return err
 	}
 	return handlePostalResponse(resp)
+}
+
+func (m *PostalMailer) SendApplicationSubmitted(to []string, app model.Application, reviewURL string) error {
+	return m.sendMessage(to, ApplicationSubmittedSubject(), ApplicationSubmittedBody(app, reviewURL), ApplicationSubmittedHTMLBody(app, reviewURL))
 }
 
 func postalSendURL(baseURL string) string {

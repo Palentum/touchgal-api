@@ -441,6 +441,9 @@ curl -fsS https://developer.example.com/api/v1/ready
 | `POSTAL_API_URL` | `https://postal.example.com` | `MAIL_DRIVER=postal` 时必填且必须为 HTTPS 绝对 URL | Postal API URL。 |
 | `POSTAL_API_KEY` | 空 | `MAIL_DRIVER=postal` 时必填 | Postal API key。 |
 
+
+新应用申请管理员提醒复用同一邮件驱动；收件人为 clean DB 中 status='active' 且 is_admin=true 的用户，审核入口使用 PUBLIC_BASE_URL + /admin/applications。
+
 ### 验证码与 Turnstile 变量
 
 | 变量 | 默认/示例 | 生产要求 | 说明 |

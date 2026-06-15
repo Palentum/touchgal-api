@@ -6,8 +6,10 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"github.com/touchgal/developer/backend/internal/config"
 	"github.com/touchgal/developer/backend/internal/model"
+	"github.com/touchgal/developer/backend/internal/services/email"
 )
 
 type Store interface {
@@ -17,12 +19,21 @@ type Store interface {
 	UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status string, minuteLimit, dailyLimit int) (*model.Application, error)
 }
 
-type Service struct {
-	store Store
-	cfg   config.Config
+type AdminRecipientStore interface {
+	ListActiveAdminEmails(ctx context.Context) ([]string, error)
 }
 
-func NewService(cfg config.Config, store Store) *Service { return &Service{cfg: cfg, store: store} }
+type Service struct {
+	store  Store
+	admins AdminRecipientStore
+	cfg    config.Config
+	mailer email.Mailer
+	logger zerolog.Logger
+}
+
+func NewService(cfg config.Config, store Store, admins AdminRecipientStore, mailer email.Mailer, logger zerolog.Logger) *Service {
+	return &Service{cfg: cfg, store: store, admins: admins, mailer: mailer, logger: logger}
+}
 
 const (
 	defaultAdminListLimit = 20
@@ -61,7 +72,40 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, input model.Crea
 	if err := ValidateInput(&input); err != nil {
 		return nil, err
 	}
-	return s.store.Create(ctx, userID, input, s.cfg.DefaultTokenMinuteLimit, s.cfg.DefaultTokenDailyLimit)
+	app, err := s.store.Create(ctx, userID, input, s.cfg.DefaultTokenMinuteLimit, s.cfg.DefaultTokenDailyLimit)
+	if err != nil {
+		return nil, err
+	}
+	notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.cfg.MailSendTimeout())
+	defer cancel()
+	s.notifyApplicationSubmitted(notifyCtx, *app)
+	return app, nil
+}
+
+func adminApplicationsURL(publicURL string) string {
+	base := strings.TrimRight(strings.TrimSpace(publicURL), "/")
+	if base == "" {
+		return "/admin/applications"
+	}
+	return base + "/admin/applications"
+}
+
+func (s *Service) notifyApplicationSubmitted(ctx context.Context, app model.Application) {
+	if s.admins == nil || s.mailer == nil {
+		return
+	}
+	emails, err := s.admins.ListActiveAdminEmails(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Str("application_id", app.ID.String()).Msg("list active admin email recipients failed")
+		return
+	}
+	if len(emails) == 0 {
+		s.logger.Warn().Str("application_id", app.ID.String()).Msg("no active admin email recipients for application notification")
+		return
+	}
+	if err := s.mailer.SendApplicationSubmitted(emails, app, adminApplicationsURL(s.cfg.PublicURL)); err != nil {
+		s.logger.Error().Err(err).Str("application_id", app.ID.String()).Int("recipient_count", len(emails)).Msg("send application submitted admin notification failed")
+	}
 }
 
 func (s *Service) ListMine(ctx context.Context, userID uuid.UUID) ([]model.Application, error) {

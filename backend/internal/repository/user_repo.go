@@ -65,6 +65,28 @@ func (r *UserRepo) ListAdmin(ctx context.Context, status, query string, page, li
 	return scanUsers(rows, limit)
 }
 
+func (r *UserRepo) ListActiveAdminEmails(ctx context.Context) ([]string, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT email
+		FROM users
+		WHERE is_admin = true AND status = $1
+		ORDER BY created_at DESC`, model.UserStatusActive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	emails := make([]string, 0)
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, err
+		}
+		emails = append(emails, email)
+	}
+	return emails, rows.Err()
+}
+
 func (r *UserRepo) UpdateAdmin(ctx context.Context, id uuid.UUID, email, displayName, status *string, minuteLimit, dailyLimit *int) (*model.User, error) {
 	user := &model.User{}
 	emailArg := stringArg(email)

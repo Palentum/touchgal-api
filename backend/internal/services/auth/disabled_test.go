@@ -184,3 +184,7 @@ func (m *disabledMailer) SendVerificationCode(to, purpose, code string, ttlMinut
 	m.sentPurpose = purpose
 	return nil
 }
+
+func (m *disabledMailer) SendApplicationSubmitted(to []string, app model.Application, reviewURL string) error {
+	return nil
+}

@@ -95,7 +95,7 @@ func run() error {
 	mailer := email.NewMailer(cfg, logger)
 
 	authService := auth.NewService(cfg, repos.Users, repos.Auth, redisClient, mailer)
-	applicationService := application.NewService(cfg, repos.Applications)
+	applicationService := application.NewService(cfg, repos.Applications, repos.Users, mailer, logger)
 	tokenService := token.NewService(cfg, repos.Tokens, repos.Applications, redisClient)
 	userService := usersvc.NewService(repos.Users)
 	publicService := publicapi.NewService(cfg, repos.Games)
