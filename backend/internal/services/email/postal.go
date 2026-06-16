@@ -94,6 +94,10 @@ func (m *PostalMailer) SendApplicationSubmitted(to []string, app model.Applicati
 	return m.sendMessage(to, ApplicationSubmittedSubject(), ApplicationSubmittedBody(app, reviewURL), ApplicationSubmittedHTMLBody(app, reviewURL))
 }
 
+func (m *PostalMailer) SendApplicationApproved(to string, app model.Application, dashboardURL string) error {
+	return m.sendMessage([]string{to}, ApplicationApprovedSubject(), ApplicationApprovedBody(app, dashboardURL), ApplicationApprovedHTMLBody(app, dashboardURL))
+}
+
 func postalSendURL(baseURL string) string {
 	parsed, err := url.Parse(baseURL)
 	if err != nil {

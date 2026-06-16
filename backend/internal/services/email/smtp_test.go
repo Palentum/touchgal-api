@@ -317,6 +317,29 @@ func TestSMTPMailerSendsApplicationSubmittedNotification(t *testing.T) {
 	}
 }
 
+func TestSMTPMailerSendsApplicationApprovedNotification(t *testing.T) {
+	body := captureSMTPMessage(t, func(mailer *SMTPMailer) error {
+		return mailer.SendApplicationApproved(
+			"dev@example.com",
+			model.Application{ApplicantName: "Kun", ProjectName: "Docs Bot", ProjectURL: "https://example.com", DefaultMinuteLimit: 10, DefaultDailyLimit: 100},
+			"https://portal.example.com/dashboard/tokens",
+		)
+	})
+
+	for _, want := range []string{
+		"TouchGal API 应用申请已通过",
+		"dev@example.com",
+		"https://portal.example.com/dashboard/tokens",
+		"分钟限额",
+		"每日限额",
+		"Content-Type: multipart/alternative;",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("SMTP message missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestSMTPMailerApplicationNotificationUsesRandomBoundary(t *testing.T) {
 	body := captureSMTPMessage(t, func(mailer *SMTPMailer) error {
 		return mailer.SendApplicationSubmitted(

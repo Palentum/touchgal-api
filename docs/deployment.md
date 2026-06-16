@@ -442,7 +442,7 @@ curl -fsS https://developer.example.com/api/v1/ready
 | `POSTAL_API_KEY` | 空 | `MAIL_DRIVER=postal` 时必填 | Postal API key。 |
 
 
-新应用申请管理员提醒复用同一邮件驱动；收件人为 clean DB 中 status='active' 且 is_admin=true 的用户，审核入口使用 PUBLIC_BASE_URL + /admin/applications。
+新应用申请管理员提醒与应用通过用户提醒复用同一邮件驱动；管理员提醒收件人为 clean DB 中 status='active' 且 is_admin=true 的用户，审核入口使用 PUBLIC_BASE_URL + /admin/applications；用户通过提醒收件人为申请所属用户邮箱，Token 管理入口使用 PUBLIC_BASE_URL + /dashboard/tokens。
 
 ### 验证码与 Turnstile 变量
 

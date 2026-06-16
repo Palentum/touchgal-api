@@ -2,8 +2,10 @@ package email
 
 import (
 	"fmt"
-	"github.com/touchgal/developer/backend/internal/model"
 	"html"
+	"strings"
+
+	"github.com/touchgal/developer/backend/internal/model"
 )
 
 func VerificationSubject(purpose string) string {
@@ -180,4 +182,99 @@ func ApplicationSubmittedHTMLBody(app model.Application, reviewURL string) strin
   </table>
 </body>
 </html>`, html.EscapeString(ApplicationSubmittedSubject()), escapedApplicantName, escapedProjectName, escapedProjectURL, app.ExpectedDailyRequests, escapedUsageScenario, escapedReviewURL, escapedReviewURL)
+}
+
+func ApplicationApprovedSubject() string {
+	return "TouchGal API 应用申请已通过"
+}
+
+func ApplicationApprovedBody(app model.Application, dashboardURL string) string {
+	projectName := app.ProjectName
+	if projectName == "" {
+		projectName = "未填写"
+	}
+	dashboardURL = strings.TrimSpace(dashboardURL)
+	if dashboardURL == "" {
+		dashboardURL = "/dashboard/tokens"
+	}
+	return fmt.Sprintf(`您好：
+
+您的 TouchGal API 应用申请已通过审核。现在可以进入开发者门户创建 API Token。
+
+项目名称：%s
+项目地址：%s
+分钟限额：%d
+每日限额：%d
+Token 管理：%s
+
+此邮件由系统自动发送，请勿回复。邮件不包含 API token、验证码或会话信息。
+`, projectName, app.ProjectURL, app.DefaultMinuteLimit, app.DefaultDailyLimit, dashboardURL)
+}
+
+func ApplicationApprovedHTMLBody(app model.Application, dashboardURL string) string {
+	projectName := app.ProjectName
+	if projectName == "" {
+		projectName = "未填写"
+	}
+	dashboardURL = strings.TrimSpace(dashboardURL)
+	if dashboardURL == "" {
+		dashboardURL = "/dashboard/tokens"
+	}
+
+	escapedProjectName := html.EscapeString(projectName)
+	escapedProjectURL := html.EscapeString(app.ProjectURL)
+	escapedDashboardURL := html.EscapeString(dashboardURL)
+
+	return fmt.Sprintf(`<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>%s</title>
+</head>
+<body style="margin:0;padding:0;background:#faf9f5;color:#181715;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">你的 TouchGal API 应用申请已通过审核，可以创建 API Token 并开始调用接口。</div>
+  <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;background:#faf9f5;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="width:100%%;max-width:640px;">
+          <tr>
+            <td style="padding:0 0 16px 0;color:#181715;font-size:14px;font-weight:500;line-height:1.4;">
+              <span style="display:inline-block;width:28px;height:28px;margin-right:10px;border-radius:9999px;background:#181715;color:#faf9f5;text-align:center;line-height:28px;">✣</span>
+              TouchGal API
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#efe9de;border:1px solid #e6dfd8;border-radius:16px;padding:32px;">
+              <div style="display:inline-block;margin:0 0 18px 0;padding:5px 12px;border-radius:9999px;background:#cc785c;color:#ffffff;font-size:12px;font-weight:500;letter-spacing:1.5px;line-height:1.4;text-transform:uppercase;">APPLICATION APPROVED</div>
+              <h1 style="margin:0;color:#181715;font-family:'Cormorant Garamond','Tiempos Headline',Georgia,'Times New Roman',serif;font-size:34px;font-weight:500;letter-spacing:-0.5px;line-height:1.15;">应用申请已通过</h1>
+              <p style="margin:16px 0 0 0;color:#3d3d3a;font-size:16px;font-weight:400;line-height:1.55;">你的 TouchGal API 应用申请已通过审核，可以创建 API Token 并开始调用接口。</p>
+
+              <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0;width:100%%;background:#faf9f5;border:1px solid #e6dfd8;border-radius:12px;">
+                <tr>
+                  <td style="padding:18px 20px;color:#3d3d3a;font-size:14px;line-height:1.65;">
+                    <strong style="color:#252523;font-weight:500;">项目名称：</strong>%s<br>
+                    <strong style="color:#252523;font-weight:500;">项目地址：</strong>%s<br>
+                    <strong style="color:#252523;font-weight:500;">分钟限额：</strong>%d<br>
+                    <strong style="color:#252523;font-weight:500;">每日限额：</strong>%d<br>
+                    <strong style="color:#252523;font-weight:500;">Token 管理入口：</strong>%s
+                  </td>
+                </tr>
+              </table>
+
+              <a href="%s" style="display:inline-block;padding:12px 18px;border-radius:9999px;background:#181715;color:#faf9f5;font-size:14px;font-weight:500;line-height:1.4;text-decoration:none;">创建 API Token</a>
+              <p style="margin:14px 0 0 0;color:#6f6a62;font-size:13px;line-height:1.5;">Token 管理：%s</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 4px 0 4px;color:#8e8b82;font-size:13px;font-weight:400;line-height:1.5;">
+              此邮件由系统自动发送，请勿回复。邮件不包含 API token、验证码或会话信息。
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`, html.EscapeString(ApplicationApprovedSubject()), escapedProjectName, escapedProjectURL, app.DefaultMinuteLimit, app.DefaultDailyLimit, escapedDashboardURL, escapedDashboardURL, escapedDashboardURL)
 }

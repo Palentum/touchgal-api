@@ -121,6 +121,57 @@ func TestPostalMailerSendsApplicationSubmittedNotification(t *testing.T) {
 	}
 }
 
+func TestPostalMailerSendsApplicationApprovedNotification(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		var payload postalSendRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		if len(payload.To) != 1 || payload.To[0] != "dev@example.com" {
+			t.Errorf("unexpected to: %#v", payload.To)
+		}
+		if payload.Subject != "TouchGal API 应用申请已通过" {
+			t.Errorf("unexpected subject: %q", payload.Subject)
+		}
+		if !strings.Contains(payload.PlainBody, "https://portal.example.com/dashboard/tokens") {
+			t.Errorf("plain body missing dashboard URL: %q", payload.PlainBody)
+		}
+		if !strings.Contains(payload.HTMLBody, "https://portal.example.com/dashboard/tokens") {
+			t.Errorf("HTML body missing dashboard URL: %q", payload.HTMLBody)
+		}
+		if !strings.Contains(payload.PlainBody, "10") || !strings.Contains(payload.PlainBody, "100") {
+			t.Errorf("plain body missing limits: %q", payload.PlainBody)
+		}
+		if !strings.Contains(payload.HTMLBody, "10") || !strings.Contains(payload.HTMLBody, "100") {
+			t.Errorf("HTML body missing limits: %q", payload.HTMLBody)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"message_id":"msg"}}`))
+	}))
+	defer server.Close()
+
+	mailer := NewPostalMailer(config.Config{
+		PostalAPIURL: server.URL,
+		PostalAPIKey: "secret",
+		SMTPFrom:     "no-reply@example.com",
+	})
+	err := mailer.SendApplicationApproved(
+		"dev@example.com",
+		model.Application{ApplicantName: "Kun", ProjectName: "Docs Bot", ProjectURL: "https://example.com", DefaultMinuteLimit: 10, DefaultDailyLimit: 100},
+		"https://portal.example.com/dashboard/tokens",
+	)
+	if err != nil {
+		t.Fatalf("send application approved notification: %v", err)
+	}
+	if !called {
+		t.Fatal("Postal API was not called")
+	}
+}
+
 func TestPostalMailerReportsAPIErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

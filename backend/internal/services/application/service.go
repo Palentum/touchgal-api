@@ -19,20 +19,21 @@ type Store interface {
 	UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status string, minuteLimit, dailyLimit int) (*model.Application, error)
 }
 
-type AdminRecipientStore interface {
+type UserStore interface {
 	ListActiveAdminEmails(ctx context.Context) ([]string, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*model.User, error)
 }
 
 type Service struct {
 	store  Store
-	admins AdminRecipientStore
+	users  UserStore
 	cfg    config.Config
 	mailer email.Mailer
 	logger zerolog.Logger
 }
 
-func NewService(cfg config.Config, store Store, admins AdminRecipientStore, mailer email.Mailer, logger zerolog.Logger) *Service {
-	return &Service{cfg: cfg, store: store, admins: admins, mailer: mailer, logger: logger}
+func NewService(cfg config.Config, store Store, users UserStore, mailer email.Mailer, logger zerolog.Logger) *Service {
+	return &Service{cfg: cfg, store: store, users: users, mailer: mailer, logger: logger}
 }
 
 const (
@@ -90,11 +91,19 @@ func adminApplicationsURL(publicURL string) string {
 	return base + "/admin/applications"
 }
 
+func dashboardTokensURL(publicURL string) string {
+	base := strings.TrimRight(strings.TrimSpace(publicURL), "/")
+	if base == "" {
+		return "/dashboard/tokens"
+	}
+	return base + "/dashboard/tokens"
+}
+
 func (s *Service) notifyApplicationSubmitted(ctx context.Context, app model.Application) {
-	if s.admins == nil || s.mailer == nil {
+	if s.users == nil || s.mailer == nil {
 		return
 	}
-	emails, err := s.admins.ListActiveAdminEmails(ctx)
+	emails, err := s.users.ListActiveAdminEmails(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Str("application_id", app.ID.String()).Msg("list active admin email recipients failed")
 		return
@@ -105,6 +114,36 @@ func (s *Service) notifyApplicationSubmitted(ctx context.Context, app model.Appl
 	}
 	if err := s.mailer.SendApplicationSubmitted(emails, app, adminApplicationsURL(s.cfg.PublicURL)); err != nil {
 		s.logger.Error().Err(err).Str("application_id", app.ID.String()).Int("recipient_count", len(emails)).Msg("send application submitted admin notification failed")
+	}
+}
+
+func (s *Service) notifyApplicationApproved(ctx context.Context, app model.Application) {
+	if s.users == nil || s.mailer == nil {
+		return
+	}
+	user, err := s.users.GetByID(ctx, app.UserID)
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("application_id", app.ID.String()).
+			Str("user_id", app.UserID.String()).
+			Msg("get application applicant email failed")
+		return
+	}
+	if strings.TrimSpace(user.Email) == "" {
+		s.logger.Warn().
+			Str("application_id", app.ID.String()).
+			Str("user_id", app.UserID.String()).
+			Msg("application applicant has no email for approval notification")
+		return
+	}
+	if err := s.mailer.SendApplicationApproved(user.Email, app, dashboardTokensURL(s.cfg.PublicURL)); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("application_id", app.ID.String()).
+			Str("user_id", app.UserID.String()).
+			Str("email", user.Email).
+			Msg("send application approved user notification failed")
 	}
 }
 
@@ -133,7 +172,16 @@ func (s *Service) Review(ctx context.Context, id, adminID uuid.UUID, status stri
 	if dailyLimit < minuteLimit {
 		return nil, model.ErrInvalidInput
 	}
-	return s.store.UpdateReview(ctx, id, adminID, status, minuteLimit, dailyLimit)
+	app, err := s.store.UpdateReview(ctx, id, adminID, status, minuteLimit, dailyLimit)
+	if err != nil {
+		return nil, err
+	}
+	if status == model.ApplicationApproved {
+		notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.cfg.MailSendTimeout())
+		defer cancel()
+		s.notifyApplicationApproved(notifyCtx, *app)
+	}
+	return app, nil
 }
 
 func normalizePage(page, limit int) (int, int, error) {
