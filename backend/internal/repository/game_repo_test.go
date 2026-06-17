@@ -127,6 +127,19 @@ func (r gameCountRow) Scan(dest ...any) error {
 	return nil
 }
 
+func TestGameRepoSearchSQLVariantsShareRankingTemplate(t *testing.T) {
+	normalizePredicate := func(sql string) string {
+		return strings.Replace(sql, gameSearchAllowNsfwPredicate, gameSearchSFWPredicate, 1)
+	}
+
+	if got := normalizePredicate(gameSearchAllowNsfwSQL); got != gameSearchSFWSQL {
+		t.Fatalf("search SQL variants should differ only by content_limit predicate\nsfw:\n%s\nallow nsfw normalized:\n%s", gameSearchSFWSQL, got)
+	}
+	if got := normalizePredicate(gameSearchCountAllowNsfwSQL); got != gameSearchCountSFWSQL {
+		t.Fatalf("search count SQL variants should differ only by content_limit predicate\nsfw:\n%s\nallow nsfw normalized:\n%s", gameSearchCountSFWSQL, got)
+	}
+}
+
 func TestGameRepoSearchRanksTitleBeforeAliasAndMetadata(t *testing.T) {
 	queryer := &recordingGameQueryer{
 		rows:     &gameSearchRows{rows: []gameSearchRow{{uniqueID: "abcd1234", name: "Summer"}}},

@@ -24,108 +24,6 @@ const (
 	gameDetailSFWPredicate       = "g.content_limit = 'sfw'"
 	gameDetailAllowNsfwPredicate = "g.content_limit IN ('sfw', 'nsfw')"
 
-	gameSearchSFWSQL = `
-		WITH ranked_games AS (
-			SELECT g.unique_id,
-			       g.name,
-			       CASE
-			         WHEN g.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(g.name, $4)
-			         WHEN g.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(g.name, $4)
-			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(g.name, $4)
-			         ELSE 0
-			       END AS title_rank,
-			       CASE
-			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 0
-			         ELSE COALESCE((
-			           SELECT max(CASE
-			             WHEN a.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(a.name, $4)
-			             WHEN a.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(a.name, $4)
-			             WHEN a.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(a.name, $4)
-			             ELSE 0
-			           END)
-			           FROM game_aliases a
-			           WHERE a.game_unique_id = g.unique_id
-			             AND a.name ILIKE $1 ESCAPE E'\\'
-			         ), 0)
-			       END AS alias_rank,
-			       similarity(g.search_text, $4) AS metadata_rank
-			FROM games g
-			WHERE g.deleted_at IS NULL
-			  AND g.` + gameSearchSFWPredicate + `
-			  AND g.search_text ILIKE $1 ESCAPE E'\\'
-		)
-		SELECT unique_id, name
-		FROM ranked_games
-		ORDER BY
-		  CASE
-		    WHEN title_rank > 0 THEN 0
-		    WHEN alias_rank > 0 THEN 1
-		    ELSE 2
-		  END ASC,
-		  CASE
-		    WHEN title_rank > 0 THEN title_rank
-		    WHEN alias_rank > 0 THEN alias_rank
-		    ELSE metadata_rank
-		  END DESC,
-		  name ASC, unique_id ASC
-		LIMIT $5 OFFSET $6`
-	gameSearchAllowNsfwSQL = `
-		WITH ranked_games AS (
-			SELECT g.unique_id,
-			       g.name,
-			       CASE
-			         WHEN g.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(g.name, $4)
-			         WHEN g.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(g.name, $4)
-			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(g.name, $4)
-			         ELSE 0
-			       END AS title_rank,
-			       CASE
-			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 0
-			         ELSE COALESCE((
-			           SELECT max(CASE
-			             WHEN a.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(a.name, $4)
-			             WHEN a.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(a.name, $4)
-			             WHEN a.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(a.name, $4)
-			             ELSE 0
-			           END)
-			           FROM game_aliases a
-			           WHERE a.game_unique_id = g.unique_id
-			             AND a.name ILIKE $1 ESCAPE E'\\'
-			         ), 0)
-			       END AS alias_rank,
-			       similarity(g.search_text, $4) AS metadata_rank
-			FROM games g
-			WHERE g.deleted_at IS NULL
-			  AND g.` + gameSearchAllowNsfwPredicate + `
-			  AND g.search_text ILIKE $1 ESCAPE E'\\'
-		)
-		SELECT unique_id, name
-		FROM ranked_games
-		ORDER BY
-		  CASE
-		    WHEN title_rank > 0 THEN 0
-		    WHEN alias_rank > 0 THEN 1
-		    ELSE 2
-		  END ASC,
-		  CASE
-		    WHEN title_rank > 0 THEN title_rank
-		    WHEN alias_rank > 0 THEN alias_rank
-		    ELSE metadata_rank
-		  END DESC,
-		  name ASC, unique_id ASC
-		LIMIT $5 OFFSET $6`
-	gameSearchCountSFWSQL = `
-		SELECT count(*)
-		FROM games
-		WHERE deleted_at IS NULL
-		  AND ` + gameSearchSFWPredicate + `
-		  AND search_text ILIKE $1 ESCAPE E'\\'`
-	gameSearchCountAllowNsfwSQL = `
-		SELECT count(*)
-		FROM games
-		WHERE deleted_at IS NULL
-		  AND ` + gameSearchAllowNsfwPredicate + `
-		  AND search_text ILIKE $1 ESCAPE E'\\'`
 	gameDetailSFWSQL = `
 		SELECT g.unique_id, g.name, g.introduction, g.banner_url, g.types, g.platforms, g.languages,
 		       g.source_created_at, g.released, g.source_updated_at, g.resource_updated_at,
@@ -166,6 +64,65 @@ const (
 		  AND g.deleted_at IS NULL
 		  AND ` + gameDetailAllowNsfwPredicate + `
 		ORDER BY gr.published_at DESC, gr.source_resource_id DESC`
+
+	gameSearchSQLPrefix = `
+		WITH ranked_games AS (
+			SELECT g.unique_id,
+			       g.name,
+			       CASE
+			         WHEN g.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(g.name, $4)
+			         WHEN g.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(g.name, $4)
+			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(g.name, $4)
+			         ELSE 0
+			       END AS title_rank,
+			       CASE
+			         WHEN g.name ILIKE $1 ESCAPE E'\\' THEN 0
+			         ELSE COALESCE((
+			           SELECT max(CASE
+			             WHEN a.name ILIKE $2 ESCAPE E'\\' THEN 3 + similarity(a.name, $4)
+			             WHEN a.name ILIKE $3 ESCAPE E'\\' THEN 2 + similarity(a.name, $4)
+			             WHEN a.name ILIKE $1 ESCAPE E'\\' THEN 1 + similarity(a.name, $4)
+			             ELSE 0
+			           END)
+			           FROM game_aliases a
+			           WHERE a.game_unique_id = g.unique_id
+			             AND a.name ILIKE $1 ESCAPE E'\\'
+			         ), 0)
+			       END AS alias_rank,
+			       similarity(g.search_text, $4) AS metadata_rank
+			FROM games g
+			WHERE g.deleted_at IS NULL
+			  AND g.`
+	gameSearchSQLSuffix = `
+			  AND g.search_text ILIKE $1 ESCAPE E'\\'
+		)
+		SELECT unique_id, name
+		FROM ranked_games
+		ORDER BY
+		  CASE
+		    WHEN title_rank > 0 THEN 0
+		    WHEN alias_rank > 0 THEN 1
+		    ELSE 2
+		  END ASC,
+		  CASE
+		    WHEN title_rank > 0 THEN title_rank
+		    WHEN alias_rank > 0 THEN alias_rank
+		    ELSE metadata_rank
+		  END DESC,
+		  name ASC, unique_id ASC
+		LIMIT $5 OFFSET $6`
+	gameSearchSFWSQL       = gameSearchSQLPrefix + gameSearchSFWPredicate + gameSearchSQLSuffix
+	gameSearchAllowNsfwSQL = gameSearchSQLPrefix + gameSearchAllowNsfwPredicate + gameSearchSQLSuffix
+
+	gameSearchCountSQLPrefix = `
+		SELECT count(*)
+		FROM games
+		WHERE deleted_at IS NULL
+		  AND `
+	gameSearchCountSQLSuffix = `
+		  AND search_text ILIKE $1 ESCAPE E'\\'`
+	gameSearchCountSFWSQL       = gameSearchCountSQLPrefix + gameSearchSFWPredicate + gameSearchCountSQLSuffix
+	gameSearchCountAllowNsfwSQL = gameSearchCountSQLPrefix + gameSearchAllowNsfwPredicate + gameSearchCountSQLSuffix
 )
 
 func likePattern(value string, leadingWildcard, trailingWildcard bool) string {
