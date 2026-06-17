@@ -1,7 +1,7 @@
 <template>
   <section class="tg-dashboard-stack">
     <div>
-      <p class="tg-eyebrow">账号准入</p>
+      <p class="tg-eyebrow">Submit Application</p>
       <h1 class="tg-display-md">提交 API 申请</h1>
     </div>
 
