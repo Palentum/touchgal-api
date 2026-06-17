@@ -2,6 +2,10 @@
 \else
 \set keyword summer
 \endif
+\if :{?short_keyword}
+\else
+\set short_keyword a
+\endif
 \if :{?page}
 \else
 \set page 1
@@ -97,6 +101,75 @@ CROSS JOIN games g
 WHERE g.deleted_at IS NULL
   AND g.content_limit = 'sfw'
   AND g.search_text ILIKE p.contains_pattern ESCAPE E'\\';
+
+\echo 'clean-db short search page query'
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+WITH patterns AS (
+  SELECT :'short_keyword'::text AS keyword,
+         replace(replace(replace(:'short_keyword'::text, E'\\', E'\\\\'), '%', E'\\%'), '_', E'\\_') AS exact_pattern
+), search_patterns AS (
+  SELECT keyword,
+         exact_pattern,
+         exact_pattern || '%' AS prefix_pattern,
+         '%' || exact_pattern || '%' AS contains_pattern
+  FROM patterns
+), ranked_games AS (
+  SELECT g.unique_id,
+         g.name,
+         CASE
+           WHEN g.name ILIKE p.exact_pattern ESCAPE E'\\' THEN 3 + similarity(g.name, p.keyword)
+           WHEN g.name ILIKE p.prefix_pattern ESCAPE E'\\' THEN 2 + similarity(g.name, p.keyword)
+           WHEN g.name ILIKE p.contains_pattern ESCAPE E'\\' THEN 1 + similarity(g.name, p.keyword)
+           ELSE 0
+         END AS title_rank,
+         CASE
+           WHEN g.name ILIKE p.contains_pattern ESCAPE E'\\' THEN 0
+           ELSE COALESCE((
+             SELECT max(CASE
+               WHEN a.name ILIKE p.exact_pattern ESCAPE E'\\' THEN 3 + similarity(a.name, p.keyword)
+               WHEN a.name ILIKE p.prefix_pattern ESCAPE E'\\' THEN 2 + similarity(a.name, p.keyword)
+               WHEN a.name ILIKE p.contains_pattern ESCAPE E'\\' THEN 1 + similarity(a.name, p.keyword)
+               ELSE 0
+             END)
+             FROM game_aliases a
+             WHERE a.game_unique_id = g.unique_id
+               AND a.name ILIKE p.contains_pattern ESCAPE E'\\'
+           ), 0)
+         END AS alias_rank,
+         similarity(g.search_text, p.keyword) AS metadata_rank
+  FROM search_patterns p
+  JOIN game_search_ngrams n ON n.gram = lower(p.keyword)
+  JOIN games g ON g.unique_id = n.game_unique_id
+  WHERE g.deleted_at IS NULL
+    AND g.content_limit = 'sfw'
+)
+SELECT unique_id, name
+FROM ranked_games
+ORDER BY
+  CASE
+    WHEN title_rank > 0 THEN 0
+    WHEN alias_rank > 0 THEN 1
+    ELSE 2
+  END ASC,
+  CASE
+    WHEN title_rank > 0 THEN title_rank
+    WHEN alias_rank > 0 THEN alias_rank
+    ELSE metadata_rank
+  END DESC,
+  name ASC, unique_id ASC
+LIMIT (:'limit')::int OFFSET (((:'page')::int - 1) * (:'limit')::int);
+
+\echo 'clean-db short search count query'
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+WITH patterns AS (
+  SELECT :'short_keyword'::text AS keyword
+)
+SELECT count(*)
+FROM patterns p
+JOIN game_search_ngrams n ON n.gram = lower(p.keyword)
+JOIN games g ON g.unique_id = n.game_unique_id
+WHERE g.deleted_at IS NULL
+  AND g.content_limit = 'sfw';
 
 \echo 'clean-db game detail primary query'
 EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)

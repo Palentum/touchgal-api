@@ -528,6 +528,7 @@ curl -fsS https://developer.example.com/api/v1/ready
 | `REDIS_BENCH_PASSWORD` | 空 | Redis benchmark 使用的密码。 |
 | `REDIS_BENCH_DB` | 空 | Redis benchmark 使用的隔离 logical DB；未设置时跳过真实 Redis benchmark。 |
 | `keyword` | `summer` | `make perf-explain` 的搜索关键词。 |
+| `short_keyword` | `a` | `make perf-explain` 的 1/2 字符短搜索关键词。 |
 | `page` | `1` | `make perf-explain` 的分页页码。 |
 | `limit` | `20` | `make perf-explain` 的分页大小。 |
 | `days` | `30` | `make perf-explain` 的 dashboard 查询窗口。 |

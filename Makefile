@@ -30,7 +30,7 @@ bench:
 
 perf-explain:
 	@test -n "$$DATABASE_DSN" || (printf 'DATABASE_DSN is required\n' && exit 1)
-	psql "$$DATABASE_DSN" -v ON_ERROR_STOP=1 -v keyword="$${keyword:-summer}" -v page="$${page:-1}" -v limit="$${limit:-20}" -v days="$${days:-30}" -v unique_id="$${unique_id:-}" -v user_id="$${user_id:-}" -f scripts/perf-explain.sql
+	psql "$$DATABASE_DSN" -v ON_ERROR_STOP=1 -v keyword="$${keyword:-summer}" -v short_keyword="$${short_keyword:-a}" -v page="$${page:-1}" -v limit="$${limit:-20}" -v days="$${days:-30}" -v unique_id="$${unique_id:-}" -v user_id="$${user_id:-}" -f scripts/perf-explain.sql
 
 perf-explain-source:
 	@test -n "$$SOURCE_DATABASE_DSN" || (printf 'SOURCE_DATABASE_DSN is required\n' && exit 1)

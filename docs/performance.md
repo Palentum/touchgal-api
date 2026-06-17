@@ -114,6 +114,7 @@ DATABASE_DSN='postgres://touchgal_api:password@localhost:5432/touchgal_api?sslmo
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `keyword` | `summer` | 搜索关键词。 |
+| `short_keyword` | `a` | 短搜索关键词，用于覆盖 1/2 字符 n-gram 搜索路径。 |
 | `page` | `1` | 搜索分页页码。 |
 | `limit` | `20` | 搜索分页大小。 |
 | `days` | `30` | dashboard 聚合窗口天数。 |
@@ -124,7 +125,7 @@ DATABASE_DSN='postgres://touchgal_api:password@localhost:5432/touchgal_api?sslmo
 
 ```bash
 DATABASE_DSN='postgres://touchgal_api:password@localhost:5432/touchgal_api?sslmode=disable' \
-keyword='summer' page=1 limit=20 days=30 unique_id='game-unique-id' user_id='00000000-0000-0000-0000-000000000000' \
+keyword='summer' short_keyword='a' page=1 limit=20 days=30 unique_id='game-unique-id' user_id='00000000-0000-0000-0000-000000000000' \
 make perf-explain
 ```
 
@@ -132,11 +133,13 @@ make perf-explain
 
 脚本覆盖：
 
-1. `clean-db search page query`：`games` SFW 未删除搜索分页。
-2. `clean-db search count query`：同条件搜索计数。
-3. `clean-db game detail primary query`：游戏详情主表与评分统计。
-4. `clean-db game detail relation queries`：游戏标签与公司关系。
-5. `clean-db dashboard aggregate query`：`api_usage_*` dashboard 聚合。
+1. `clean-db search page query`：`games` SFW 未删除 trigram 搜索分页。
+2. `clean-db search count query`：同条件 trigram 搜索计数。
+3. `clean-db short search page query`：`game_search_ngrams` SFW 未删除短关键词搜索分页。
+4. `clean-db short search count query`：同条件短关键词搜索计数。
+5. `clean-db game detail primary query`：游戏详情主表与评分统计。
+6. `clean-db game detail relation queries`：游戏标签与公司关系。
+7. `clean-db dashboard aggregate query`：`api_usage_*` dashboard 聚合。
 
 执行特性：
 

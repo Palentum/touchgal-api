@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/touchgal/developer/backend/internal/model"
@@ -18,6 +19,8 @@ const (
 	stringListCapHint   = 8
 	companyListCapHint  = 4
 	resourceListCapHint = 8
+
+	trigramSearchMinRunes = 3
 
 	gameSearchSFWPredicate       = "content_limit = 'sfw'"
 	gameSearchAllowNsfwPredicate = "content_limit IN ('sfw', 'nsfw')"
@@ -65,7 +68,7 @@ const (
 		  AND ` + gameDetailAllowNsfwPredicate + `
 		ORDER BY gr.published_at DESC, gr.source_resource_id DESC`
 
-	gameSearchSQLPrefix = `
+	gameSearchRankedSQLPrefix = `
 		WITH ranked_games AS (
 			SELECT g.unique_id,
 			       g.name,
@@ -89,12 +92,20 @@ const (
 			             AND a.name ILIKE $1 ESCAPE E'\\'
 			         ), 0)
 			       END AS alias_rank,
-			       similarity(g.search_text, $4) AS metadata_rank
+			       similarity(g.search_text, $4) AS metadata_rank`
+	gameSearchSQLPrefix = gameSearchRankedSQLPrefix + `
 			FROM games g
 			WHERE g.deleted_at IS NULL
 			  AND g.`
 	gameSearchSQLSuffix = `
-			  AND g.search_text ILIKE $1 ESCAPE E'\\'
+			  AND g.search_text ILIKE $1 ESCAPE E'\\'`
+	gameSearchNgramSQLPrefix = gameSearchRankedSQLPrefix + `
+			FROM game_search_ngrams n
+			JOIN games g ON g.unique_id = n.game_unique_id
+			WHERE n.gram = lower($4)
+			  AND g.deleted_at IS NULL
+			  AND g.`
+	gameSearchOrderSQL = `
 		)
 		SELECT unique_id, name
 		FROM ranked_games
@@ -111,8 +122,10 @@ const (
 		  END DESC,
 		  name ASC, unique_id ASC
 		LIMIT $5 OFFSET $6`
-	gameSearchSFWSQL       = gameSearchSQLPrefix + gameSearchSFWPredicate + gameSearchSQLSuffix
-	gameSearchAllowNsfwSQL = gameSearchSQLPrefix + gameSearchAllowNsfwPredicate + gameSearchSQLSuffix
+	gameSearchSFWSQL            = gameSearchSQLPrefix + gameSearchSFWPredicate + gameSearchSQLSuffix + gameSearchOrderSQL
+	gameSearchAllowNsfwSQL      = gameSearchSQLPrefix + gameSearchAllowNsfwPredicate + gameSearchSQLSuffix + gameSearchOrderSQL
+	gameSearchNgramSFWSQL       = gameSearchNgramSQLPrefix + gameSearchSFWPredicate + gameSearchOrderSQL
+	gameSearchNgramAllowNsfwSQL = gameSearchNgramSQLPrefix + gameSearchAllowNsfwPredicate + gameSearchOrderSQL
 
 	gameSearchCountSQLPrefix = `
 		SELECT count(*)
@@ -121,8 +134,17 @@ const (
 		  AND `
 	gameSearchCountSQLSuffix = `
 		  AND search_text ILIKE $1 ESCAPE E'\\'`
-	gameSearchCountSFWSQL       = gameSearchCountSQLPrefix + gameSearchSFWPredicate + gameSearchCountSQLSuffix
-	gameSearchCountAllowNsfwSQL = gameSearchCountSQLPrefix + gameSearchAllowNsfwPredicate + gameSearchCountSQLSuffix
+	gameSearchNgramCountSQLPrefix = `
+		SELECT count(*)
+		FROM game_search_ngrams n
+		JOIN games g ON g.unique_id = n.game_unique_id
+		WHERE n.gram = lower($1)
+		  AND g.deleted_at IS NULL
+		  AND g.`
+	gameSearchCountSFWSQL            = gameSearchCountSQLPrefix + gameSearchSFWPredicate + gameSearchCountSQLSuffix
+	gameSearchCountAllowNsfwSQL      = gameSearchCountSQLPrefix + gameSearchAllowNsfwPredicate + gameSearchCountSQLSuffix
+	gameSearchNgramCountSFWSQL       = gameSearchNgramCountSQLPrefix + gameSearchSFWPredicate
+	gameSearchNgramCountAllowNsfwSQL = gameSearchNgramCountSQLPrefix + gameSearchAllowNsfwPredicate
 )
 
 func likePattern(value string, leadingWildcard, trailingWildcard bool) string {
@@ -171,9 +193,20 @@ func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int, 
 	prefixPattern := likePrefixPattern(keyword)
 	searchSQL := gameSearchSFWSQL
 	countSQL := gameSearchCountSFWSQL
+	countArg := any(containsPattern)
+	shortKeyword := utf8.RuneCountInString(keyword) < trigramSearchMinRunes
+	if shortKeyword {
+		searchSQL = gameSearchNgramSFWSQL
+		countSQL = gameSearchNgramCountSFWSQL
+		countArg = keyword
+	}
 	if allowNsfw {
 		searchSQL = gameSearchAllowNsfwSQL
 		countSQL = gameSearchCountAllowNsfwSQL
+		if shortKeyword {
+			searchSQL = gameSearchNgramAllowNsfwSQL
+			countSQL = gameSearchNgramCountAllowNsfwSQL
+		}
 	}
 	rows, err := r.db.Query(ctx, searchSQL, containsPattern, exactPattern, prefixPattern, keyword, limit, offset)
 	if err != nil {
@@ -193,7 +226,7 @@ func (r *GameRepo) Search(ctx context.Context, keyword string, page, limit int, 
 		return model.GameSearchResult{}, err
 	}
 	total := 0
-	if err := r.db.QueryRow(ctx, countSQL, containsPattern).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, countSQL, countArg).Scan(&total); err != nil {
 		return model.GameSearchResult{}, err
 	}
 	return model.GameSearchResult{Items: items, Pagination: model.Pagination{Page: page, Limit: limit, Total: total, HasMore: offset+len(items) < total}}, nil

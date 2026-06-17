@@ -566,7 +566,7 @@ func (r *SyncRepo) RefreshSearchTextBatch(ctx context.Context, uniqueIDs []strin
 	if len(uniqueIDs) == 0 {
 		return nil
 	}
-	_, err := r.db.Exec(ctx, `
+	if _, err := r.db.Exec(ctx, `
 		WITH affected AS (
 			SELECT unnest($1::text[]) AS unique_id
 		), aliases AS (
@@ -592,7 +592,41 @@ func (r *SyncRepo) RefreshSearchTextBatch(ctx context.Context, uniqueIDs []strin
 		LEFT JOIN aliases ON aliases.game_unique_id = af.unique_id
 		LEFT JOIN tag_text ON tag_text.game_unique_id = af.unique_id
 		LEFT JOIN company_text ON company_text.game_unique_id = af.unique_id
-		WHERE g.unique_id = af.unique_id`, uniqueIDs)
+		WHERE g.unique_id = af.unique_id`, uniqueIDs); err != nil {
+		return err
+	}
+	return r.refreshSearchNgramsBatch(ctx, uniqueIDs)
+}
+
+func (r *SyncRepo) refreshSearchNgramsBatch(ctx context.Context, uniqueIDs []string) error {
+	if _, err := r.db.Exec(ctx, `
+		DELETE FROM game_search_ngrams
+		WHERE game_unique_id = ANY($1::text[])`, uniqueIDs); err != nil {
+		return err
+	}
+	_, err := r.db.Exec(ctx, `
+		WITH affected AS (
+			SELECT unnest($1::text[]) AS unique_id
+		), source AS (
+			SELECT g.unique_id, lower(g.search_text) AS search_text, char_length(lower(g.search_text)) AS search_len
+			FROM games g
+			JOIN affected af ON af.unique_id = g.unique_id
+			WHERE g.search_text <> '' AND g.deleted_at IS NULL AND g.content_limit IN ('sfw', 'nsfw')
+		), grams AS (
+			SELECT source.unique_id, gram_values.gram
+			FROM source
+			CROSS JOIN LATERAL generate_series(1, source.search_len) AS pos(i)
+			CROSS JOIN LATERAL (
+			  VALUES
+			    (substring(source.search_text FROM pos.i FOR 1)),
+			    (CASE WHEN pos.i < source.search_len THEN substring(source.search_text FROM pos.i FOR 2) END)
+			) AS gram_values(gram)
+			WHERE gram_values.gram IS NOT NULL AND gram_values.gram <> ''
+		)
+		INSERT INTO game_search_ngrams (game_unique_id, gram)
+		SELECT DISTINCT unique_id, gram
+		FROM grams
+		ON CONFLICT DO NOTHING`, uniqueIDs)
 	return err
 }
 
@@ -639,6 +673,13 @@ func (r *SyncRepo) MarkDeletedNotSeenByRun(ctx context.Context, runID uuid.UUID)
 		DELETE FROM game_resources gr
 		USING games g
 		WHERE gr.game_unique_id = g.unique_id AND g.deleted_at IS NOT NULL`)
+	if err != nil {
+		return 0, err
+	}
+	_, err = r.db.Exec(ctx, `
+		DELETE FROM game_search_ngrams n
+		USING games g
+		WHERE n.game_unique_id = g.unique_id AND g.deleted_at IS NOT NULL`)
 	if err != nil {
 		return 0, err
 	}

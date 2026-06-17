@@ -200,6 +200,96 @@ func TestGameRepoSearchRanksTitleBeforeAliasAndMetadata(t *testing.T) {
 	}
 }
 
+func TestGameRepoSearchShortKeywordUsesNgramFilter(t *testing.T) {
+	queryer := &recordingGameQueryer{
+		rows:     &gameSearchRows{rows: []gameSearchRow{{uniqueID: "abcd1234", name: "魔法ゲーム"}}},
+		countRow: gameCountRow{total: 3},
+	}
+	repo := NewGameRepo(queryer)
+
+	result, err := repo.Search(context.Background(), "魔", 2, 10, false)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(result.Items) != 1 || result.Pagination.Page != 2 || result.Pagination.Total != 3 || result.Pagination.HasMore {
+		t.Fatalf("unexpected search result: %#v", result)
+	}
+
+	mainSQL := strings.ToLower(queryer.sql)
+	for _, want := range []string{
+		"from game_search_ngrams n",
+		"join games g on g.unique_id = n.game_unique_id",
+		"n.gram = lower($4)",
+		"g.content_limit = 'sfw'",
+	} {
+		if !strings.Contains(mainSQL, want) {
+			t.Fatalf("short search SQL missing %q in %q", want, queryer.sql)
+		}
+	}
+	if strings.Contains(mainSQL, "g.search_text ilike $1") {
+		t.Fatalf("short search must not use trigram ILIKE as the row filter: %q", queryer.sql)
+	}
+	if len(queryer.args) != 6 || queryer.args[0] != "%魔%" || queryer.args[1] != "魔" || queryer.args[2] != "魔%" || queryer.args[3] != "魔" || queryer.args[4] != 10 || queryer.args[5] != 10 {
+		t.Fatalf("unexpected search args: %#v", queryer.args)
+	}
+
+	countSQL := strings.ToLower(queryer.countSQL)
+	if !strings.Contains(countSQL, "from game_search_ngrams n") || !strings.Contains(countSQL, "n.gram = lower($1)") {
+		t.Fatalf("short count SQL must use ngram equality: %q", queryer.countSQL)
+	}
+	if strings.Contains(countSQL, "search_text ilike") {
+		t.Fatalf("short count must not scan search_text ILIKE: %q", queryer.countSQL)
+	}
+	if len(queryer.countArgs) != 1 || queryer.countArgs[0] != "魔" {
+		t.Fatalf("unexpected count args: %#v", queryer.countArgs)
+	}
+}
+
+func TestGameRepoSearchShortWildcardKeywordStaysLiteral(t *testing.T) {
+	queryer := &recordingGameQueryer{
+		rows:     &gameSearchRows{},
+		countRow: gameCountRow{total: 0},
+	}
+	repo := NewGameRepo(queryer)
+
+	if _, err := repo.Search(context.Background(), "%", 1, 20, false); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(queryer.args) != 6 || queryer.args[0] != `%\%%` || queryer.args[1] != `\%` || queryer.args[2] != `\%%` || queryer.args[3] != "%" {
+		t.Fatalf("wildcard keyword should be escaped for LIKE ranking and raw for ngram equality: %#v", queryer.args)
+	}
+	if len(queryer.countArgs) != 1 || queryer.countArgs[0] != "%" {
+		t.Fatalf("short wildcard count must use literal ngram equality arg, got %#v", queryer.countArgs)
+	}
+	if strings.Contains(strings.ToLower(queryer.countSQL), "search_text ilike") {
+		t.Fatalf("short wildcard count must not use wildcard LIKE scan: %q", queryer.countSQL)
+	}
+}
+
+func TestGameRepoSearchShortKeywordAllowNsfwUsesOptInPredicate(t *testing.T) {
+	queryer := &recordingGameQueryer{
+		rows:     &gameSearchRows{},
+		countRow: gameCountRow{total: 0},
+	}
+	repo := NewGameRepo(queryer)
+
+	if _, err := repo.Search(context.Background(), "ab", 1, 20, true); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	mainSQL := strings.ToLower(queryer.sql)
+	if !strings.Contains(mainSQL, "from game_search_ngrams n") || !strings.Contains(mainSQL, "content_limit in ('sfw', 'nsfw')") {
+		t.Fatalf("short allow-NSFW search must use ngram opt-in predicate: %q", queryer.sql)
+	}
+	countSQL := strings.ToLower(queryer.countSQL)
+	if !strings.Contains(countSQL, "from game_search_ngrams n") || !strings.Contains(countSQL, "content_limit in ('sfw', 'nsfw')") {
+		t.Fatalf("short allow-NSFW count must use ngram opt-in predicate: %q", queryer.countSQL)
+	}
+	if len(queryer.countArgs) != 1 || queryer.countArgs[0] != "ab" {
+		t.Fatalf("unexpected count args: %#v", queryer.countArgs)
+	}
+}
+
 func TestGameRepoSearchAllowNsfwUsesOptInPredicate(t *testing.T) {
 	queryer := &recordingGameQueryer{
 		rows:     &gameSearchRows{rows: []gameSearchRow{{uniqueID: "abcd1234", name: "Summer"}}},

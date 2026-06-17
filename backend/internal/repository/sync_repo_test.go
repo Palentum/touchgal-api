@@ -384,7 +384,7 @@ func BenchmarkSyncRepoUpsertRatingsBatch1000(b *testing.B) {
 	}
 }
 
-func TestSyncRepoRefreshSearchTextBatchAggregatesOncePerAffectedSet(t *testing.T) {
+func TestSyncRepoRefreshSearchTextBatchRefreshesShortSearchNgrams(t *testing.T) {
 	queryer := &recordingSyncQueryer{}
 	repo := NewSyncRepo(queryer)
 
@@ -392,8 +392,8 @@ func TestSyncRepoRefreshSearchTextBatchAggregatesOncePerAffectedSet(t *testing.T
 	if err != nil {
 		t.Fatalf("refresh search text batch: %v", err)
 	}
-	if len(queryer.sqls) != 1 {
-		t.Fatalf("expected one bulk exec, got %d", len(queryer.sqls))
+	if len(queryer.sqls) != 3 {
+		t.Fatalf("expected search text update and ngram rebuild execs, got %d", len(queryer.sqls))
 	}
 	if strings.Contains(queryer.sqls[0], "(SELECT string_agg") {
 		t.Fatalf("expected pre-aggregated search text, got correlated subquery SQL %q", queryer.sqls[0])
@@ -401,9 +401,29 @@ func TestSyncRepoRefreshSearchTextBatchAggregatesOncePerAffectedSet(t *testing.T
 	if !strings.Contains(queryer.sqls[0], "WITH affected AS") || !strings.Contains(queryer.sqls[0], "tag_text AS") || !strings.Contains(queryer.sqls[0], "company_text AS") {
 		t.Fatalf("expected affected-set aggregate CTEs, got %q", queryer.sqls[0])
 	}
-	ids, ok := queryer.args[0][0].([]string)
-	if !ok || len(ids) != 2 || ids[0] != "g0000001" || ids[1] != "g0000002" {
-		t.Fatalf("expected deduped unique IDs, got %#v", queryer.args[0][0])
+	for i := range queryer.args {
+		ids, ok := queryer.args[i][0].([]string)
+		if !ok || len(ids) != 2 || ids[0] != "g0000001" || ids[1] != "g0000002" {
+			t.Fatalf("exec %d expected deduped unique IDs, got %#v", i, queryer.args[i][0])
+		}
+	}
+	if !strings.Contains(queryer.sqls[1], "DELETE FROM game_search_ngrams") || !strings.Contains(queryer.sqls[1], "ANY($1::text[])") {
+		t.Fatalf("expected affected ngram delete, got %q", queryer.sqls[1])
+	}
+	for _, want := range []string{
+		"INSERT INTO game_search_ngrams",
+		"lower(g.search_text)",
+		"g.deleted_at IS NULL",
+		"g.content_limit IN ('sfw', 'nsfw')",
+		"generate_series(1, source.search_len)",
+		"substring(source.search_text FROM pos.i FOR 1)",
+		"substring(source.search_text FROM pos.i FOR 2)",
+		"SELECT DISTINCT unique_id, gram",
+		"ON CONFLICT DO NOTHING",
+	} {
+		if !strings.Contains(queryer.sqls[2], want) {
+			t.Fatalf("ngram rebuild SQL missing %q in %q", want, queryer.sqls[2])
+		}
 	}
 }
 
@@ -425,8 +445,8 @@ func TestSyncRepoSeenSourcePatchIDsUseRunScopedBulkSQL(t *testing.T) {
 	if err := repo.CleanupSeenSourcePatchIDs(context.Background(), runID); err != nil {
 		t.Fatalf("cleanup seen source patch IDs: %v", err)
 	}
-	if len(queryer.sqls) != 4 {
-		t.Fatalf("expected add, mark deleted, resource cleanup, and seen cleanup execs, got %d", len(queryer.sqls))
+	if len(queryer.sqls) != 5 {
+		t.Fatalf("expected add, mark deleted, resource cleanup, ngram cleanup, and seen cleanup execs, got %d", len(queryer.sqls))
 	}
 	if !strings.Contains(queryer.sqls[0], "INSERT INTO sync_run_seen") || !strings.Contains(queryer.sqls[0], "unnest($2::int[])") {
 		t.Fatalf("expected bulk seen insert, got %q", queryer.sqls[0])
@@ -441,8 +461,11 @@ func TestSyncRepoSeenSourcePatchIDsUseRunScopedBulkSQL(t *testing.T) {
 	if !strings.Contains(queryer.sqls[2], "DELETE FROM game_resources") || !strings.Contains(queryer.sqls[2], "games g") || !strings.Contains(queryer.sqls[2], "g.deleted_at IS NOT NULL") {
 		t.Fatalf("expected deleted-game resource cleanup, got %q", queryer.sqls[2])
 	}
-	if !strings.Contains(queryer.sqls[3], "DELETE FROM sync_run_seen WHERE run_id = $1") {
-		t.Fatalf("expected seen cleanup, got %q", queryer.sqls[3])
+	if !strings.Contains(queryer.sqls[3], "DELETE FROM game_search_ngrams") || !strings.Contains(queryer.sqls[3], "g.deleted_at IS NOT NULL") {
+		t.Fatalf("expected deleted-game ngram cleanup, got %q", queryer.sqls[3])
+	}
+	if !strings.Contains(queryer.sqls[4], "DELETE FROM sync_run_seen WHERE run_id = $1") {
+		t.Fatalf("expected seen cleanup, got %q", queryer.sqls[4])
 	}
 }
 
