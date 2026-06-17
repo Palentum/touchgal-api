@@ -15,7 +15,7 @@ import (
 type Store interface {
 	Create(ctx context.Context, userID uuid.UUID, input model.CreateApplicationInput, minuteLimit, dailyLimit int) (*model.Application, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Application, error)
-	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error)
+	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminApplication, error)
 	UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status string, minuteLimit, dailyLimit int) (*model.Application, error)
 }
 
@@ -151,7 +151,7 @@ func (s *Service) ListMine(ctx context.Context, userID uuid.UUID) ([]model.Appli
 	return s.store.ListByUser(ctx, userID)
 }
 
-func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error) {
+func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminApplication, error) {
 	page, limit, err := normalizePage(page, limit)
 	if err != nil {
 		return nil, err

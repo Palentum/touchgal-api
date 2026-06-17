@@ -46,7 +46,7 @@ func (f *fakeApplicationStore) Create(ctx context.Context, userID uuid.UUID, inp
 func (f *fakeApplicationStore) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.Application, error) {
 	return nil, nil
 }
-func (f *fakeApplicationStore) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error) {
+func (f *fakeApplicationStore) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminApplication, error) {
 	f.listStatus = status
 	f.listPage = page
 	f.listLimit = limit

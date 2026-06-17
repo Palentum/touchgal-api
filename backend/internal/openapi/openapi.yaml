@@ -84,6 +84,18 @@ components:
         status: { type: string, enum: [pending, approved, rejected, revoked] }
         createdAt: { type: string, format: date-time }
         reviewedAt: { type: string, format: date-time }
+    ApplicationOwner:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+    AdminApplication:
+      allOf:
+        - $ref: '#/components/schemas/Application'
+        - type: object
+          properties:
+            owner: { $ref: '#/components/schemas/ApplicationOwner' }
     Token:
       type: object
       properties:
@@ -551,7 +563,7 @@ paths:
                   success: { type: boolean, const: true }
                   data:
                     type: array
-                    items: { $ref: '#/components/schemas/Application' }
+                    items: { $ref: '#/components/schemas/AdminApplication' }
         '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /admin/applications/{id}/approve:

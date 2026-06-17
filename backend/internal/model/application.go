@@ -30,6 +30,17 @@ type Application struct {
 	UpdatedAt             time.Time  `json:"updatedAt"`
 }
 
+type ApplicationOwner struct {
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"displayName"`
+}
+
+type AdminApplication struct {
+	Application
+	Owner ApplicationOwner `json:"owner"`
+}
+
 type CreateApplicationInput struct {
 	ApplicantName         string
 	ProjectName           string

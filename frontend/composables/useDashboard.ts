@@ -1,5 +1,6 @@
 export interface ApplicationItem {
   id: string
+  userId: string
   applicantName: string
   projectName: string
   projectUrl: string
@@ -10,6 +11,13 @@ export interface ApplicationItem {
   reviewedAt?: string
   defaultMinuteLimit?: number
   defaultDailyLimit?: number
+  owner?: ApplicationOwner
+}
+
+export interface ApplicationOwner {
+  id: string
+  email: string
+  displayName: string
 }
 
 export interface TokenOwner {

@@ -83,26 +83,32 @@ func (r *ApplicationRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]m
 	return scanApplications(rows, applicationListByUserCapHint)
 }
 
-func (r *ApplicationRepo) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.Application, error) {
+func (r *ApplicationRepo) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminApplication, error) {
 	offset := (page - 1) * limit
 	if status == "" {
 		rows, err := r.db.Query(ctx, `
-			SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, reviewed_by, reviewed_at, created_at, updated_at
-			FROM api_applications ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+			SELECT a.id, a.user_id, a.applicant_name, a.project_name, a.project_url, a.expected_daily_requests, a.usage_scenario, a.status, a.default_minute_limit, a.default_daily_limit, a.reviewed_by, a.reviewed_at, a.created_at, a.updated_at,
+			       u.id, u.email::text, u.display_name
+			FROM api_applications a
+			JOIN users u ON u.id = a.user_id
+			ORDER BY a.created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
-		return scanApplications(rows, limit)
+		return scanAdminApplications(rows, limit)
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, applicant_name, project_name, project_url, expected_daily_requests, usage_scenario, status, default_minute_limit, default_daily_limit, reviewed_by, reviewed_at, created_at, updated_at
-		FROM api_applications WHERE status = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, status, limit, offset)
+		SELECT a.id, a.user_id, a.applicant_name, a.project_name, a.project_url, a.expected_daily_requests, a.usage_scenario, a.status, a.default_minute_limit, a.default_daily_limit, a.reviewed_by, a.reviewed_at, a.created_at, a.updated_at,
+		       u.id, u.email::text, u.display_name
+		FROM api_applications a
+		JOIN users u ON u.id = a.user_id
+		WHERE a.status = $1 ORDER BY a.created_at DESC LIMIT $2 OFFSET $3`, status, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanApplications(rows, limit)
+	return scanAdminApplications(rows, limit)
 }
 
 func (r *ApplicationRepo) UpdateReview(ctx context.Context, id, reviewer uuid.UUID, status string, minuteLimit, dailyLimit int) (*model.Application, error) {
@@ -138,6 +144,21 @@ func scanApplications(rows pgx.Rows, capHint int) ([]model.Application, error) {
 		}
 		if cap(apps) == 0 {
 			apps = make([]model.Application, 0, positiveCapHint(capHint))
+		}
+		apps = append(apps, app)
+	}
+	return apps, rows.Err()
+}
+
+func scanAdminApplications(rows pgx.Rows, capHint int) ([]model.AdminApplication, error) {
+	apps := make([]model.AdminApplication, 0)
+	for rows.Next() {
+		var app model.AdminApplication
+		if err := rows.Scan(&app.ID, &app.UserID, &app.ApplicantName, &app.ProjectName, &app.ProjectURL, &app.ExpectedDailyRequests, &app.UsageScenario, &app.Status, &app.DefaultMinuteLimit, &app.DefaultDailyLimit, &app.ReviewedBy, &app.ReviewedAt, &app.CreatedAt, &app.UpdatedAt, &app.Owner.ID, &app.Owner.Email, &app.Owner.DisplayName); err != nil {
+			return nil, err
+		}
+		if cap(apps) == 0 {
+			apps = make([]model.AdminApplication, 0, positiveCapHint(capHint))
 		}
 		apps = append(apps, app)
 	}
