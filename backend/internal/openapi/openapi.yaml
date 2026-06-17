@@ -95,6 +95,20 @@ components:
         dailyLimit: { type: integer }
         lastUsedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+    TokenOwner:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+    AdminToken:
+      allOf:
+        - $ref: '#/components/schemas/Token'
+        - type: object
+          properties:
+            userId: { type: string, format: uuid }
+            applicationId: { type: string, format: uuid }
+            owner: { $ref: '#/components/schemas/TokenOwner' }
     Pagination:
       type: object
       required: [page, limit, total, hasMore]
@@ -608,7 +622,7 @@ paths:
                   success: { type: boolean, const: true }
                   data:
                     type: array
-                    items: { $ref: '#/components/schemas/Token' }
+                    items: { $ref: '#/components/schemas/AdminToken' }
         '401': { description: Login required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
         '403': { description: Admin required, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /admin/tokens/{id}:

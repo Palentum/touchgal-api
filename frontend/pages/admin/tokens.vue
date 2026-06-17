@@ -5,7 +5,7 @@
       <h1 class="tg-display-md">全部 Token</h1>
       <p class="tg-lead">查看已签发的 API Token，并在需要时直接删除。</p>
     </div>
-    <DashboardTokenTable :tokens="tokens" @delete="openDeleteToken" />
+    <DashboardTokenTable :tokens="tokens" :show-owner="true" @delete="openDeleteToken" />
     <div
       v-if="deletingToken"
       class="tg-dialog-backdrop fixed inset-0 z-50 grid place-items-center bg-black/55 px-4"

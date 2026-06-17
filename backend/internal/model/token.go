@@ -24,6 +24,17 @@ type APIToken struct {
 	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
+type APITokenOwner struct {
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"displayName"`
+}
+
+type AdminAPIToken struct {
+	APIToken
+	Owner APITokenOwner `json:"owner"`
+}
+
 type TokenAuthInfo struct {
 	Token                  APIToken
 	ApplicationStatus      string

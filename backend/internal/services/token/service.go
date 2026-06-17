@@ -22,7 +22,7 @@ import (
 type Store interface {
 	Create(ctx context.Context, token model.APIToken, maxActiveTokensPerUser int) (*model.APIToken, error)
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]model.APIToken, error)
-	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error)
+	ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminAPIToken, error)
 	GetByHashWithApplication(ctx context.Context, tokenHash string) (*model.TokenAuthInfo, error)
 	DeleteForUser(ctx context.Context, id, userID uuid.UUID) error
 	UpdateNameForUser(ctx context.Context, id, userID uuid.UUID, name string) (*model.APIToken, error)
@@ -205,7 +205,7 @@ func (s *Service) maxActiveTokensPerUser() int {
 	return config.DefaultMaxActiveTokensPerUser
 }
 
-func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error) {
+func (s *Service) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminAPIToken, error) {
 	if page < 1 {
 		page = 1
 	}

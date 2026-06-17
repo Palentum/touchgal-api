@@ -90,26 +90,47 @@ func (r *TokenRepo) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.A
 	return scanTokens(rows, tokenListByUserCapHint)
 }
 
-func (r *TokenRepo) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error) {
+func (r *TokenRepo) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminAPIToken, error) {
 	offset := (page - 1) * limit
 	if status == "" {
 		rows, err := r.db.Query(ctx, `
-			SELECT id, user_id, application_id, name, token_prefix, token_hash, status, minute_limit, daily_limit, last_used_at, expires_at, created_at, updated_at
-			FROM api_tokens ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+			SELECT t.id, t.user_id, t.application_id, t.name, t.token_prefix, t.token_hash, t.status, t.minute_limit, t.daily_limit, t.last_used_at, t.expires_at, t.created_at, t.updated_at,
+			       u.id, u.email::text, u.display_name
+			FROM api_tokens t
+			JOIN users u ON u.id = t.user_id
+			ORDER BY t.created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
-		return scanTokens(rows, limit)
+		return scanAdminTokens(rows, limit)
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, application_id, name, token_prefix, token_hash, status, minute_limit, daily_limit, last_used_at, expires_at, created_at, updated_at
-		FROM api_tokens WHERE status = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, status, limit, offset)
+		SELECT t.id, t.user_id, t.application_id, t.name, t.token_prefix, t.token_hash, t.status, t.minute_limit, t.daily_limit, t.last_used_at, t.expires_at, t.created_at, t.updated_at,
+		       u.id, u.email::text, u.display_name
+		FROM api_tokens t
+		JOIN users u ON u.id = t.user_id
+		WHERE t.status = $1 ORDER BY t.created_at DESC LIMIT $2 OFFSET $3`, status, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanTokens(rows, limit)
+	return scanAdminTokens(rows, limit)
+}
+
+func scanAdminTokens(rows pgx.Rows, capHint int) ([]model.AdminAPIToken, error) {
+	tokens := make([]model.AdminAPIToken, 0)
+	for rows.Next() {
+		var token model.AdminAPIToken
+		if err := rows.Scan(&token.ID, &token.UserID, &token.ApplicationID, &token.Name, &token.TokenPrefix, &token.TokenHash, &token.Status, &token.MinuteLimit, &token.DailyLimit, &token.LastUsedAt, &token.ExpiresAt, &token.CreatedAt, &token.UpdatedAt, &token.Owner.ID, &token.Owner.Email, &token.Owner.DisplayName); err != nil {
+			return nil, err
+		}
+		if cap(tokens) == 0 {
+			tokens = make([]model.AdminAPIToken, 0, positiveCapHint(capHint))
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens, rows.Err()
 }
 
 func (r *TokenRepo) CountActive(ctx context.Context) (int, error) {

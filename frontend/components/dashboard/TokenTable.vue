@@ -9,10 +9,11 @@
     </div>
 
     <div class="tg-table-wrap mt-6" data-mobile-cards="true">
-      <table class="tg-table" :class="{ 'tg-token-table-strong': props.canEdit }">
+      <table class="tg-table" :class="{ 'tg-token-table-strong': props.canEdit, 'tg-token-table-owner': props.showOwner }">
         <thead>
           <tr>
             <th>名称</th>
+            <th v-if="props.showOwner">所属账号</th>
             <template v-if="props.canEdit">
               <th>Tokens</th>
               <th>创建时间</th>
@@ -30,6 +31,10 @@
         <tbody>
           <tr v-for="token in props.tokens" :key="token.id">
             <td class="font-semibold" data-label="名称">{{ token.name }}</td>
+            <td v-if="props.showOwner" data-label="所属账号">
+              <p class="tg-title-sm tg-token-owner-name">{{ ownerDisplayName(token) }}</p>
+              <p class="tg-muted mt-1">{{ ownerAccount(token) }}</p>
+            </td>
             <template v-if="props.canEdit">
               <td data-label="Token">
                 <code class="rounded-full border border-[var(--tg-hairline)] bg-[var(--tg-surface-soft)] px-3 py-1 text-xs font-semibold text-[var(--tg-body-strong)]">{{ maskedToken(token.tokenPrefix) }}</code>
@@ -95,10 +100,12 @@ const maskedToken = (tokenPrefix: string) => {
   const maskLength = Math.max(12, 53 - tokenPrefix.length)
   return `${visibleHead}${'*'.repeat(maskLength)}${visibleTail}`
 }
+const ownerDisplayName = (token: TokenItem) => token.owner?.displayName || '未设置昵称'
+const ownerAccount = (token: TokenItem) => token.owner?.email || token.userId
 
-
-const props = withDefaults(defineProps<{ tokens: TokenItem[]; canEdit?: boolean }>(), {
-  canEdit: false
+const props = withDefaults(defineProps<{ tokens: TokenItem[]; canEdit?: boolean; showOwner?: boolean }>(), {
+  canEdit: false,
+  showOwner: false
 })
 defineEmits<{ edit: [token: TokenItem]; delete: [id: string] }>()
 </script>
@@ -110,7 +117,13 @@ defineEmits<{ edit: [token: TokenItem]; delete: [id: string] }>()
 }
 
 .tg-token-table-strong :deep(th),
-.tg-token-table-strong :deep(td) {
+.tg-token-table-strong :deep(td),
+.tg-token-table-owner :deep(th),
+.tg-token-table-owner :deep(td) {
   vertical-align: middle;
+}
+
+.tg-token-owner-name.tg-title-sm {
+  color: var(--tg-body-strong);
 }
 </style>

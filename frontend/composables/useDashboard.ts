@@ -12,8 +12,15 @@ export interface ApplicationItem {
   defaultDailyLimit?: number
 }
 
+export interface TokenOwner {
+  id: string
+  email: string
+  displayName: string
+}
+
 export interface TokenItem {
   id: string
+  userId: string
   applicationId: string
   name: string
   tokenPrefix: string
@@ -22,6 +29,7 @@ export interface TokenItem {
   dailyLimit: number
   lastUsedAt?: string
   createdAt: string
+  owner?: TokenOwner
 }
 
 export interface StatsSummary {

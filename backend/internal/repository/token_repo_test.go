@@ -54,6 +54,27 @@ func (q *queryRowOnlyQueryer) QueryRow(ctx context.Context, sql string, args ...
 	return q.row
 }
 
+type queryOnlyQueryer struct {
+	sql  string
+	args []any
+	rows pgx.Rows
+	err  error
+}
+
+func (q *queryOnlyQueryer) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+	panic("unexpected exec")
+}
+
+func (q *queryOnlyQueryer) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	q.sql = sql
+	q.args = args
+	return q.rows, q.err
+}
+
+func (q *queryOnlyQueryer) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	panic("unexpected query row")
+}
+
 type tokenRow struct {
 	token model.APIToken
 	err   error
@@ -78,6 +99,39 @@ func (r tokenRow) Scan(dest ...any) error {
 	*(dest[12].(*time.Time)) = r.token.UpdatedAt
 	return nil
 }
+
+type adminTokenRows struct {
+	rows   []model.AdminAPIToken
+	idx    int
+	closed bool
+	err    error
+}
+
+func (r *adminTokenRows) Close()                                       { r.closed = true }
+func (r *adminTokenRows) Err() error                                   { return r.err }
+func (r *adminTokenRows) CommandTag() pgconn.CommandTag                { return pgconn.NewCommandTag("SELECT") }
+func (r *adminTokenRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *adminTokenRows) Next() bool {
+	if r.idx >= len(r.rows) {
+		r.closed = true
+		return false
+	}
+	r.idx++
+	return true
+}
+func (r *adminTokenRows) Scan(dest ...any) error {
+	row := r.rows[r.idx-1]
+	if err := (tokenRow{token: row.APIToken}).Scan(dest[:13]...); err != nil {
+		return err
+	}
+	*(dest[13].(*uuid.UUID)) = row.Owner.ID
+	*(dest[14].(*string)) = row.Owner.Email
+	*(dest[15].(*string)) = row.Owner.DisplayName
+	return nil
+}
+func (r *adminTokenRows) Values() ([]any, error) { return nil, nil }
+func (r *adminTokenRows) RawValues() [][]byte    { return nil }
+func (r *adminTokenRows) Conn() *pgx.Conn        { return nil }
 
 type tokenAuthInfoRow struct {
 	info model.TokenAuthInfo
@@ -217,6 +271,54 @@ func TestTokenRepoCreateRequiresTransactionCapableQueryer(t *testing.T) {
 	_, err := repo.Create(context.Background(), model.APIToken{ID: uuid.New(), UserID: uuid.New()}, 1)
 	if !errors.Is(err, errTokenCreateRequiresTransaction) {
 		t.Fatalf("expected transaction-capable queryer error, got %v", err)
+	}
+}
+
+func TestTokenRepoListAdminIncludesOwnerAccount(t *testing.T) {
+	tokenID := uuid.New()
+	userID := uuid.New()
+	applicationID := uuid.New()
+	now := time.Now()
+	rows := &adminTokenRows{rows: []model.AdminAPIToken{{
+		APIToken: model.APIToken{
+			ID:            tokenID,
+			UserID:        userID,
+			ApplicationID: applicationID,
+			Name:          "prod",
+			TokenPrefix:   "tgal_live_abcd",
+			TokenHash:     "hash",
+			Status:        model.TokenActive,
+			MinuteLimit:   60,
+			DailyLimit:    1000,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		Owner: model.APITokenOwner{ID: userID, Email: "dev@example.com", DisplayName: "Dev"},
+	}}}
+	queryer := &queryOnlyQueryer{rows: rows}
+	repo := NewTokenRepo(queryer)
+
+	tokens, err := repo.ListAdmin(context.Background(), model.TokenActive, 2, 10)
+	if err != nil {
+		t.Fatalf("list admin tokens: %v", err)
+	}
+	if len(tokens) != 1 {
+		t.Fatalf("expected one token, got %d", len(tokens))
+	}
+	if tokens[0].Owner.ID != userID || tokens[0].Owner.Email != "dev@example.com" || tokens[0].Owner.DisplayName != "Dev" {
+		t.Fatalf("token owner account was not scanned: %#v", tokens[0].Owner)
+	}
+	if !strings.Contains(queryer.sql, "JOIN users u ON u.id = t.user_id") || !strings.Contains(queryer.sql, "u.email::text") || !strings.Contains(queryer.sql, "u.display_name") {
+		t.Fatalf("admin token query must include owner account columns: %q", queryer.sql)
+	}
+	if !strings.Contains(queryer.sql, "WHERE t.status = $1") {
+		t.Fatalf("status filter must target token status: %q", queryer.sql)
+	}
+	if len(queryer.args) != 3 || queryer.args[0] != model.TokenActive || queryer.args[1] != 10 || queryer.args[2] != 10 {
+		t.Fatalf("unexpected admin token list args: %#v", queryer.args)
+	}
+	if !rows.closed {
+		t.Fatal("admin token rows must be closed")
 	}
 }
 

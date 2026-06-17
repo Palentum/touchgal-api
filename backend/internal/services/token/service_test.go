@@ -43,7 +43,7 @@ func (f *fakeTokenStore) Create(ctx context.Context, token model.APIToken, maxAc
 func (f *fakeTokenStore) ListByUser(ctx context.Context, userID uuid.UUID) ([]model.APIToken, error) {
 	return nil, nil
 }
-func (f *fakeTokenStore) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.APIToken, error) {
+func (f *fakeTokenStore) ListAdmin(ctx context.Context, status string, page, limit int) ([]model.AdminAPIToken, error) {
 	f.listStatus = status
 	f.listPage = page
 	f.listLimit = limit
