@@ -22,10 +22,14 @@
       @click.self="closeReviewDialog"
     >
       <form class="tg-dialog-panel tg-card w-full max-w-2xl" @submit.prevent="submitReview('approve')">
-        <p class="tg-eyebrow">处理申请</p>
+        <p class="tg-eyebrow">Application Review</p>
         <h2 id="review-application-title" class="tg-title-lg">审核开发者项目</h2>
 
         <dl class="mt-6 grid gap-4 sm:grid-cols-2">
+          <div>
+            <dt class="tg-muted text-sm">申请人</dt>
+            <dd class="mt-1 font-semibold text-[var(--tg-body-strong)]">{{ selectedApplication.applicantName || '未填写' }}</dd>
+          </div>
           <div>
             <dt class="tg-muted text-sm">项目名称</dt>
             <dd class="mt-1 font-semibold text-[var(--tg-body-strong)]">{{ selectedApplication.projectName || '未填写' }}</dd>
