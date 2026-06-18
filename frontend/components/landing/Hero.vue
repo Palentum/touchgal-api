@@ -14,12 +14,12 @@
       </div>
 
       <aside class="tg-hero-card" aria-label="API 响应示例">
-        <div class="tg-code-window">
+        <div class="tg-code-window tg-hero-code-window">
           <div class="tg-code-window-bar">
             <span class="tg-window-dots" aria-hidden="true"><span /><span /><span /></span>
             <span>GET /v1/games/search</span>
           </div>
-          <pre><code><span class="tg-code-muted">curl</span> <span class="tg-code-teal">"https://api.touchgal.com/v1/games/search?keyword=summer"</span> \
+          <pre><code><span class="tg-code-muted">curl</span> <span class="tg-code-teal">"https://developer.touchgal.com/api/v1/games/search?keyword=summer"</span> \
   -H <span class="tg-code-amber">"Authorization: Bearer tgal_live_xxx"</span>
 
 <span class="tg-code-muted">HTTP/1.1 200 OK</span>

@@ -507,8 +507,18 @@ select:disabled {
 }
 
 .tg-hero-card {
+  width: min(100%, 560px);
+  min-width: 0;
+  justify-self: end;
   border-radius: 16px;
   padding: 24px;
+}
+
+.tg-code-window.tg-hero-code-window pre {
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .tg-code-window {
@@ -862,6 +872,10 @@ select:disabled {
 
   .tg-hero-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tg-hero-card {
+    justify-self: start;
   }
 
   .tg-dashboard-sidebar {
