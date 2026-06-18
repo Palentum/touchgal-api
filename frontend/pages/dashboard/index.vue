@@ -8,12 +8,14 @@
     <DashboardRequestSummaryCards :summary="summaryData" />
 
     <div class="tg-grid-2 tg-dashboard-equal-row">
-      <div class="tg-card tg-endpoint-url-card">
-        <p class="tg-eyebrow">Endpoint</p>
-        <h2 class="tg-title-lg">接口地址</h2>
-        <div class="tg-endpoint-url-box mt-6">
-          <span class="tg-badge tg-badge-coral tg-endpoint-region">全球</span>
-          <code class="tg-endpoint-url font-mono">{{ apiBaseUrl }}</code>
+      <div class="tg-card tg-quick-entry-card">
+        <p class="tg-eyebrow">Entries</p>
+        <h2 class="tg-title-lg">快捷入口</h2>
+        <p class="tg-muted mt-3">从这里快捷进入Token 管理、请求统计和 API 调试台。</p>
+        <div class="tg-actions tg-quick-entry-actions">
+          <NuxtLink class="tg-btn tg-btn-primary" to="/dashboard/tokens">Token 管理</NuxtLink>
+          <NuxtLink class="tg-btn tg-btn-secondary" to="/dashboard/stats">请求统计</NuxtLink>
+          <NuxtLink class="tg-btn tg-btn-secondary" to="/dashboard/console">API 调试台</NuxtLink>
         </div>
       </div>
 
@@ -43,9 +45,7 @@ import type { StatsDashboard, StatsSummary } from '~/composables/useDashboard'
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' })
 const auth = useAuthStore()
-const { apiData, baseURL } = useApi()
-// 公开 v1 接口根地址：baseURL 已去掉尾部 /，追加 /v1/ 作为调用基础地址
-const apiBaseUrl = computed(() => `${baseURL}/v1/`)
+const { apiData } = useApi()
 const access = useApplicationAccess()
 const apps = access.applications
 const emptySummary: StatsSummary = { totalRequests: 0, successRequests: 0, errorRequests: 0, avgLatencyMs: 0, uniqueOrigins: 0, uniqueIPs: 0 }
@@ -59,31 +59,14 @@ const formatLimit = (value?: number) => typeof value === 'number' && Number.isFi
   align-items: stretch;
 }
 
-.tg-endpoint-url-card {
+.tg-quick-entry-card {
   display: flex;
   flex-direction: column;
 }
 
-.tg-endpoint-url-box {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--tg-hairline);
-  border-radius: 10px;
-  background: var(--tg-canvas);
-  padding: 12px 14px;
-}
-
-.tg-endpoint-region {
-  flex-shrink: 0;
-}
-
-.tg-endpoint-url {
-  flex: 1;
-  min-width: 0;
-  color: var(--tg-body-strong);
-  font-size: 14px;
-  overflow-wrap: anywhere;
+.tg-quick-entry-actions {
+  margin-top: auto;
+  padding-top: 24px;
 }
 
 .tg-limit-pill {
