@@ -28,7 +28,7 @@ export type ApiEndpointDoc = {
   path: string
   auth: string
   parameters: ApiDocParameter[]
-  requestExample: string
+  requestExample: (baseURL: string) => string
   statuses: ApiDocStatus[]
 }
 
@@ -119,7 +119,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     path: '/v1/health',
     auth: '无需 API token。',
     parameters: [],
-    requestExample: `curl "https://api.example.com/v1/health"`,
+    requestExample: (baseURL) => `curl "${baseURL}/v1/health"`,
     statuses: [
       {
         code: 200,
@@ -145,7 +145,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     path: '/v1/ready',
     auth: '无需 API token。',
     parameters: [],
-    requestExample: `curl "https://api.example.com/v1/ready"`,
+    requestExample: (baseURL) => `curl "${baseURL}/v1/ready"`,
     statuses: [
       {
         code: 200,
@@ -184,7 +184,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     path: '/v1/me',
     auth: '需要有效的 `tgal_live` API token。',
     parameters: tokenHeaderParameters,
-    requestExample: `curl "https://api.example.com/v1/me" \\
+    requestExample: (baseURL) => `curl "${baseURL}/v1/me" \\
   -H "Authorization: Bearer tgal_live_xxx"`,
     statuses: [
       {
@@ -261,7 +261,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
         description: '是否允许返回 NSFW 条目。默认 false，仅返回 SFW；设为 true 时返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
       },
     ],
-    requestExample: `curl "https://api.example.com/v1/games/search?keyword=summer&page=1&limit=10&allowNsfw=true" \\
+    requestExample: (baseURL) => `curl "${baseURL}/v1/games/search?keyword=summer&page=1&limit=10&allowNsfw=true" \\
   -H "Authorization: Bearer tgal_live_xxx"`,
     statuses: [
       {
@@ -338,7 +338,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
         description: '是否允许返回 NSFW 条目。默认 false，NSFW 条目会按未找到处理；设为 true 时允许返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
       },
     ],
-    requestExample: `curl "https://api.example.com/v1/games/abcd1234?allowNsfw=true" \\
+    requestExample: (baseURL) => `curl "${baseURL}/v1/games/abcd1234?allowNsfw=true" \\
   -H "Authorization: Bearer tgal_live_xxx"`,
     statuses: [
       {
@@ -458,7 +458,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
         description: '是否允许返回 NSFW 条目的资源。默认 false，NSFW 条目会按未找到处理；设为 true 时允许返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
       },
     ],
-    requestExample: `curl "https://api.example.com/v1/games/abcd1234/resources?allowNsfw=true" \\
+    requestExample: (baseURL) => `curl "${baseURL}/v1/games/abcd1234/resources?allowNsfw=true" \\
   -H "Authorization: Bearer tgal_live_xxx"`,
     statuses: [
       {
@@ -547,7 +547,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
         description: '是否允许返回 NSFW 条目的补丁。默认 false，NSFW 条目会按未找到处理；设为 true 时允许返回 SFW 与 NSFW。只接受 true 或 false；其他值返回 BAD_REQUEST。'
       },
     ],
-    requestExample: `curl "https://api.example.com/v1/games/abcd1234/patches?allowNsfw=true" \\
+    requestExample: (baseURL) => `curl "${baseURL}/v1/games/abcd1234/patches?allowNsfw=true" \\
   -H "Authorization: Bearer tgal_live_xxx"`,
     statuses: [
       {

@@ -61,13 +61,13 @@
 
     <section class="tg-card-dark">
       <h2 class="tg-title-lg">请求示例</h2>
-      <p class="tg-muted" style="margin-top: 12px;">示例域名请替换为实际部署域名；业务接口不要在不可信浏览器环境暴露 token。</p>
+      <p class="tg-muted" style="margin-top: 12px;">业务接口不要在不可信浏览器环境暴露 token。示例 base 取自 <code>NUXT_PUBLIC_API_BASE_URL</code>；若配置为同源相对路径，请将 <code>&lt;你的部署地址&gt;</code> 替换为实际 API origin。</p>
       <div class="tg-code-window tg-doc-code-window">
         <div class="tg-code-window-bar">
           <span class="tg-window-dots" aria-hidden="true"><span /><span /><span /></span>
           <span>curl</span>
         </div>
-        <pre><code>{{ doc.requestExample }}</code></pre>
+        <pre><code>{{ requestExample }}</code></pre>
       </div>
     </section>
 
@@ -111,7 +111,24 @@
 <script setup lang="ts">
 import type { ApiEndpointDoc, ApiDocParameter } from '~/composables/apiDocs'
 
-defineProps<{ doc: ApiEndpointDoc }>()
+const props = defineProps<{ doc: ApiEndpointDoc }>()
+
+const config = useRuntimeConfig()
+const rawBaseURL = computed(() => String(config.public.apiBaseUrl || '').replace(/\/$/, ''))
+// 文档示例需要绝对 origin 才能复制为可执行 curl；相对路径（如同源 /api 反代）不暴露公开 host，回退到占位提示。
+const isAbsoluteBaseURL = computed(() => {
+  try {
+    const url = new URL(rawBaseURL.value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+})
+const requestExample = computed(() =>
+  isAbsoluteBaseURL.value
+    ? props.doc.requestExample(rawBaseURL.value)
+    : props.doc.requestExample('<你的部署地址>')
+)
 
 const requiredLabel = (required: ApiDocParameter['required']) => {
   if (required === 'conditional') return '条件必填'
