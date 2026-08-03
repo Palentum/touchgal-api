@@ -1,6 +1,6 @@
 module github.com/touchgal/developer/backend
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -21,7 +21,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
-	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 )
