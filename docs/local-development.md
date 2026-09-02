@@ -6,7 +6,7 @@
 
 需要安装：
 
-- Go `1.26.4`，与 `backend/go.mod` 一致。
+- Go `1.26.8`，与 `backend/go.mod` 一致。
 - Node.js `22`。
 - Corepack 与 `pnpm@11.5.0`，与 `frontend/package.json` 一致。
 - PostgreSQL。
